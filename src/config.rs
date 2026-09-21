@@ -22,7 +22,9 @@
 //! - **Aliases accumulate**, nearest first. A name an app resolves and an ancestor
 //!   also resolves gets both, tried in that order. Accumulating rather than
 //!   overriding is what keeps the chain from ever offering fewer candidates than the
-//!   root alone, and a name that resolves to nothing loses an edge.
+//!   root alone, and a name that resolves to nothing loses an edge. Within one file
+//!   the more specific key is tried first, so `#app/assets/*` beats `#app/*` however
+//!   the two were written down.
 //! - **`pure` accumulates** the same way, and an entry applies only below the file
 //!   that wrote it. A package calling its own factory pure cannot quiet a call in an
 //!   app that never made the claim.
@@ -105,6 +107,7 @@ impl From<crate::pure::Error> for Error {
 #[derive(Debug, Default)]
 struct Declared {
     aliases: Alias,
+    style_aliases: Alias,
     pure: Vec<PureCall>,
     builtin_pure: Option<bool>,
     inline_requires: Option<bool>,
@@ -119,6 +122,7 @@ struct Declared {
 pub struct Chain {
     dirs: Vec<PathBuf>,
     aliases: Alias,
+    style_aliases: Alias,
     pure: PureList,
     inline_requires: bool,
 }
@@ -130,9 +134,20 @@ impl Chain {
         &self.dirs
     }
 
-    /// Alias names, nearest first. See the module docs for why they accumulate.
+    /// Alias names for any specifier, nearest first. See the module docs for why
+    /// they accumulate.
     pub fn aliases(&self) -> &Alias {
         &self.aliases
+    }
+
+    /// The same for a stylesheet: what `[style.aliases]` declares, and then
+    /// everything `[aliases]` declares.
+    ///
+    /// A stylesheet gets both because a bundler gives it both — one `resolve.alias`
+    /// answers every import in the tree. The stylesheet-only table comes first so a
+    /// name meaning one thing in Sass and another in JavaScript can say so.
+    pub fn style_aliases(&self) -> &Alias {
+        &self.style_aliases
     }
 
     pub fn pure(&self) -> &PureList {
@@ -194,6 +209,10 @@ impl Configs {
             aliases: declared
                 .iter()
                 .flat_map(|one| one.aliases.iter().cloned())
+                .collect(),
+            style_aliases: declared
+                .iter()
+                .flat_map(|one| one.style_aliases.iter().chain(one.aliases.iter()).cloned())
                 .collect(),
             pure: PureList::of(
                 declared
@@ -295,7 +314,8 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
 
     let (builtin_pure, pure) = crate::pure::read(&document, &shown)?;
     Ok(Some(Declared {
-        aliases: aliases(&document, dir, &shown)?,
+        aliases: table(document.get("aliases"), dir, &shown, "aliases")?,
+        style_aliases: style_aliases(&document, dir, &shown)?,
         pure,
         builtin_pure,
         inline_requires: flag(&document, "inline-requires", &shown)?,
@@ -303,7 +323,7 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
 }
 
 /// The `[style.aliases]` table, with each target made absolute.
-fn aliases(document: &toml::Table, dir: &Path, shown: &str) -> Result<Alias, Error> {
+fn style_aliases(document: &toml::Table, dir: &Path, shown: &str) -> Result<Alias, Error> {
     let Some(style) = document.get("style") else {
         return Ok(Alias::new());
     };
@@ -311,13 +331,23 @@ fn aliases(document: &toml::Table, dir: &Path, shown: &str) -> Result<Alias, Err
         path: shown.to_string(),
         key: "style".to_string(),
     })?;
+    table(style.get("aliases"), dir, shown, "style.aliases")
+}
 
-    let Some(aliases) = style.get("aliases") else {
+/// One table of names, with each target made absolute and the whole sorted so the
+/// most specific key is tried first.
+///
+/// The resolver takes the first key that matches, and a table is read in whatever
+/// order the file format hands it over — which for TOML is alphabetical, and
+/// alphabetical puts `#app/*` before `#app/assets/*`. Nobody writing the two would
+/// mean the wildcard to win, so specificity decides rather than spelling.
+fn table(value: Option<&toml::Value>, dir: &Path, shown: &str, key: &str) -> Result<Alias, Error> {
+    let Some(aliases) = value else {
         return Ok(Alias::new());
     };
     let aliases = aliases.as_table().ok_or_else(|| Error::NotATable {
         path: shown.to_string(),
-        key: "style.aliases".to_string(),
+        key: key.to_string(),
     })?;
 
     let mut out = Alias::new();
@@ -346,7 +376,16 @@ fn aliases(document: &toml::Table, dir: &Path, shown: &str) -> Result<Alias, Err
         };
         out.push((name.clone(), targets));
     }
+    out.sort_by_key(|(name, _)| specificity(name));
     Ok(out)
+}
+
+/// Sort key putting the most specific name first: an exact match, then the longest
+/// literal prefix, then alphabetically so the order is settled.
+fn specificity(name: &str) -> (u8, std::cmp::Reverse<usize>, String) {
+    let exact = if name.ends_with('$') { 0 } else { 1 };
+    let literal = name.split('*').next().unwrap_or(name).len();
+    (exact, std::cmp::Reverse(literal), name.to_string())
 }
 
 fn flag(document: &toml::Table, key: &str, shown: &str) -> Result<Option<bool>, Error> {
@@ -379,17 +418,12 @@ mod tests {
         (dir, configs)
     }
 
-    fn names(chain: &Chain) -> Vec<String> {
-        chain
-            .aliases()
-            .iter()
-            .map(|(name, _)| name.clone())
-            .collect()
+    fn names(aliases: &Alias) -> Vec<String> {
+        aliases.iter().map(|(name, _)| name.clone()).collect()
     }
 
-    fn targets(chain: &Chain) -> Vec<String> {
-        chain
-            .aliases()
+    fn targets(aliases: &Alias) -> Vec<String> {
+        aliases
             .iter()
             .flat_map(|(_, targets)| targets)
             .map(|value| match value {
@@ -404,6 +438,7 @@ mod tests {
         let (dir, configs) = tree(&[]);
         let chain = configs.chain(&dir.path().join("src/page.scss"));
         assert!(chain.aliases().is_empty());
+        assert!(chain.style_aliases().is_empty());
         assert!(!chain.inline_requires());
         assert!(configs.failure().is_none());
     }
@@ -414,7 +449,7 @@ mod tests {
         assert!(
             configs
                 .chain(&dir.path().join("a.scss"))
-                .aliases()
+                .style_aliases()
                 .is_empty()
         );
     }
@@ -423,8 +458,8 @@ mod tests {
     fn an_alias_points_somewhere_below_the_file_that_declares_it() {
         let (dir, configs) = tree(&[("apps/web", "[style.aliases]\nsass = \"app/sass\"\n")]);
         let chain = configs.chain(&dir.path().join("apps/web/src/page.scss"));
-        assert_eq!(names(&chain), vec!["sass".to_string()]);
-        let target = &targets(&chain)[0];
+        assert_eq!(names(chain.style_aliases()), vec!["sass".to_string()]);
+        let target = &targets(chain.style_aliases())[0];
         assert!(
             target.ends_with("apps/web/app/sass") && target.starts_with('/'),
             "relative to its own file, not to the root: {target}"
@@ -434,7 +469,7 @@ mod tests {
     #[test]
     fn a_list_is_tried_in_the_order_it_is_written() {
         let (dir, configs) = tree(&[("", "[style.aliases]\nsass = [\"a/sass\", \"b/sass\"]\n")]);
-        let found = targets(&configs.chain(&dir.path().join("a.scss")));
+        let found = targets(configs.chain(&dir.path().join("a.scss")).style_aliases());
         assert_eq!(found.len(), 2);
         assert!(found[0].ends_with("a/sass"), "{found:?}");
         assert!(found[1].ends_with("b/sass"), "{found:?}");
@@ -446,8 +481,16 @@ mod tests {
             ("apps/one", "[style.aliases]\nsass = \"styles\"\n"),
             ("apps/two", "[style.aliases]\nsass = \"scss\"\n"),
         ]);
-        let one = targets(&configs.chain(&dir.path().join("apps/one/a.scss")));
-        let two = targets(&configs.chain(&dir.path().join("apps/two/a.scss")));
+        let one = targets(
+            configs
+                .chain(&dir.path().join("apps/one/a.scss"))
+                .style_aliases(),
+        );
+        let two = targets(
+            configs
+                .chain(&dir.path().join("apps/two/a.scss"))
+                .style_aliases(),
+        );
         assert_eq!(one.len(), 1, "one app, one answer: {one:?}");
         assert!(one[0].ends_with("apps/one/styles"), "{one:?}");
         assert!(two[0].ends_with("apps/two/scss"), "{two:?}");
@@ -459,10 +502,75 @@ mod tests {
             ("", "[style.aliases]\nsass = \"shared/sass\"\n"),
             ("apps/one", "[style.aliases]\nsass = \"styles\"\n"),
         ]);
-        let found = targets(&configs.chain(&dir.path().join("apps/one/a.scss")));
+        let found = targets(
+            configs
+                .chain(&dir.path().join("apps/one/a.scss"))
+                .style_aliases(),
+        );
         assert_eq!(found.len(), 2, "accumulated, not overridden: {found:?}");
         assert!(found[0].ends_with("apps/one/styles"), "nearest first");
         assert!(found[1].ends_with("shared/sass"));
+    }
+
+    #[test]
+    fn a_general_alias_answers_any_specifier() {
+        let (dir, configs) = tree(&[("apps/web", "[aliases]\n\"#app/*\" = \"app/*\"\n")]);
+        let chain = configs.chain(&dir.path().join("apps/web/page.tsx"));
+        assert_eq!(names(chain.aliases()), vec!["#app/*".to_string()]);
+        assert!(targets(chain.aliases())[0].ends_with("apps/web/app/*"));
+    }
+
+    #[test]
+    fn a_stylesheet_gets_the_general_table_too() {
+        // A bundler has one `resolve.alias` and every import in the tree sees it. The
+        // stylesheet-only table comes first so a name can still mean two things.
+        let (dir, configs) = tree(&[(
+            "apps/web",
+            "[aliases]\nshared = \"vendor\"\n\n[style.aliases]\nsass = \"styles\"\n",
+        )]);
+        let chain = configs.chain(&dir.path().join("apps/web/page.scss"));
+        assert_eq!(
+            names(chain.style_aliases()),
+            vec!["sass".to_string(), "shared".to_string()],
+            "the stylesheet's own table is tried before the general one"
+        );
+        assert_eq!(
+            names(chain.aliases()),
+            vec!["shared".to_string()],
+            "but a stylesheet-only name is not offered to JavaScript"
+        );
+    }
+
+    #[test]
+    fn the_more_specific_key_is_tried_first() {
+        // TOML hands a table over alphabetically, and alphabetically `#app/*` comes
+        // before `#app/assets/*`. Nobody writing both would mean the wildcard to win.
+        let (dir, configs) = tree(&[(
+            "",
+            "[aliases]\n\"#app/*\" = \"app/*\"\n\"#app/assets/*\" = \"static/*\"\n\"#app/one$\" = \"one\"\n",
+        )]);
+        assert_eq!(
+            names(configs.chain(&dir.path().join("page.tsx")).aliases()),
+            vec![
+                "#app/one$".to_string(),
+                "#app/assets/*".to_string(),
+                "#app/*".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_general_alias_that_is_not_a_path_is_a_failure() {
+        let (dir, configs) = tree(&[("", "[aliases]\nshared = 3\n")]);
+        configs.chain(&dir.path().join("a.tsx"));
+        assert!(matches!(configs.failure(), Some(Error::BadAlias { .. })));
+    }
+
+    #[test]
+    fn a_general_table_that_is_not_a_table_is_a_failure() {
+        let (dir, configs) = tree(&[("", "aliases = 3\n")]);
+        configs.chain(&dir.path().join("a.tsx"));
+        assert!(matches!(configs.failure(), Some(Error::NotATable { .. })));
     }
 
     #[test]

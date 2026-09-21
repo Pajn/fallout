@@ -4,11 +4,10 @@
 //! its own rules — see [`Resolver::resolve`] — and running them through the
 //! JavaScript resolver would find nothing.
 //!
-//! There is one JavaScript resolver and a Sass resolver per set of aliases in use. An
-//! alias belongs to the stylesheet that writes it rather than to the run, so two apps
-//! can mean different directories by one name; the aliases are baked into the
-//! resolver when it is built, so the resolvers are cached by the chain of config
-//! directories that produced them. Most trees have one.
+//! One of each per set of aliases in use. An alias belongs to the file that writes
+//! the import rather than to the run, so two apps can mean different directories by
+//! one name; the aliases are baked into a resolver when it is built, so resolvers are
+//! cached by the chain of config directories that produced them. Most trees have one.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -101,14 +100,15 @@ pub enum SideEffects {
 /// Resolves import specifiers to absolute paths, caching every answer
 /// (including failures) per `(importing file, specifier)` pair.
 pub struct Resolver {
-    inner: OxcResolver,
     /// What each file's own directory chain declares. See [`crate::config`].
     configs: Arc<Configs>,
     /// Specifiers this run could not place. Shared, because a run builds more than
     /// one resolver and the report is about the run.
     unresolved: Arc<Unresolved>,
-    /// The same as `inner`, tuned for Sass, one per set of aliases. Keyed by the
-    /// config directories that produced them, which is the identity of the answer.
+    /// One resolver per set of aliases, keyed by the config directories that produced
+    /// them, which is the identity of the answer.
+    modules: RwLock<AHashMap<Vec<PathBuf>, Arc<OxcResolver>>>,
+    /// The same, tuned for Sass.
     style: RwLock<AHashMap<Vec<PathBuf>, Arc<OxcResolver>>>,
     cache: RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>,
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
@@ -120,7 +120,23 @@ impl Resolver {
     /// `configs` is what the project declared about itself, which is the only place a
     /// stylesheet name that is not a path can come from. See [`crate::config`].
     pub fn new(configs: Arc<Configs>, unresolved: Arc<Unresolved>) -> Self {
-        let options = ResolveOptions {
+        Self {
+            configs,
+            unresolved,
+            modules: RwLock::new(AHashMap::default()),
+            style: RwLock::new(AHashMap::default()),
+            cache: RwLock::new(AHashMap::default()),
+            side_effects: RwLock::new(AHashMap::default()),
+        }
+    }
+
+    /// The resolver for one chain of config directories, built on first use.
+    fn module_resolver(&self, chain: &Chain) -> Arc<OxcResolver> {
+        let key = chain.dirs().to_vec();
+        if let Some(cached) = self.modules.read().unwrap().get(&key) {
+            return cached.clone();
+        }
+        let resolver = Arc::new(OxcResolver::new(ResolveOptions {
             extensions: vec![
                 ".tsx".to_string(),
                 ".ts".to_string(),
@@ -133,6 +149,7 @@ impl Resolver {
                 ".json".to_string(),
             ],
             tsconfig: Some(TsconfigDiscovery::Auto),
+            alias: chain.aliases().clone(),
             // So that `fs` and `node:fs` come back as themselves rather than as a
             // package nobody installed. They name no file, and saying so is what
             // keeps them out of the unresolved report.
@@ -166,16 +183,9 @@ impl Resolver {
                 ),
             ],
             ..ResolveOptions::default()
-        };
-
-        Self {
-            inner: OxcResolver::new(options),
-            configs,
-            unresolved,
-            style: RwLock::new(AHashMap::default()),
-            cache: RwLock::new(AHashMap::default()),
-            side_effects: RwLock::new(AHashMap::default()),
-        }
+        }));
+        self.modules.write().unwrap().insert(key, resolver.clone());
+        resolver
     }
 
     /// The Sass resolver for one chain of config directories, built on first use.
@@ -195,7 +205,7 @@ impl Resolver {
             main_files: vec!["_index".to_string(), "index".to_string()],
             exports_fields: Vec::new(),
             prefer_relative: true,
-            alias: chain.aliases().clone(),
+            alias: chain.style_aliases().clone(),
             ..ResolveOptions::default()
         }));
         self.style.write().unwrap().insert(key, resolver.clone());
@@ -217,11 +227,12 @@ impl Resolver {
             names_no_file = SASS_BUILTINS.contains(&specifier);
             self.resolve_style(from_file, specifier)
         } else {
-            let mut attempt = self.inner.resolve_file(from_file, specifier);
+            let resolver = self.module_resolver(&self.configs.chain(from_file));
+            let mut attempt = resolver.resolve_file(from_file, specifier);
             if attempt.is_err()
                 && let Some(request) = strip_inline_loaders(specifier)
             {
-                attempt = self.inner.resolve_file(from_file, request);
+                attempt = resolver.resolve_file(from_file, request);
             }
             match attempt {
                 Ok(found) => Some(found),

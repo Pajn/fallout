@@ -121,7 +121,8 @@ builtin-pure = true
 ```
 
 The same file carries `inline-requires`, under [Inline requires](#inline-requires),
-and `[style.aliases]`, under [Stylesheets](#stylesheets). Where it sits decides who it
+`[aliases]`, under [Import aliases](#import-aliases), and `[style.aliases]`, under
+[Stylesheets](#stylesheets). Where it sits decides who it
 speaks for — see [Where a claim applies](#where-a-claim-applies).
 
 An entry is written as the import source, `#`, and the path taken from the binding
@@ -143,13 +144,13 @@ own directory up to the root.
 A monorepo is why. Its apps are bundled by different tools and its packages give the
 same name different meanings, so one file at the root cannot state what is true of all
 of them: a single `inline-requires` would be a false claim about every app that does
-not inline, and a single `[style.aliases]` table hands every app's names to every
-other app's directories.
+not inline, and a single `[aliases]` table hands every app's names to every other
+app's directories.
 
 ```
 fallout.toml               pure = [...]            # everywhere
 apps/mobile/fallout.toml   inline-requires = true  # this app's bundler
-packages/ui/fallout.toml   [style.aliases]         # this package's stylesheets
+apps/web/fallout.toml      [aliases]               # what this app's config maps
 ```
 
 What happens where several files apply follows from the direction each setting is
@@ -157,7 +158,7 @@ wrong in:
 
 | setting | several apply |
 |---------|---------------|
-| `[style.aliases]` | accumulate, nearest first — a name gets every directory claimed for it, tried in order |
+| `[aliases]`, `[style.aliases]` | accumulate, nearest first — a name gets every directory claimed for it, tried in order |
 | `pure` | accumulate, and an entry only ever applies below the file that wrote it |
 | `builtin-pure`, `inline-requires` | one answer, so the nearest wins |
 
@@ -433,8 +434,10 @@ Resolved to nothing: 2 specifier(s), written in 3 file(s).
     apps/web/app/styles/page.scss
 ```
 
-Nothing is done about it automatically, because an unresolved specifier is not by
-itself a fault: a package nobody installed on this machine looks exactly like a broken
+A name the bundler answers and nothing else does is declared, under [Import
+aliases](#import-aliases); that is what this report is for finding. Beyond that
+nothing is done automatically, because an unresolved specifier is not by itself a
+fault: a package nobody installed on this machine looks exactly like a broken
 import, and a virtual module the bundler invents has no file to find. The flag reports
 and does not judge — the verdict and the exit code are the same with it and without.
 
@@ -468,6 +471,47 @@ queries (`./logo.png?url`, `./icon.svg?react`) and webpack inline loaders
 are never parsed looking for imports of their own.
 
 Stylesheets are not. See below.
+
+### Import aliases
+
+A specifier the bundler resolves and Node does not — `@/components/badge`, or any name
+an app's config maps to a directory — has to be declared, for the same reason a
+stylesheet alias does: that config is a program rather than data.
+
+```toml
+# apps/web/fallout.toml
+[aliases]
+"@/*" = "src/*"
+"#app/assets/*" = "app/assets/*"
+```
+
+A key matches three ways, following the convention the bundlers share. `"@/*"`
+captures what the `*` stood for and puts it back into the target. `"lodash$"` matches
+that specifier exactly and nothing beneath it. A key with neither matches at a path
+boundary, so `app` answers `app/lib/x` and leaves `application` alone. Targets are
+relative to the `fallout.toml` that declares them, and a list of targets is tried in
+turn.
+
+Where several keys match one specifier the most specific is tried first — exact before
+wildcard, and the longer literal prefix before the shorter — so `#app/assets/*` and
+`#app/*` can both be declared and each mean what it looks like it means.
+
+An alias is tried before the `exports` and `imports` fields of the nearest
+`package.json`, and before the specifier is treated as a path or a package name, which
+is the order a bundler uses: the project has said this name is already answered. A
+`tsconfig.json` path mapping still wins over both.
+
+That order is what makes the second key above worth writing. A package that maps its
+own internals with `"#app/*": "./app/*.js"` has declared every `#app` name to be a
+JavaScript file, so `#app/assets/cover.png` is looked for at `cover.png.js`, which is
+not a file on any disk. The import resolves to nothing, the edge is dropped, and a
+change to the asset reports no impact on the page that renders it. One alias puts the
+whole tree of assets back.
+
+The general table answers stylesheet imports as well, after `[style.aliases]`. A
+bundler has one `resolve.alias` covering every kind of file and that is usually what a
+project means; `[style.aliases]` stays for the names that mean something only inside a
+stylesheet.
 
 Assets referenced as `new URL("./worker.ts", import.meta.url)` are followed too, which
 covers the `new Worker(new URL(...))` form used by Vite and webpack. Because the worker
@@ -511,6 +555,9 @@ Targets are relative to the `fallout.toml` that declares them. Write the name wi
 the `~`: it is dropped before anything is looked up, so one entry covers
 `~styles/settings` and `styles/settings` both. A name with no entry resolves to
 nothing, and a stylesheet reached only through it is not reached at all.
+
+`[aliases]` is consulted after this table, so a name the whole app shares needs
+declaring only once — see [Import aliases](#import-aliases).
 
 Two apps may give one name two meanings, because a table is read from the chain above
 the stylesheet that wrote the import — see [Where a claim

@@ -1,0 +1,28 @@
+# Names a bundler knows and no path names. `@/components/badge` is the alias almost
+# every app writes, and `#app/assets/cover.svg` is the one that made this table worth
+# having: a package that maps its own internals with `"#app/*": "./src/*.js"` sends an
+# asset to `cover.svg.js`, which is not a file, so every asset referred to that way
+# resolves to nothing and loses its edge in silence.
+#
+# The two `#app` keys overlap on purpose. `#app/assets/cover.svg` matches both, and
+# the resolver takes the first key that matches — so the table is sorted by how
+# specific a key is rather than by how it happens to be spelled. TOML hands a table
+# over alphabetically, and alphabetically the wildcard comes first.
+[[anchor]]
+path = "src/pages/AliasPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/AliasPage.tsx)",
+    "Decl(src/pages/AliasPage.tsx, default)",
+    "Export(src/components/badge.tsx, Badge)",
+]
+
+[[anchor]]
+path = "src/pages/AssetPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

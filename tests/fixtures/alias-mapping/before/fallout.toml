@@ -1,0 +1,4 @@
+[aliases]
+"@/*" = "src/*"
+"#app/*" = "src/*"
+"#app/assets/*" = "static/*"
