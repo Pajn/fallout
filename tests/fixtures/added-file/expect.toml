@@ -1,0 +1,12 @@
+# The page gains an import of a brand new file. Both appear in the diff; the path
+# stops at the page itself, which is the first changed node the search reaches.
+[[anchor]]
+path = "src/pages/CheckoutPage.tsx"
+affected = true
+explain = [
+    "File(src/pages/CheckoutPage.tsx)",
+]
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

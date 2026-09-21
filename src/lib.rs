@@ -1,0 +1,138 @@
+//! `fallout` answers one question: can this change alter what a user sees on a given
+//! page?
+//!
+//! The unit of analysis is currently the file. Any change anywhere in a file marks
+//! every importer of that file, transitively. See `docs/symbol-level-analysis.md` for
+//! how that is being refined, and for the soundness contract every refinement must
+//! honour: the tool may over-report, it may never under-report.
+
+pub mod changes;
+pub mod cli;
+pub mod diff;
+pub mod module;
+pub mod query;
+pub mod resolve;
+
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+use crate::query::{Direction, Hit};
+use crate::resolve::Resolver;
+
+/// How finely the analysis distinguishes parts of a file.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum Granularity {
+    /// Any change anywhere in a file marks the whole file.
+    #[default]
+    File,
+}
+
+impl Granularity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Granularity::File => "file",
+        }
+    }
+}
+
+/// One run of the analysis.
+pub struct Options {
+    /// Files to judge. The set is affected if any one of them is.
+    pub anchors: Vec<PathBuf>,
+    /// Changed paths given directly, as from `git diff --name-only`.
+    pub changed: Vec<PathBuf>,
+    /// A unified diff describing the change.
+    pub diff: Option<String>,
+    /// Directory the anchors and diff paths are relative to.
+    pub root: PathBuf,
+    /// Search only this direction instead of both.
+    pub only: Option<Direction>,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    Affected(Hit),
+    NotAffected,
+}
+
+impl Verdict {
+    pub fn is_affected(&self) -> bool {
+        matches!(self, Verdict::Affected(_))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+    NoAnchors,
+    MissingAnchors(Vec<String>),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::NoAnchors => write!(f, "At least one anchor must be provided"),
+            Error::MissingAnchors(paths) => {
+                write!(f, "Anchor(s) not found: {}", paths.join(", "))
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Resolves `root` to an absolute path, falling back to it unchanged when it does not
+/// exist. Shared with the CLI so that displayed paths and analysed paths agree.
+pub fn canonical_root(root: &Path) -> PathBuf {
+    root.canonicalize().unwrap_or_else(|_| root.to_path_buf())
+}
+
+pub fn analyse(options: &Options) -> Result<Verdict, Error> {
+    if options.anchors.is_empty() {
+        return Err(Error::NoAnchors);
+    }
+
+    let root = canonical_root(&options.root);
+
+    let mut anchors = Vec::new();
+    let mut missing = Vec::new();
+    for anchor in &options.anchors {
+        let path = if anchor.is_relative() {
+            root.join(anchor)
+        } else {
+            anchor.clone()
+        };
+        let path = path.canonicalize().unwrap_or(path);
+        if path.exists() {
+            anchors.push(path);
+        } else {
+            missing.push(path.display().to_string());
+        }
+    }
+    if !missing.is_empty() {
+        return Err(Error::MissingAnchors(missing));
+    }
+
+    let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
+    let changed = changes::marked_files(&root, &change_set, &options.changed);
+
+    if changed.is_empty() {
+        return Ok(Verdict::NotAffected);
+    }
+
+    let resolver = Resolver::new();
+
+    if options.only != Some(Direction::Upstream) {
+        if let Some(hit) = query::downstream(&anchors, &changed, &resolver) {
+            return Ok(Verdict::Affected(hit));
+        }
+    }
+
+    if options.only != Some(Direction::Downstream) {
+        if let Some(hit) = query::upstream(&anchors, &changed, &resolver) {
+            return Ok(Verdict::Affected(hit));
+        }
+    }
+
+    Ok(Verdict::NotAffected)
+}

@@ -1,0 +1,12 @@
+# The page imports the edited component; a page that does not must not be flagged.
+[[anchor]]
+path = "src/pages/CheckoutPage.tsx"
+affected = true
+explain = [
+    "File(src/pages/CheckoutPage.tsx)",
+    "File(src/components/Button.tsx)",
+]
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

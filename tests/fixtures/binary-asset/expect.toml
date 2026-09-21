@@ -1,0 +1,13 @@
+# A changed PNG reaches the page that renders it, through the component importing it.
+[[anchor]]
+path = "src/pages/LogoPage.tsx"
+affected = true
+explain = [
+    "File(src/pages/LogoPage.tsx)",
+    "File(src/components/Logo.tsx)",
+    "File(src/assets/logo.png)",
+]
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

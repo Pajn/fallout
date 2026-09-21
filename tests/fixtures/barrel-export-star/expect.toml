@@ -1,0 +1,14 @@
+# At file granularity the whole barrel is one node, so the edit reaches the page
+# through it. A later step narrows this to the names actually imported.
+[[anchor]]
+path = "src/pages/IndexPage.tsx"
+affected = true
+explain = [
+    "File(src/pages/IndexPage.tsx)",
+    "File(src/components/index.ts)",
+    "File(src/components/Button.tsx)",
+]
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

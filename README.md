@@ -21,14 +21,23 @@ cargo install fallout
 
 ```sh
 fallout --anchor src/pages/CheckoutPage.tsx --changed src/components/Button.tsx
+
+git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 ```
 
 | Flag | Description |
 | --- | --- |
 | `-a, --anchor <PATH>` | Target component. Repeatable; the anchor set is affected if *any* anchor is. |
 | `-c, --changed <PATH>` | A changed file, as produced by `git diff --name-only`. Repeatable. |
+| `-d, --diff <PATH>` | A unified diff describing the change; `-` reads standard input. |
 | `-r, --root <PATH>` | Root directory to resolve from. Defaults to the current directory. |
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
+| `-g, --granularity <LEVEL>` | How finely to distinguish parts of a file. Currently `file` only. |
+| `-e, --explain` | Print the chain of imports that produced the verdict. |
+
+`--diff` and `--changed` may be combined; their file sets are unioned. A diff is read
+as text rather than by shelling out, so the tool needs no git checkout at runtime.
+Files the change deletes are dropped: they have no after version to reach.
 
 Exit codes: `0` — affected, run the tests. `1` — not affected, or the arguments were
 invalid. Errors are written to stderr.
@@ -39,6 +48,20 @@ By default `fallout` searches both directions and stops at the first hit.
 
 - `downstream` — the anchor imports the changed file, directly or transitively.
 - `upstream` — the changed file imports the anchor, directly or transitively.
+
+### Explaining a verdict
+
+```
+$ fallout --anchor src/pages/CheckoutPage.tsx --diff pr.diff --explain
+Impact detected on target anchor via: "/repo/src/components/Button.tsx"
+Path (downstream, file granularity):
+  File(src/pages/CheckoutPage.tsx)
+  File(src/components/Card.tsx)
+  File(src/components/Button.tsx)
+```
+
+The chain always reads in import order — each file imports the next — so a downstream
+path starts at the anchor and an upstream path ends at it.
 
 ## What counts as an import
 

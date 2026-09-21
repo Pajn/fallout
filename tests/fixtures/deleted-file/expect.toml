@@ -1,0 +1,4 @@
+# Only a deletion. Files with no after version are dropped, so nothing is reachable.
+[[anchor]]
+path = "src/pages/CheckoutPage.tsx"
+affected = false

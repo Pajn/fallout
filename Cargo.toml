@@ -36,3 +36,8 @@ ahash = "0.8"
 
 [dev-dependencies]
 tempfile = "3.27"
+# Fixture harness: generates the unified diff from before/ and after/ trees, so no
+# fixture hand-writes a diff and the input shape matches what CI produces from git.
+similar = "3.2"
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.1"
