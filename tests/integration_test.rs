@@ -78,58 +78,64 @@ fn setup_test_project(root: &PathBuf) {
     fs::write(
         root.join("src/assets/logo.png"),
         [0x89u8, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/assets/icon.svg"),
         r#"<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/assets/theme.css"),
         r#".button { color: red; }"#,
-    ).unwrap();
+    )
+    .unwrap();
 
-    fs::write(
-        root.join("src/assets/beep.mp3"),
-        [0x49u8, 0x44, 0x33, 0x04],
-    ).unwrap();
+    fs::write(root.join("src/assets/beep.mp3"), [0x49u8, 0x44, 0x33, 0x04]).unwrap();
 
     fs::write(
         root.join("src/components/Button.tsx"),
         r#"export const Button = () => <button>Click</button>;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/components/Card.tsx"),
         r#"import { Button } from "./Button";
 export const Card = () => <div><Button /></div>;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/utils/helpers.ts"),
         r#"export const formatDate = (d: Date) => d.toISOString();"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/pages/CheckoutPage.tsx"),
         r#"import { Card } from "../components/Card";
 import { formatDate } from "../utils/helpers";
 export const CheckoutPage = () => <Card />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/pages/SettingsPage.tsx"),
         r#"import { Button } from "../components/Button";
 export const SettingsPage = () => <Button />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/App.tsx"),
         r#"import { CheckoutPage } from "./pages/CheckoutPage";
 import { SettingsPage } from "./pages/SettingsPage";
 export const App = () => <> <CheckoutPage /> <SettingsPage /> </>;"#,
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[test]
@@ -148,7 +154,11 @@ fn test_downstream_dependency_detection() {
     );
 
     // Exit 0 = affected (run E2E)
-    assert_eq!(code, 0, "Expected exit code 0 (affected), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (affected), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/components/Button.tsx"));
 }
 
@@ -178,7 +188,11 @@ fn test_no_impact_unrelated_files() {
     );
 
     // Exit 1 = not affected (skip E2E)
-    assert_eq!(code2, 1, "Expected exit code 1 (not affected), got {}. stdout: {}", code2, stdout2);
+    assert_eq!(
+        code2, 1,
+        "Expected exit code 1 (not affected), got {}. stdout: {}",
+        code2, stdout2
+    );
     assert!(stdout2.contains("No reachability impact detected"));
 }
 
@@ -197,7 +211,11 @@ fn test_upstream_dependency_detection() {
         &["src/pages/CheckoutPage.tsx"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (upstream impact), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (upstream impact), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/pages/CheckoutPage.tsx"));
 }
 
@@ -216,7 +234,11 @@ fn test_multiple_anchors() {
         &["src/components/Button.tsx"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (impact on at least one anchor), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (impact on at least one anchor), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/components/Button.tsx"));
 }
 
@@ -231,7 +253,8 @@ fn test_multiple_anchors_no_impact() {
     fs::write(
         root.join("src/unrelated.ts"),
         r#"export const unrelated = "test";"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let (code, stdout, _stderr) = run_is_affected(
         &binary,
@@ -240,7 +263,11 @@ fn test_multiple_anchors_no_impact() {
         &["src/unrelated.ts"],
     );
 
-    assert_eq!(code, 1, "Expected exit code 1 (no impact), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 1,
+        "Expected exit code 1 (no impact), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("No reachability impact detected"));
 }
 
@@ -273,7 +300,8 @@ fn test_dynamic_imports() {
         root.join("src/pages/LazyPage.tsx"),
         r#"const LazyComponent = () => import("../components/Card");
 export const LazyPage = () => <div />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -284,7 +312,11 @@ export const LazyPage = () => <div />;"#,
         &["src/components/Card.tsx"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (dynamic import detected), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (dynamic import detected), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/components/Card.tsx"));
 }
 
@@ -298,13 +330,15 @@ fn test_export_from() {
         root.join("src/components/index.ts"),
         r#"export { Button } from "./Button";
 export { Card } from "./Card";"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/pages/IndexPage.tsx"),
         r#"import { Button, Card } from "../components";
 export const IndexPage = () => <> <Button /> <Card /> </>;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -315,7 +349,11 @@ export const IndexPage = () => <> <Button /> <Card /> </>;"#,
         &["src/components/Button.tsx"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (export-from detected), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (export-from detected), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/components/Button.tsx"));
 }
 
@@ -334,7 +372,11 @@ fn test_no_anchor_error() {
 
     let output = cmd.output().expect("Failed to execute is_affected");
 
-    assert_ne!(output.status.code(), Some(0), "Expected non-zero exit code when no anchor provided");
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "Expected non-zero exit code when no anchor provided"
+    );
 }
 
 #[test]
@@ -352,8 +394,16 @@ fn test_invalid_anchor_error() {
         &["src/components/Button.tsx"],
     );
 
-    assert_ne!(code, 0, "Expected non-zero exit code for invalid anchor, got {}. stdout: {} stderr: {}", code, stdout, stderr);
-    assert!(stderr.contains("Anchor(s) not found"), "Expected error message about missing anchor, got stderr: {}", stderr);
+    assert_ne!(
+        code, 0,
+        "Expected non-zero exit code for invalid anchor, got {}. stdout: {} stderr: {}",
+        code, stdout, stderr
+    );
+    assert!(
+        stderr.contains("Anchor(s) not found"),
+        "Expected error message about missing anchor, got stderr: {}",
+        stderr
+    );
 }
 #[test]
 fn test_imported_image_is_affected() {
@@ -365,13 +415,15 @@ fn test_imported_image_is_affected() {
         root.join("src/components/Logo.tsx"),
         r#"import logo from "../assets/logo.png";
 export const Logo = () => <img src={logo} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/pages/LogoPage.tsx"),
         r#"import { Logo } from "../components/Logo";
 export const LogoPage = () => <Logo />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -382,7 +434,11 @@ export const LogoPage = () => <Logo />;"#,
         &["src/assets/logo.png"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (imported image affected), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (imported image affected), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/assets/logo.png"));
 }
 
@@ -396,7 +452,8 @@ fn test_required_asset_is_affected() {
         root.join("src/pages/SoundPage.tsx"),
         r#"const beep = require("../assets/beep.mp3");
 export const SoundPage = () => <audio src={beep} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -407,7 +464,11 @@ export const SoundPage = () => <audio src={beep} />;"#,
         &["src/assets/beep.mp3"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (required asset affected), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (required asset affected), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/assets/beep.mp3"));
 }
 
@@ -423,7 +484,8 @@ fn test_asset_import_with_resource_query() {
 import Icon from "../assets/icon.svg?react";
 import "../assets/theme.css";
 export const QueryPage = () => <img src={logoUrl} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -434,7 +496,11 @@ export const QueryPage = () => <img src={logoUrl} />;"#,
         &["src/assets/icon.svg"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (asset behind a resource query), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (asset behind a resource query), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/assets/icon.svg"));
 
     let (code2, stdout2, _stderr2) = run_is_affected(
@@ -444,7 +510,11 @@ export const QueryPage = () => <img src={logoUrl} />;"#,
         &["src/assets/logo.png"],
     );
 
-    assert_eq!(code2, 0, "Expected exit code 0 (png behind ?url), got {}. stdout: {}", code2, stdout2);
+    assert_eq!(
+        code2, 0,
+        "Expected exit code 0 (png behind ?url), got {}. stdout: {}",
+        code2, stdout2
+    );
     assert!(stdout2.contains("src/assets/logo.png"));
 }
 
@@ -458,7 +528,8 @@ fn test_asset_import_with_inline_loader() {
         root.join("src/pages/LoaderPage.tsx"),
         r#"import logo from "!!file-loader!../assets/logo.png";
 export const LoaderPage = () => <img src={logo} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -469,7 +540,11 @@ export const LoaderPage = () => <img src={logo} />;"#,
         &["src/assets/logo.png"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (webpack inline loader), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (webpack inline loader), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/assets/logo.png"));
 }
 
@@ -483,7 +558,8 @@ fn test_asset_referenced_via_new_url() {
         root.join("src/pages/UrlPage.tsx"),
         r#"const beep = new URL("../assets/beep.mp3", import.meta.url);
 export const UrlPage = () => <audio src={beep.href} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -494,7 +570,11 @@ export const UrlPage = () => <audio src={beep.href} />;"#,
         &["src/assets/beep.mp3"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (new URL asset reference), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (new URL asset reference), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/assets/beep.mp3"));
 }
 
@@ -508,7 +588,8 @@ fn test_unimported_asset_has_no_impact() {
         root.join("src/components/Logo.tsx"),
         r#"import logo from "../assets/logo.png";
 export const Logo = () => <img src={logo} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // CheckoutPage reaches Card/Button, never Logo — so the image is out of its graph.
     let binary = build_binary();
@@ -520,7 +601,11 @@ export const Logo = () => <img src={logo} />;"#,
         &["src/assets/logo.png"],
     );
 
-    assert_eq!(code, 1, "Expected exit code 1 (asset outside the anchor graph), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 1,
+        "Expected exit code 1 (asset outside the anchor graph), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("No reachability impact detected"));
 }
 
@@ -536,7 +621,8 @@ fn test_asset_does_not_bridge_unrelated_graphs() {
         root.join("src/pages/IconPage.tsx"),
         r#"import icon from "../assets/icon.svg";
 export const IconPage = () => <img src={icon} />;"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -547,7 +633,11 @@ export const IconPage = () => <img src={icon} />;"#,
         &["src/components/Button.tsx"],
     );
 
-    assert_eq!(code, 1, "Expected exit code 1 (no path through the asset), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 1,
+        "Expected exit code 1 (no path through the asset), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("No reachability impact detected"));
 }
 
@@ -572,7 +662,8 @@ export const WorkerPage = () => <div />;"#,
         r#"import { formatDate } from "../utils/helpers";
 import logo from "../assets/logo.png";
 onmessage = () => formatDate(logo);"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let binary = build_binary();
 
@@ -583,7 +674,11 @@ onmessage = () => formatDate(logo);"#,
         &["src/workers/heavy.worker.ts"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (worker entry point), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (worker entry point), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/workers/heavy.worker.ts"));
 
     // The worker is a source file, so the graph continues through it.
@@ -594,7 +689,11 @@ onmessage = () => formatDate(logo);"#,
         &["src/utils/helpers.ts"],
     );
 
-    assert_eq!(code2, 0, "Expected exit code 0 (module imported by a worker), got {}. stdout: {}", code2, stdout2);
+    assert_eq!(
+        code2, 0,
+        "Expected exit code 0 (module imported by a worker), got {}. stdout: {}",
+        code2, stdout2
+    );
     assert!(stdout2.contains("src/utils/helpers.ts"));
 
     let (code3, stdout3, _stderr3) = run_is_affected(
@@ -604,7 +703,11 @@ onmessage = () => formatDate(logo);"#,
         &["src/assets/logo.png"],
     );
 
-    assert_eq!(code3, 0, "Expected exit code 0 (asset imported by a worker), got {}. stdout: {}", code3, stdout3);
+    assert_eq!(
+        code3, 0,
+        "Expected exit code 0 (asset imported by a worker), got {}. stdout: {}",
+        code3, stdout3
+    );
     assert!(stdout3.contains("src/assets/logo.png"));
 }
 
@@ -625,7 +728,11 @@ fn test_only_downstream_ignores_upstream_usages() {
         &["--only", "downstream"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (downstream hit), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (downstream hit), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/components/Button.tsx"));
 
     // Reversed, the only path is upstream. Without the flag this is a hit...
@@ -636,7 +743,11 @@ fn test_only_downstream_ignores_upstream_usages() {
         &["src/pages/CheckoutPage.tsx"],
     );
 
-    assert_eq!(both, 0, "Expected exit code 0 searching both directions, got {}. stdout: {}", both, stdout_both);
+    assert_eq!(
+        both, 0,
+        "Expected exit code 0 searching both directions, got {}. stdout: {}",
+        both, stdout_both
+    );
 
     // ...and with it, the upstream path is not searched at all.
     let (code2, stdout2, _stderr2) = run_is_affected_with(
@@ -647,7 +758,11 @@ fn test_only_downstream_ignores_upstream_usages() {
         &["--only", "downstream"],
     );
 
-    assert_eq!(code2, 1, "Expected exit code 1 (upstream path skipped), got {}. stdout: {}", code2, stdout2);
+    assert_eq!(
+        code2, 1,
+        "Expected exit code 1 (upstream path skipped), got {}. stdout: {}",
+        code2, stdout2
+    );
     assert!(stdout2.contains("No reachability impact detected"));
 }
 
@@ -668,7 +783,11 @@ fn test_only_upstream_ignores_downstream_usages() {
         &["--only", "upstream"],
     );
 
-    assert_eq!(code, 1, "Expected exit code 1 (downstream path skipped), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 1,
+        "Expected exit code 1 (downstream path skipped), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("No reachability impact detected"));
 
     let (code2, stdout2, _stderr2) = run_is_affected_with(
@@ -679,7 +798,11 @@ fn test_only_upstream_ignores_downstream_usages() {
         &["--only", "upstream"],
     );
 
-    assert_eq!(code2, 0, "Expected exit code 0 (upstream hit), got {}. stdout: {}", code2, stdout2);
+    assert_eq!(
+        code2, 0,
+        "Expected exit code 0 (upstream hit), got {}. stdout: {}",
+        code2, stdout2
+    );
     assert!(stdout2.contains("src/pages/CheckoutPage.tsx"));
 }
 
@@ -699,7 +822,11 @@ fn test_only_short_flag_matches_long_flag() {
         &["-o", "downstream"],
     );
 
-    assert_eq!(code, 0, "Expected exit code 0 (short flag), got {}. stdout: {}", code, stdout);
+    assert_eq!(
+        code, 0,
+        "Expected exit code 0 (short flag), got {}. stdout: {}",
+        code, stdout
+    );
     assert!(stdout.contains("src/components/Button.tsx"));
 }
 
@@ -719,8 +846,16 @@ fn test_only_rejects_unknown_direction() {
         &["--only", "sideways"],
     );
 
-    assert_ne!(code, 0, "Expected non-zero exit code for an unknown direction, got {}. stdout: {}", code, stdout);
-    assert!(stderr.contains("sideways"), "Expected the error to name the bad value, got stderr: {}", stderr);
+    assert_ne!(
+        code, 0,
+        "Expected non-zero exit code for an unknown direction, got {}. stdout: {}",
+        code, stdout
+    );
+    assert!(
+        stderr.contains("sideways"),
+        "Expected the error to name the bad value, got stderr: {}",
+        stderr
+    );
 }
 
 /// A config the run needs and cannot read replaces the verdict.
@@ -735,7 +870,11 @@ fn test_unreadable_config_is_reported_rather_than_ignored() {
     let root = temp.path().to_path_buf();
     setup_test_project(&root);
 
-    fs::write(root.join("src/components/fallout.toml"), "inline-requires = 3\n").unwrap();
+    fs::write(
+        root.join("src/components/fallout.toml"),
+        "inline-requires = 3\n",
+    )
+    .unwrap();
 
     let (code, stdout, stderr) = run_is_affected_with(
         &binary,
@@ -766,7 +905,11 @@ fn test_unread_config_does_not_fail_the_run() {
     setup_test_project(&root);
 
     fs::create_dir_all(root.join("src/elsewhere")).unwrap();
-    fs::write(root.join("src/elsewhere/fallout.toml"), "inline-requires = 3\n").unwrap();
+    fs::write(
+        root.join("src/elsewhere/fallout.toml"),
+        "inline-requires = 3\n",
+    )
+    .unwrap();
 
     let (code, stdout, stderr) = run_is_affected_with(
         &binary,
@@ -790,19 +933,22 @@ fn setup_unresolved_project(root: &PathBuf) {
 import { readFile } from "fs";
 import { open } from "node:fs/promises";
 export const lost = () => gone(readFile, open);"#,
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/pages/lost.scss"),
         "@use 'sass:math';\n@use './missing';\n.lost { width: math.div(1, 2); }\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("src/pages/LostPage.tsx"),
         r#"import { lost } from "../utils/lost";
 import "./lost.scss";
 export const LostPage = () => lost();"#,
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[test]
