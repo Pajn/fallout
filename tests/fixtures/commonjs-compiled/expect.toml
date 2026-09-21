@@ -1,0 +1,11 @@
+# What a compiler emits: a marker, a line promising the names the file will export,
+# and then the assignments that keep the promise. The promise holds no value worth
+# following, so it contributes no name of its own — which is what leaves each export
+# standing on the one statement that assigns it.
+[[anchor]]
+path = "src/pages/AlphaPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/BetaPage.tsx"
+affected = false

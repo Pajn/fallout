@@ -1,0 +1,1 @@
+exports.alpha = () => 1;

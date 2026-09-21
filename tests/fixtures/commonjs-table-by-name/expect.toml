@@ -1,0 +1,10 @@
+# `exports` handed to `Object.assign` by name rather than written through a property.
+# What the callee does with it is its own business — including to the name spelled out
+# above it — so there is no table here to read at all, and the page importing that
+# name hears about a change to the unrelated local beside it.
+#
+# Reading half a table would be worse than reading none: the page would be told its
+# import stands on one statement, when the line below is free to replace it.
+[[anchor]]
+path = "src/pages/OtherPage.tsx"
+affected = true

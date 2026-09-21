@@ -287,6 +287,18 @@ impl<'a> Visit<'a> for Coarsener<'_> {
         walk::walk_member_expression(self, expr);
     }
 
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        // The table named on its own, rather than through a property: handed to
+        // `Object.assign`, to a compiler's `__exportStar` helper, to anyone. What
+        // they do with it is theirs, so the table is not ours to describe.
+        if (identifier.name == "module" || identifier.name == "exports")
+            && !self.accounted.contains(&span_of(identifier.span))
+        {
+            self.flag("the export table by name");
+        }
+        walk::walk_identifier_reference(self, identifier);
+    }
+
     fn visit_with_statement(&mut self, statement: &WithStatement<'a>) {
         self.flag("with");
         walk::walk_with_statement(self, statement);

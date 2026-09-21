@@ -149,18 +149,42 @@ alternative is dropping an edge on a guess. Workspace packages reached through
 ### CommonJS
 
 A file that writes its exports the CommonJS way still has an export table; it is
-spelled as assignment, and the three shapes that spell it plainly are read as one:
+spelled as assignment, and the spellings that say so plainly are read as one:
 
 ```js
 exports.parse = (text) => { ... }
 module.exports.format = (value) => { ... }
 module.exports = { parse, format }
+exports.parse = exports.read = (text) => { ... }
 ```
 
 Each name becomes an export like any other, so a consumer asking for one arrives at
 that name rather than at the file. The declaration behind it is the assignment
 itself, held under the name `exports.parse` so that it cannot be mistaken for a local
 binding the file happens to call `parse`.
+
+Most of the CommonJS anybody actually reads is an ES module a compiler rewrote, and
+those have a house style of their own, all of which is read too:
+
+```js
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.format = exports.parse = void 0;          // the names to come
+var parse_1 = require("./parse");
+Object.defineProperty(exports, "parse", { enumerable: true, get: function () { return parse_1.parse; } });
+function format(value) { ... }
+exports.format = format;
+var _default = (exports.default = { parse, format });
+```
+
+The line of `void 0` is the compiler settling the shape of the table before filling
+it in. It holds no value worth following, so it contributes no name of its own — and
+every name it promises has to turn up in the table, or the file is one we have not
+understood and coarsens. A defined property is a re-export, and defining an accessor
+stores the function rather than calling it, so a descriptor that runs nothing on the
+way past is read and one that does not is left alone. `var _default = (exports.default
+= ...)` is `export default`: the assignment fills the table wherever it sits, and
+filling the table is the export rather than a side effect of loading, so a page
+importing the name beside it hears nothing about a change to the default.
 
 A table has to be unambiguous to be read. Assigning `module.exports` as a whole
 alongside individual properties, assigning it twice, or assigning the same name twice
@@ -169,14 +193,19 @@ statements run in rather than about the names. So does assigning the whole table
 anything but an object literal — `module.exports = Widget` re-exports whatever
 `Widget` turns out to hold — and so does a spread or a computed key inside one.
 
-None of this holds unless `module` and `exports` are the runtime's. A file that
-declares or imports either name means something else by it, and an assignment to one
-is then a write to somebody else's object rather than an export of its own, so it
-coarsens like anything else the analyser cannot describe.
+None of this holds unless the names involved are the runtime's — `module` and
+`exports`, and the `Object` whose `defineProperty` a re-export is read through. A file
+that declares or imports any of them means something of its own by the name, and an
+assignment is then a write to somebody else's object rather than an export, so the
+file coarsens like anything else the analyser cannot describe.
 
 Coarsening here is by omission rather than by rule: every mention of `module` or
 `exports` the table did not account for is left standing as a pattern the analyser
-cannot describe, and takes the file down the same path as the rest of them.
+cannot describe, and takes the file down the same path as the rest of them. That
+includes the table named on its own, without a property — handed to `Object.assign`,
+to a compiler's `__exportStar`, to anyone. Reading half a table would be worse than
+reading none, because a page importing the half that was read would be told its
+import stands on one statement while the line below is free to replace it.
 
 Anything the analyser cannot describe falls back to one opaque node for the whole
 file, which is the `file` behaviour: an export table too tangled to read, a computed

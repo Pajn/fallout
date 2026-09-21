@@ -1,0 +1,14 @@
+# A compiler writes `export { alpha } from "./alpha"` as a defined property, and
+# defining an accessor stores the function rather than calling it. Reading it makes
+# the barrel a barrel: the page importing the name that changed is flagged, and the
+# page importing the one beside it reaches only its own source.
+#
+# The package declares itself free of side effects, because a barrel that requires
+# both of its sources reaches both of them on evaluation whatever its table says.
+[[anchor]]
+path = "src/pages/AlphaPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/BetaPage.tsx"
+affected = false

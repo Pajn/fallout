@@ -10,6 +10,7 @@ use oxc_span::GetSpan;
 
 use ahash::AHashMap;
 
+use super::cjs;
 use super::decls::{DeclDraft, ImportBinding};
 use super::parse::{Ctx, span_of};
 use super::{Decl, DeclId, ImportTarget};
@@ -127,13 +128,13 @@ fn statement_has_impure_initialiser(
         Statement::ExportDefaultDeclaration(export) => {
             return export.declaration.check_impurity(origins, pure);
         }
-        // `exports.x = …`. Only a statement that declares something reaches here, so
-        // this is a CommonJS export and its right-hand side is the initialiser.
+        // Only a statement that declares something reaches here, so an expression
+        // statement is a CommonJS export: either the assignment that fills the table,
+        // whose initialiser is the value it assigns, or a defined property, which
+        // stores what it is handed without running any of it.
         Statement::ExpressionStatement(statement) => {
-            let Expression::AssignmentExpression(assignment) = &statement.expression else {
-                return false;
-            };
-            return assignment.right.check_impurity(origins, pure);
+            return cjs::assigned_value(&statement.expression)
+                .is_some_and(|value| value.check_impurity(origins, pure));
         }
         statement => statement.as_declaration(),
     };
@@ -147,7 +148,14 @@ fn statement_has_impure_initialiser(
         .declarations
         .iter()
         .filter_map(|declarator| declarator.init.as_ref())
-        .any(|init| init.check_impurity(origins, pure))
+        .any(|init| {
+            // `var _default = (exports.default = …)`, a compiler's `export default`.
+            // Filling the table is the export, not an effect on anybody else, so what
+            // decides whether this runs anything is the value alone.
+            cjs::assigned_value(init)
+                .unwrap_or(init)
+                .check_impurity(origins, pure)
+        })
 }
 
 pub(crate) trait ImpurityCheck<'a> {

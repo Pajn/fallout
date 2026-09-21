@@ -1,0 +1,7 @@
+# `exports.default = exports.widget = widget` gives one value two names, and both are
+# names the file exports. Read only as far as the outermost, `widget` would be missing
+# from the table, and a name missing from a table falls back to the whole file — which
+# is how the unrelated local at the top would reach a page that imports `widget`.
+[[anchor]]
+path = "src/pages/WidgetPage.tsx"
+affected = false

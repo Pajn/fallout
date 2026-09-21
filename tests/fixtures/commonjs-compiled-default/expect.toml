@@ -1,0 +1,7 @@
+# Babel writes `export default` as `var _default = (exports.default = …)`, so the
+# assignment that fills the table sits inside a declaration rather than being one.
+# Read there too, the default export stands on its own statement and the page
+# importing the named export beside it hears nothing about a change to it.
+[[anchor]]
+path = "src/pages/NamedPage.tsx"
+affected = false
