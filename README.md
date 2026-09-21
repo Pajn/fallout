@@ -14,8 +14,19 @@ change provably cannot influence.
 ## Install
 
 ```sh
+npm install --save-dev fallout-cli
+```
+
+The package carries a prebuilt binary per platform and installs only the one the
+machine needs: Linux and Windows on x64, Linux and macOS on arm64. Elsewhere, and
+to build from source:
+
+```sh
 cargo install fallout
 ```
+
+The command is `fallout` either way. Releases are cut from a tag; see
+[RELEASING.md](RELEASING.md).
 
 ## Usage
 

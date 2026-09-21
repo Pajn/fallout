@@ -1,0 +1,137 @@
+# Builds a binary for every target the crate declares and publishes them to npm
+# as one launcher package plus one package per platform.
+#
+# npm authenticates this workflow by OIDC rather than by a token, and the
+# trusted publisher on npmjs.com is pinned to this repository *and to this file
+# name*. Renaming this file revokes publishing until the pin is updated. See
+# RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The version of the generator, pinned so a release is reproducible.
+  CARGO_NPM_VERSION: "0.1.4"
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Every target has to succeed. A missing binary must stop the release
+      # rather than publish a launcher that is quietly short a platform.
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm }
+          - { target: aarch64-apple-darwin, runner: macos-15 }
+          - { target: x86_64-pc-windows-msvc, runner: windows-2025, ext: .exe }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Each target is native to the runner it is built on, so the tests run
+      # where the binary will. A release cannot ship a platform whose tests
+      # did not pass on that platform.
+      - run: cargo test --release --locked --target ${{ matrix.target }}
+
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/fallout${{ matrix.ext }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The OIDC token npm exchanges for a short-lived publish grant. This is
+      # the whole of the credential: there is no NPM_TOKEN, and without this
+      # permission npm falls back to looking for one and fails.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag against the declared version
+        run: |
+          declared=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          tagged=${GITHUB_REF_NAME#v}
+          if [ "$declared" != "$tagged" ]; then
+            echo "Cargo.toml declares $declared and the tag says $tagged." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # Trusted publishing needs npm 11.5.1 or later. What a Node release
+      # bundles is whatever was current when it shipped, so ask for it rather
+      # than assume it. No registry-url and no NODE_AUTH_TOKEN: an .npmrc
+      # naming a token is what sends npm down the token path instead of OIDC.
+      - run: npm install -g npm@latest
+
+      - run: cargo install cargo-npm --locked --version ${{ env.CARGO_NPM_VERSION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Lay the binaries out the way the generator reads them
+        run: |
+          for built in artifacts/*/; do
+            triple=$(basename "$built")
+            mkdir -p "dist/$triple/release"
+            cp "$built"* "dist/$triple/release/"
+          done
+          # Artifacts travel as zip entries and zip does not carry the
+          # executable bit. Without this the launcher spawns the binary and
+          # gets EACCES on every platform but Windows.
+          chmod +x dist/*/release/*
+
+      - run: cargo npm generate --clean --target-dir dist
+
+      # `generate` is content to write a platform package with no binary in
+      # it, so check before anything reaches the registry. A published version
+      # cannot be replaced.
+      - name: Check every platform package carries a binary
+        run: |
+          declared=$(python3 -c 'import tomllib; print(len(tomllib.load(open("Cargo.toml", "rb"))["package"]["metadata"]["npm"]["targets"]))')
+          found=0
+          missing=0
+          for package in npm/@*/*/; do
+            [ -d "$package" ] || continue
+            found=$((found + 1))
+            if ! ls "$package" | grep -q '^fallout'; then
+              echo "no binary in $package" >&2
+              missing=1
+            fi
+          done
+          if [ "$found" != "$declared" ]; then
+            echo "Cargo.toml declares $declared targets and $found were generated." >&2
+            missing=1
+          fi
+          exit $missing
+
+      # Publishes each platform package before the launcher that depends on
+      # it, and skips any version already on the registry — so re-running
+      # after a partial failure finishes the release instead of colliding
+      # with it. Scoped packages default to restricted, hence --access.
+      - run: cargo npm publish -- --access public --provenance
