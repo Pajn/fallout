@@ -531,3 +531,60 @@ export const IconPage = () => <img src={icon} />;"#,
     assert_eq!(code, 1, "Expected exit code 1 (no path through the asset), got {}. stdout: {}", code, stdout);
     assert!(stdout.contains("No reachability impact detected"));
 }
+
+#[test]
+fn test_worker_entry_and_its_dependencies_are_affected() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+
+    fs::create_dir_all(root.join("src/workers")).unwrap();
+
+    // The worker URL is a `new URL` nested inside another `new` expression, so the
+    // extractor only sees it by walking into the outer call's arguments.
+    fs::write(
+        root.join("src/pages/WorkerPage.tsx"),
+        r#"const worker = new Worker(new URL("../workers/heavy.worker.ts", import.meta.url), { type: "module" });
+export const WorkerPage = () => <div />;"#,
+    ).unwrap();
+
+    fs::write(
+        root.join("src/workers/heavy.worker.ts"),
+        r#"import { formatDate } from "../utils/helpers";
+import logo from "../assets/logo.png";
+onmessage = () => formatDate(logo);"#,
+    ).unwrap();
+
+    let binary = build_binary();
+
+    let (code, stdout, _stderr) = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/WorkerPage.tsx"],
+        &["src/workers/heavy.worker.ts"],
+    );
+
+    assert_eq!(code, 0, "Expected exit code 0 (worker entry point), got {}. stdout: {}", code, stdout);
+    assert!(stdout.contains("src/workers/heavy.worker.ts"));
+
+    // The worker is a source file, so the graph continues through it.
+    let (code2, stdout2, _stderr2) = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/WorkerPage.tsx"],
+        &["src/utils/helpers.ts"],
+    );
+
+    assert_eq!(code2, 0, "Expected exit code 0 (module imported by a worker), got {}. stdout: {}", code2, stdout2);
+    assert!(stdout2.contains("src/utils/helpers.ts"));
+
+    let (code3, stdout3, _stderr3) = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/WorkerPage.tsx"],
+        &["src/assets/logo.png"],
+    );
+
+    assert_eq!(code3, 0, "Expected exit code 0 (asset imported by a worker), got {}. stdout: {}", code3, stdout3);
+    assert!(stdout3.contains("src/assets/logo.png"));
+}
