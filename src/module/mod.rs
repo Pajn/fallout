@@ -11,11 +11,13 @@ pub mod exports;
 pub mod init;
 pub mod parse;
 pub mod refs;
+pub mod style;
 pub mod types;
 
 use std::path::Path;
 
 pub use parse::{LineTable, SOURCE_EXTENSIONS, is_source_file};
+pub use style::{STYLE_EXTENSIONS, is_style_file};
 
 /// Index into [`FineModule::decls`].
 pub type DeclId = u32;

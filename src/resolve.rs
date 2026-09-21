@@ -1,4 +1,8 @@
 //! Module resolution: an `oxc_resolver` with a memoised specifier cache.
+//!
+//! Two resolvers, because a stylesheet is not resolved the way a module is. Sass has
+//! its own rules — see [`Resolver::resolve`] — and running them through the
+//! JavaScript resolver would find nothing.
 
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -8,6 +12,24 @@ use oxc_resolver::{
     PackageJson, Resolution, ResolveOptions, Resolver as OxcResolver, SideEffects as Declared,
     TsconfigDiscovery,
 };
+
+use crate::module::is_style_file;
+
+/// Modules Sass ships with.
+///
+/// `@use "sass:math"` names no file, and nothing on disk could answer it — a `:` is
+/// not legal in a package name, so the lookup this skips would fail anyway. Listing
+/// them changes no verdict. It is here to say what these are, so that a specifier
+/// resolving to nothing is not read later as a gap to be closed.
+const SASS_BUILTINS: &[&str] = &[
+    "sass:math",
+    "sass:color",
+    "sass:list",
+    "sass:map",
+    "sass:meta",
+    "sass:selector",
+    "sass:string",
+];
 
 /// What importing a file can do beyond defining its exports.
 ///
@@ -27,6 +49,8 @@ pub enum SideEffects {
 /// (including failures) per `(importing file, specifier)` pair.
 pub struct Resolver {
     inner: OxcResolver,
+    /// The same, tuned for Sass. Used when the importing file is a stylesheet.
+    style: OxcResolver,
     cache: RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>,
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
     /// while the resolution that found its `package.json` is still in hand.
@@ -51,8 +75,22 @@ impl Resolver {
             ..ResolveOptions::default()
         };
 
+        // Sass looks for `_name.scss` beside `name.scss`, takes `_index.scss` for a
+        // directory, and tries the importing file's own directory before anything
+        // else — so a bare `@use "mixins"` is usually a sibling rather than a
+        // package. The `exports` field is left out because Sass tooling resolves a
+        // subpath by path, and honouring it would refuse targets that do resolve.
+        let style_options = ResolveOptions {
+            extensions: vec![".scss".to_string(), ".css".to_string()],
+            main_files: vec!["_index".to_string(), "index".to_string()],
+            exports_fields: Vec::new(),
+            prefer_relative: true,
+            ..ResolveOptions::default()
+        };
+
         Self {
             inner: OxcResolver::new(options),
+            style: OxcResolver::new(style_options),
             cache: RwLock::new(AHashMap::default()),
             side_effects: RwLock::new(AHashMap::default()),
         }
@@ -66,12 +104,17 @@ impl Resolver {
             return cached.clone();
         }
 
-        let mut resolution = self.inner.resolve_file(from_file, specifier).ok();
-        if resolution.is_none() {
-            if let Some(request) = strip_inline_loaders(specifier) {
+        let resolution = if is_style_file(from_file) {
+            self.resolve_style(from_file, specifier)
+        } else {
+            let mut resolution = self.inner.resolve_file(from_file, specifier).ok();
+            if resolution.is_none()
+                && let Some(request) = strip_inline_loaders(specifier)
+            {
                 resolution = self.inner.resolve_file(from_file, request).ok();
             }
-        }
+            resolution
+        };
 
         let result = resolution.map(|resolution| {
             let path = resolution.path().to_path_buf();
@@ -87,6 +130,34 @@ impl Resolver {
             .unwrap()
             .insert(cache_key, result.clone());
         result
+    }
+
+    /// Resolves `specifier` the way Sass would.
+    ///
+    /// Beyond what the tuned resolver already does, two rules are applied here
+    /// because they are about the specifier rather than about the search:
+    ///
+    /// - A leading `~` is dropped. It is a bundler convention meaning "not
+    ///   relative", and what follows it is an ordinary request.
+    /// - A partial is tried. Sass keeps a file meant only for importing under a
+    ///   leading underscore and lets it be named without one, so `a/b` is also
+    ///   `a/_b`.
+    ///
+    /// A `sass:` module resolves to nothing, and should: it names no file.
+    fn resolve_style(&self, from_file: &Path, specifier: &str) -> Option<Resolution> {
+        if SASS_BUILTINS.contains(&specifier) {
+            return None;
+        }
+        let request = specifier.strip_prefix('~').unwrap_or(specifier);
+        let partial = match request.rsplit_once('/') {
+            Some((dir, base)) if !base.starts_with('_') => Some(format!("{dir}/_{base}")),
+            None if !request.starts_with('_') => Some(format!("_{request}")),
+            _ => None,
+        };
+
+        std::iter::once(request.to_string())
+            .chain(partial)
+            .find_map(|candidate| self.style.resolve_file(from_file, &candidate).ok())
     }
 
     /// What the nearest `package.json` says about importing `path`.

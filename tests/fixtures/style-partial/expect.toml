@@ -1,0 +1,17 @@
+# The change is two hops away and neither hop is JavaScript: the page imports a
+# stylesheet, and the stylesheet `@use`s the partial that changed. Until a
+# stylesheet was read for its own imports this reported nothing, because a
+# stylesheet was a leaf and the chain stopped at the first one.
+#
+# `"./colors"` is the file `_colors.scss`. Sass keeps a file meant only for
+# importing under a leading underscore and lets it be named without one, and the
+# specifier here is relative enough that nothing but that rule can find it.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true
+
+# A page that imports no stylesheet is not reached by one changing. The edge has
+# to be an edge, not a claim that every stylesheet reaches everything.
+[[anchor]]
+path = "src/pages/PlainPage.tsx"
+affected = false

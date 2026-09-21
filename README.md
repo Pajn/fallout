@@ -333,20 +333,49 @@ Static `import`, `export ... from`, `export * from`, dynamic `import()`, and `re
 Module resolution follows `tsconfig.json` path mappings, discovered automatically from the
 root.
 
-Non-JavaScript files — images, fonts, stylesheets, JSON — are part of the graph. A changed
+Non-JavaScript files — images, fonts, JSON — are part of the graph. A changed
 PNG marks a page affected if some module the page reaches imports it. Bundler resource
 queries (`./logo.png?url`, `./icon.svg?react`) and webpack inline loaders
 (`!!file-loader!./logo.png`) resolve to the underlying file. Such files are leaves: they
 are never parsed looking for imports of their own.
 
+Stylesheets are not. See below.
+
 Assets referenced as `new URL("./worker.ts", import.meta.url)` are followed too, which
 covers the `new Worker(new URL(...))` form used by Vite and webpack. Because the worker
 resolves to a source file, the search continues through its own imports.
 
+### Stylesheets
+
+A `.css`, `.scss` or `.sass` file is read for the files it pulls in, so a chain of
+stylesheets is a chain in the graph. `@use`, `@forward` and `@import` are all edges. A
+page importing a stylesheet that `@use`s a partial of variables or mixins is reached by
+a change to that partial, which is where almost everything in a design system lives.
+
+A stylesheet is one node. Which rule inside one a change touched is not reported, and
+will not be: knowing whether a changed rule matters would mean knowing which selectors
+a page uses, which is a question about the markup rather than about the stylesheet.
+Any change to a stylesheet marks the whole file.
+
+Specifiers are resolved the way Sass resolves them, not the way JavaScript does:
+
+| Written | Found |
+| --- | --- |
+| `@use "colors"` | `_colors.scss` beside the importing file, before any package |
+| `@use "./tokens"` | `tokens/_index.scss` |
+| `@use "~pkg/x"` | `pkg/x.scss`, the leading `~` dropped |
+| `@use "sass:math"` | nothing — it names no file |
+
+**Aliases are not resolved.** A specifier like `~styles/settings` usually means a
+directory named by the app's bundler config, and that config is a program rather than
+data. Such an import is not an edge, so a stylesheet reached only through one is not
+reached at all.
+
 ### Known gaps
 
-- A stylesheet is a leaf, so an image referenced only by `url()` inside an imported CSS
-  file is not reached.
+- An image referenced only by `url()` inside a stylesheet is not reached: a stylesheet
+  is read for the stylesheets it pulls in, not for the assets it points at.
+- A stylesheet named through a bundler alias is not reached — see above.
 - Workers named by a bare string — `new Worker("./worker.js")` or
   `navigator.serviceWorker.register("/sw.js")` — are not detected. Bundlers require the
   `new URL` form, but a service worker registered by public URL has no source path to

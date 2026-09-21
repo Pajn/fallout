@@ -1,0 +1,5 @@
+# The same chain in plain CSS, which has `@import` and none of the rest of Sass,
+# and is read by its own grammar for that reason.
+[[anchor]]
+path = "src/pages/StyledPage.tsx"
+affected = true

@@ -1,0 +1,5 @@
+@use "tokens";
+
+.title {
+  color: tokens.$ink;
+}

@@ -1,0 +1,7 @@
+# `@use "tokens"` is bare, so it pins the rule that a bare specifier is looked for
+# in the importing file's own directory before it is treated as a package. It also
+# names a directory rather than a file, and Sass takes `_index.scss` inside one —
+# so the file that changed is never named by the stylesheet that depends on it.
+[[anchor]]
+path = "src/pages/TokenPage.tsx"
+affected = true

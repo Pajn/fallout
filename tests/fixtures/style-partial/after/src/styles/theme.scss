@@ -1,0 +1,5 @@
+@use "./colors";
+
+.title {
+  color: colors.$brand;
+}

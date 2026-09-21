@@ -117,6 +117,13 @@ impl Ctx<'_> {
 }
 
 pub fn analyse_file(path: &Path, reading: &Reading) -> Option<(ModuleAnalysis, LineTable)> {
+    // A stylesheet is read for its imports and nothing else, so it never reaches the
+    // JavaScript parser. See [`super::style`] for why it is always coarse.
+    if super::style::is_style_file(path) {
+        let source = fs::read_to_string(path).ok()?;
+        let analysis = super::style::analyse(path, &source)?;
+        return Some((analysis, LineTable::new(&source)));
+    }
     if !is_source_file(path) {
         return None;
     }

@@ -40,6 +40,12 @@ ahash = "0.8"
 # derive machinery is not pulled in.
 toml = "1.1"
 oxc_semantic = "0.150"
+# Stylesheets. Two grammars behind one runtime: the SCSS one is a superset that
+# also reads plain CSS, but it is a community grammar and errs on syntax the
+# official CSS one gets right, so each dialect is read by its own.
+tree-sitter = "0.27"
+tree-sitter-css = "0.25"
+tree-sitter-scss = "1.0"
 
 [dev-dependencies]
 tempfile = "3.27"
