@@ -270,6 +270,7 @@ dependencies = [
  "ahash",
  "clap",
  "dashmap",
+ "fast-glob",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",

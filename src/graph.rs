@@ -13,7 +13,7 @@ use ahash::{AHashMap, AHashSet};
 use crate::module::{
     DeclId, ExportTarget, ImportTarget, LineTable, ModuleAnalysis, SourceId, is_source_file,
 };
-use crate::resolve::Resolver;
+use crate::resolve::{Resolver, SideEffects};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FileId(pub u32);
@@ -237,8 +237,13 @@ impl Graph {
         };
 
         let mut edges = Vec::new();
-        for &decl in &module.init_decls {
-            edges.push(Node::Decl(file, decl));
+        // A module that declares itself free of side effects is claiming that these
+        // statements do nothing observable. The claim covers its own code only, so
+        // the edges below — which belong to the modules it imports — still stand.
+        if self.runs_on_import(file) {
+            for &decl in &module.init_decls {
+                edges.push(Node::Decl(file, decl));
+            }
         }
         // Importing a module runs its initialisation, in any form.
         for target in analysed.resolved.iter().flatten() {
@@ -249,15 +254,26 @@ impl Graph {
         // Only a *bare* import of a non-source file is a module-level side effect:
         // `import "./theme.css"` affects everyone importing this module. A binding
         // import of an asset reaches only the declarations that use the binding, so
-        // it is a declaration edge instead.
+        // it is a declaration edge instead. Whether loading the target runs anything
+        // is the target's claim to make, not this module's.
         for &source in &module.bare_sources {
             if let Some(target) = self.target_of(&analysed, source) {
-                if !is_source_file(&self.path(target)) {
+                if !is_source_file(&self.path(target)) && self.runs_on_import(target) {
                     edges.push(Node::File(target));
                 }
             }
         }
         edges
+    }
+
+    /// Can evaluating `file` run anything of its own, or does it only define
+    /// bindings?
+    ///
+    /// Only module initialisation asks, and only about the file's own statements. An
+    /// export is reached by name whatever its package claims, because that is data
+    /// flow rather than a side effect of loading.
+    fn runs_on_import(&self, file: FileId) -> bool {
+        self.resolver.side_effects(&self.path(file)) == SideEffects::Possible
     }
 
     /// The node a named import of `name` from `file` should point at.

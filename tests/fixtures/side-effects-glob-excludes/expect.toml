@@ -1,0 +1,6 @@
+# The pair to side-effects-glob. The same bare stylesheet import, in a package whose
+# list does not name it: the author is claiming that loading it runs nothing, so it
+# stops reaching the page.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = false

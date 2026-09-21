@@ -1,0 +1,6 @@
+# module-init-call, with the claim its package makes to bundlers. The page imports
+# only `VERSION`, and the package says evaluating a module of its own runs nothing,
+# so `client`'s initialiser no longer reaches the page.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = false

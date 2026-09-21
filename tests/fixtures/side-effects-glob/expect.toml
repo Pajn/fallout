@@ -1,0 +1,10 @@
+# bare-css-import, in a package whose `sideEffects` list names stylesheets. The
+# claim is about each file it matches, so the bare import of a listed stylesheet
+# still reaches everyone who imports the module that loads it.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

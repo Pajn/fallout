@@ -1,0 +1,6 @@
+# side-effects-glob-excludes with an unclosed brace. A pattern we cannot read leaves
+# the claim untrusted, so the stylesheet keeps its side effect and the page flags.
+# Guessing "does not match" would drop a real edge.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true

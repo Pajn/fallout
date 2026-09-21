@@ -79,6 +79,24 @@ yields the whole export object, so it reaches every export of its target, the sa
 `import * as ns`. A `require` outside every declaration runs on evaluation, like a
 bare import.
 
+### `sideEffects`
+
+The `sideEffects` field of the nearest `package.json` is read the way bundlers read
+it, and trusted the same way: it is a claim by the author that evaluating a module
+runs nothing observable, and a wrong claim already breaks the build it ships in.
+
+A module covered by the claim keeps its exports — those are reached by name, which is
+data flow rather than a side effect of loading — but stops reaching importers through
+module initialisation. So an edit to a top-level `const client = createClient()` no
+longer reaches every page that imports something else from that file.
+
+`false` covers the whole package. A list of globs names the files that *do* have side
+effects, matched against the path relative to the package root, with a pattern naming
+no directory matching at any depth (`"*.css"` covers a stylesheet anywhere). Absent,
+`true`, or a pattern that cannot be read leaves a file analysed normally, since the
+alternative is dropping an edge on a guess. Workspace packages reached through
+`node_modules` symlinks are covered along with the app itself.
+
 Anything the analyser cannot describe falls back to one opaque node for the whole
 file, which is the `file` behaviour: a CommonJS export table (`module.exports`,
 `exports.x`), a computed `require()` or `import()` specifier, `eval`, `with`,
