@@ -14,6 +14,11 @@ use oxc_parser::Parser as OxcParser;
 use oxc_resolver::{ResolveOptions, Resolver, TsconfigDiscovery};
 use oxc_span::SourceType;
 
+/// Extensions we parse for further imports. Anything else that resolves — images,
+/// fonts, stylesheets, JSON — is a leaf: it can be reported as affected, but it is
+/// never opened looking for dependencies of its own.
+const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
 #[derive(ClapParser)]
 struct Cli {
     /// Target page component(s) (e.g., src/pages/CheckoutPage.tsx)
@@ -203,6 +208,10 @@ fn check_upstream(
 }
 
 fn extract_specifiers(file_path: &Path) -> Option<Vec<String>> {
+    if !is_source_file(file_path) {
+        return None;
+    }
+
     let source_text = fs::read_to_string(file_path).ok()?;
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(file_path).unwrap_or_default();
@@ -222,6 +231,30 @@ fn extract_specifiers(file_path: &Path) -> Option<Vec<String>> {
     )
 }
 
+fn is_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| SOURCE_EXTENSIONS.contains(&ext))
+}
+
+/// Webpack lets an import name its loaders inline, as in `!!file-loader!./logo.png`.
+/// Only the trailing request is a path. Returns `None` when there is nothing to strip.
+///
+/// A `?query` or `#fragment` suffix needs no such treatment: the resolver parses those
+/// itself, which is why the resolved path is read back without them.
+fn strip_inline_loaders(specifier: &str) -> Option<&str> {
+    if !specifier.contains('!') {
+        return None;
+    }
+
+    let request = specifier.rsplit('!').next().unwrap_or(specifier);
+    if request.is_empty() || request == specifier {
+        None
+    } else {
+        Some(request)
+    }
+}
+
 fn resolve_import(
     resolver: &Arc<Resolver>,
     cache: &Arc<RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>>,
@@ -232,10 +265,18 @@ fn resolve_import(
     if let Some(cached) = cache.read().unwrap().get(&cache_key) {
         return cached.clone();
     }
-    let result = resolver
+    let mut result = resolver
         .resolve_file(from_file, specifier)
         .ok()
-        .map(|r| r.full_path().to_path_buf());
+        .map(|r| r.into_path_buf());
+    if result.is_none() {
+        if let Some(request) = strip_inline_loaders(specifier) {
+            result = resolver
+                .resolve_file(from_file, request)
+                .ok()
+                .map(|r| r.into_path_buf());
+        }
+    }
     cache.write().unwrap().insert(cache_key, result.clone());
     result
 }
@@ -262,6 +303,25 @@ impl<'a> Visit<'a> for SpecifierExtractor<'a> {
             self.specifiers.push(lit.value.as_str());
         }
         walk::walk_import_expression(self, expr);
+    }
+
+    fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
+        // `new URL("./logo.png", import.meta.url)` is the bundler-agnostic way to
+        // reference an asset. Only relative specifiers are edges; `new URL(absolute)`
+        // is an ordinary runtime URL.
+        if let Expression::Identifier(ident) = &expr.callee {
+            if ident.name == "URL" && expr.arguments.len() >= 2 {
+                if let Some(Expression::StringLiteral(lit)) =
+                    expr.arguments.first().and_then(|arg| arg.as_expression())
+                {
+                    let value = lit.value.as_str();
+                    if value.starts_with("./") || value.starts_with("../") {
+                        self.specifiers.push(value);
+                    }
+                }
+            }
+        }
+        walk::walk_new_expression(self, expr);
     }
 
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
