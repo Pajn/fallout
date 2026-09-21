@@ -69,7 +69,7 @@ pub fn downstream(
     }
 
     while let Some(current) = queue.pop_front() {
-        if changed.contains(&current) {
+        if changed.contains(&current) || resolver.marks_changed_package(&current) {
             return Some(Hit {
                 direction: Direction::Downstream,
                 rendered: None,
@@ -177,7 +177,7 @@ pub fn downstream_symbols(
     }
 
     while let Some(current) = queue.pop_front() {
-        if is_marked(marked, current) {
+        if is_marked(graph, marked, current) {
             return Some(trace_nodes(&came_from, current));
         }
 
@@ -195,7 +195,13 @@ pub fn downstream_symbols(
 /// `File(f)` is the umbrella node: marking it says "something in f changed, and we
 /// cannot say what". Every node of `f` is therefore marked with it, or a search that
 /// reaches only a declaration would miss a whole-file change.
-fn is_marked(marked: &AHashSet<Node>, node: Node) -> bool {
+fn is_marked(graph: &Graph, marked: &AHashSet<Node>, node: Node) -> bool {
+    if graph
+        .resolver()
+        .marks_changed_package(&graph.path(node.file()))
+    {
+        return true;
+    }
     marked.contains(&node) || marked.contains(&Node::File(node.file()))
 }
 

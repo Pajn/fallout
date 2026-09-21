@@ -12,6 +12,7 @@ pub mod cli;
 pub mod config;
 pub mod diff;
 pub mod graph;
+pub mod lockfile;
 pub mod marks;
 pub mod module;
 pub mod pure;
@@ -165,6 +166,11 @@ fn analysed(options: &Options, unresolved: &std::sync::Arc<Unresolved>) -> Resul
         configs: configs.clone(),
         ignore_types: !options.include_types,
     };
+    // A changed lockfile entry is a change to code this repository does not hold.
+    // Read before the granularity split, because both searches ask one resolver and
+    // it is the resolver that gives a changed package a node.
+    let packages = std::sync::Arc::new(lockfile::changed(&root, &change_set, &options.changed));
+
     // Whether imports are deferred describes the bundler, and the anchors are what
     // pick one. Decided here, once, because the graph has no anchors of its own.
     let inline_requires = configs.inline_requires(&anchors);
@@ -174,7 +180,13 @@ fn analysed(options: &Options, unresolved: &std::sync::Arc<Unresolved>) -> Resul
         .map(|reference| base::Base::new(reference, reading.clone()));
 
     if options.granularity == Granularity::Symbol {
-        let graph = graph::Graph::new(reading, inline_requires, unresolved.clone());
+        let graph = graph::Graph::new(
+            reading,
+            inline_requires,
+            unresolved.clone(),
+            root.clone(),
+            packages.clone(),
+        );
         let verdict = analyse_symbols(&anchors, &root, &change_set, options, &graph, base.as_ref());
         return match configs.failure() {
             Some(error) => Err(Error::Config(error)),
@@ -190,11 +202,16 @@ fn analysed(options: &Options, unresolved: &std::sync::Arc<Unresolved>) -> Resul
         &reading,
     );
 
-    if changed.is_empty() {
+    if changed.is_empty() && packages.is_empty() {
         return Ok(Verdict::NotAffected);
     }
 
-    let resolver = Resolver::new(configs.clone(), unresolved.clone());
+    let resolver = Resolver::new(
+        configs.clone(),
+        unresolved.clone(),
+        root.clone(),
+        packages.clone(),
+    );
 
     let mut verdict = Verdict::NotAffected;
     if options.only != Some(Direction::Upstream)
@@ -228,7 +245,7 @@ fn analyse_symbols(
 ) -> Verdict {
     let marked = marks::marked_nodes(graph, change_set, root, &options.changed, base);
 
-    if marked.is_empty() {
+    if marked.is_empty() && !graph.resolver().has_changed_packages() {
         return Verdict::NotAffected;
     }
 

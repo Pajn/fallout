@@ -1,0 +1,31 @@
+# Nothing in this tree changed. The only change is in the lockfile, and nothing
+# is installed — there is no node_modules here at all, which is the point: the
+# lockfile is the whole of the evidence that the code behind an import moved.
+#
+# `charting` was bumped, so its own entry holds a new version and a new hash,
+# and a page importing it is affected.
+#
+# The other two are both controls, and they fail for different reasons.
+# `stable-dep` was not touched at all. `@vendor/plot` was: pnpm writes the peer
+# it resolved into the snapshot key, so the copy of it built against `charting`
+# has a snapshot entry that moved. Its own version and hash did not move, so it
+# is the package it was — same bytes, same public API — and an import of it is
+# not a way for this change to arrive.
+[[anchor]]
+path = "src/pages/ChartPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ChartPage.tsx)",
+    "Decl(src/pages/ChartPage.tsx, default)",
+    "File(node_modules/charting)",
+]
+
+[[anchor]]
+path = "src/pages/PlotPage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

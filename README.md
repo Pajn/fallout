@@ -460,6 +460,53 @@ The report covers what the run **reached**. A search that stops at the first cha
 finds has not looked at the rest of the graph and does not report on it, so the widest
 report comes from a run that finds nothing.
 
+## Changed dependencies
+
+A dependency's code is not in the repository, so a change to it never appears in
+a diff. What appears is the lockfile: one entry per resolved package, each pinned
+to a hash. When that hash moves, the code behind every import of that package
+moved with it, and nothing in the source tree records that it did.
+
+`pnpm-lock.yaml` and `package-lock.json` are read. A changed entry gives its
+package a node, and any file importing it reaches that node:
+
+```
+$ fallout --anchor apps/mobile/app/index.tsx --diff bump.diff \
+          --granularity symbol --explain
+Impact detected on target anchor via: "node_modules/@sentry/react-native"
+Path (downstream, symbol granularity):
+  File(apps/mobile/app/index.tsx)
+  Decl(apps/mobile/app/index.tsx, default)
+  File(node_modules/@sentry/react-native)
+```
+
+Nothing needs to be installed. The node stands for the package rather than for
+any file of it, so the lockfile alone decides — which is fitting, because the
+lockfile alone is what says the package changed.
+
+Only a package's own record is read: its entry under `packages`, which carries
+the version in its key and the hash in its body, and its entry under
+`patchedDependencies`, which carries the hash of a patch laid on top. For npm,
+the `node_modules/` keys, which carry the same two things.
+
+Everything else in a lockfile is about relationships rather than about a
+package, and is passed over. `importers`, `catalogs`, `overrides` and npm's root
+entry record ranges that were *asked for*, and a range that moves without moving
+a resolution installs the same bytes. `snapshots` records which version of each
+dependency a package resolved to, which moves when a dependency moves while the
+package itself stands still.
+
+Passing `snapshots` over is the point rather than a shortcut. A version is a
+package's promise about its public API, and the hash is the evidence behind that
+promise — so a package whose version and hash are what they were is the package
+it was, and naming it because something underneath it moved would report a
+change to an API that did not change. On a real react-native bump this is the
+difference between naming 17 packages and naming 89: the other 72 were
+byte-identical copies rebuilt against the new peer.
+
+A lockfile named without line information — by `--changed`, or as a binary diff
+— names every package it lists, since there is nothing to narrow with.
+
 ## What counts as an import
 
 Static `import`, `export ... from`, `export * from`, dynamic `import()`, and `require()`.
@@ -586,6 +633,8 @@ app owns.
   resolve.
 - Single-file component formats such as `.vue` and `.svelte` are treated as leaves rather
   than parsed.
+- Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer
+  about its dependencies, rather than a wrong one.
 
 ## License
 

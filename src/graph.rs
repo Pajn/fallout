@@ -78,9 +78,11 @@ impl Graph {
         reading: Reading,
         inline_requires: bool,
         unresolved: std::sync::Arc<crate::resolve::Unresolved>,
+        root: PathBuf,
+        packages: std::sync::Arc<crate::lockfile::Changed>,
     ) -> Self {
         Self {
-            resolver: Resolver::new(reading.configs.clone(), unresolved),
+            resolver: Resolver::new(reading.configs.clone(), unresolved, root, packages),
             reading,
             inline_requires,
             paths: RefCell::new(Vec::new()),
@@ -493,6 +495,8 @@ impl Default for Graph {
             Reading::default(),
             false,
             std::sync::Arc::new(crate::resolve::Unresolved::default()),
+            PathBuf::from("."),
+            std::sync::Arc::new(crate::lockfile::Changed::default()),
         )
     }
 }

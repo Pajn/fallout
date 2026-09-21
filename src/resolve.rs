@@ -114,15 +114,26 @@ pub struct Resolver {
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
     /// while the resolution that found its `package.json` is still in hand.
     side_effects: RwLock<AHashMap<PathBuf, SideEffects>>,
+    /// Where `node_modules` would be, for the nodes that stand for packages.
+    root: PathBuf,
+    /// Packages a lockfile change touched. See [`crate::lockfile`].
+    packages: Arc<crate::lockfile::Changed>,
 }
 
 impl Resolver {
     /// `configs` is what the project declared about itself, which is the only place a
     /// stylesheet name that is not a path can come from. See [`crate::config`].
-    pub fn new(configs: Arc<Configs>, unresolved: Arc<Unresolved>) -> Self {
+    pub fn new(
+        configs: Arc<Configs>,
+        unresolved: Arc<Unresolved>,
+        root: PathBuf,
+        packages: Arc<crate::lockfile::Changed>,
+    ) -> Self {
         Self {
             configs,
             unresolved,
+            root,
+            packages,
             modules: RwLock::new(AHashMap::default()),
             style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
@@ -220,6 +231,22 @@ impl Resolver {
             return cached.clone();
         }
 
+        // A package whose lockfile entry changed stands for itself, rather than for
+        // whichever of its files this import happens to name. The lockfile is the
+        // only evidence that it changed and it speaks of packages, so the package is
+        // what the graph has a node for — and it needs nothing installed to exist.
+        if !is_style_file(from_file)
+            && let Some(name) = crate::lockfile::package_of(specifier)
+            && self.packages.contains(name)
+        {
+            let path = crate::lockfile::node_path(&self.root, name);
+            self.cache
+                .write()
+                .unwrap()
+                .insert(cache_key, Some(path.clone()));
+            return Some(path);
+        }
+
         // Whether the specifier names no file *by design*, which is a different thing
         // from one this run could not find and is not worth reporting as a failure.
         let mut names_no_file = false;
@@ -260,6 +287,18 @@ impl Resolver {
             .unwrap()
             .insert(cache_key, result.clone());
         result
+    }
+
+    /// Whether `path` is the node standing for a package whose lockfile entry
+    /// changed. Asked by the searches, which have a resolver but no change set.
+    pub fn marks_changed_package(&self, path: &Path) -> bool {
+        self.packages.marks(&self.root, path)
+    }
+
+    /// Whether any package changed at all, which is the one thing a search
+    /// cannot learn by asking about a path it has not reached yet.
+    pub fn has_changed_packages(&self) -> bool {
+        !self.packages.is_empty()
     }
 
     /// Resolves `specifier` the way Sass would.
@@ -357,6 +396,8 @@ impl Default for Resolver {
         Self::new(
             Arc::new(Configs::new(Path::new("."))),
             Arc::new(Unresolved::default()),
+            PathBuf::from("."),
+            Arc::new(crate::lockfile::Changed::default()),
         )
     }
 }

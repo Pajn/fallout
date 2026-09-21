@@ -1,0 +1,36 @@
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      charting:
+        specifier: ^1.0.0
+        version: 1.0.0
+      stable-dep:
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@vendor/plot':
+        specifier: ^3.0.0
+        version: 3.0.0(charting@1.0.0)
+
+packages:
+
+  charting@1.0.0:
+    resolution: {integrity: sha512-chartingBeforeBefore==}
+
+  stable-dep@2.0.0:
+    resolution: {integrity: sha512-stableStableStable==}
+
+  '@vendor/plot@3.0.0':
+    resolution: {integrity: sha512-plotPlotPlotPlot==}
+
+snapshots:
+
+  charting@1.0.0: {}
+
+  stable-dep@2.0.0: {}
+
+  '@vendor/plot@3.0.0(charting@1.0.0)':
+    dependencies:
+      charting: 1.0.0
