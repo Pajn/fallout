@@ -232,16 +232,16 @@ fn analyse_symbols(
         return Verdict::NotAffected;
     }
 
-    if options.only != Some(Direction::Upstream) {
-        if let Some(nodes) = query::downstream_symbols(anchors, &marked, graph) {
-            let path = nodes.iter().map(|node| graph.path(node.file())).collect();
-            let rendered = nodes.iter().map(|node| graph.render(*node, root)).collect();
-            return Verdict::Affected(Hit {
-                direction: Direction::Downstream,
-                rendered: Some(rendered),
-                path,
-            });
-        }
+    if options.only != Some(Direction::Upstream)
+        && let Some(nodes) = query::downstream_symbols(anchors, &marked, graph)
+    {
+        let path = nodes.iter().map(|node| graph.path(node.file())).collect();
+        let rendered = nodes.iter().map(|node| graph.render(*node, root)).collect();
+        return Verdict::Affected(Hit {
+            direction: Direction::Downstream,
+            rendered: Some(rendered),
+            path,
+        });
     }
 
     if options.only != Some(Direction::Downstream) {

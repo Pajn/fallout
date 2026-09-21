@@ -341,15 +341,14 @@ impl<'a> Visit<'a> for Coarsener<'_> {
         // account for is a way of writing one we cannot read: a computed key, an
         // `Object.assign`, a table handed to someone else, a table assigned from
         // inside a branch.
-        if let MemberExpression::StaticMemberExpression(member) = expr {
-            if !self.accounted.contains(&span_of(member.span)) {
-                if let Expression::Identifier(object) = &member.object {
-                    if object.name == "module" && member.property.name == "exports" {
-                        self.flag("module.exports");
-                    } else if object.name == "exports" {
-                        self.flag("exports.*");
-                    }
-                }
+        if let MemberExpression::StaticMemberExpression(member) = expr
+            && !self.accounted.contains(&span_of(member.span))
+            && let Expression::Identifier(object) = &member.object
+        {
+            if object.name == "module" && member.property.name == "exports" {
+                self.flag("module.exports");
+            } else if object.name == "exports" {
+                self.flag("exports.*");
             }
         }
         walk::walk_member_expression(self, expr);
@@ -433,26 +432,25 @@ impl<'a> Visit<'a> for SpecifierExtractor<'a> {
         // `new URL("./logo.png", import.meta.url)` is the bundler-agnostic way to
         // reference an asset. Only relative specifiers are edges; `new URL(absolute)`
         // is an ordinary runtime URL.
-        if let Expression::Identifier(ident) = &expr.callee {
-            if ident.name == "URL" && expr.arguments.len() >= 2 {
-                if let Some(Expression::StringLiteral(lit)) =
-                    expr.arguments.first().and_then(|arg| arg.as_expression())
-                {
-                    let value = lit.value.as_str();
-                    if value.starts_with("./") || value.starts_with("../") {
-                        self.specifiers.push(value);
-                    }
-                }
+        if let Expression::Identifier(ident) = &expr.callee
+            && ident.name == "URL"
+            && expr.arguments.len() >= 2
+            && let Some(Expression::StringLiteral(lit)) =
+                expr.arguments.first().and_then(|arg| arg.as_expression())
+        {
+            let value = lit.value.as_str();
+            if value.starts_with("./") || value.starts_with("../") {
+                self.specifiers.push(value);
             }
         }
         walk::walk_new_expression(self, expr);
     }
 
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if is_require(expr) {
-            if let Some(specifier) = static_specifier(expr) {
-                self.specifiers.push(specifier);
-            }
+        if is_require(expr)
+            && let Some(specifier) = static_specifier(expr)
+        {
+            self.specifiers.push(specifier);
         }
         walk::walk_call_expression(self, expr);
     }

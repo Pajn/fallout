@@ -106,10 +106,10 @@ pub fn parse(text: &str) -> ChangeSet {
                 file.path = unquote(rest.trim());
             }
         } else if line.starts_with("Binary files ") || line.starts_with("GIT binary patch") {
-            if let Some(file) = current.as_mut() {
-                if file.change != FileChange::Deleted {
-                    file.change = FileChange::Opaque;
-                }
+            if let Some(file) = current.as_mut()
+                && file.change != FileChange::Deleted
+            {
+                file.change = FileChange::Opaque;
             }
         } else if line.starts_with("@@") {
             hunk = parse_hunk_header(line);

@@ -260,10 +260,10 @@ pub(crate) fn bare_sources(program: &Program<'_>, sources: &[String]) -> Vec<Sou
         if !is_bare {
             continue;
         }
-        if let Some(source) = source_id(sources, import.source.value.as_str()) {
-            if !bare.contains(&source) {
-                bare.push(source);
-            }
+        if let Some(source) = source_id(sources, import.source.value.as_str())
+            && !bare.contains(&source)
+        {
+            bare.push(source);
         }
     }
     bare

@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -27,8 +27,8 @@ fn build_binary() -> PathBuf {
 }
 
 fn run_is_affected(
-    binary: &PathBuf,
-    root: &PathBuf,
+    binary: &Path,
+    root: &Path,
     anchors: &[&str],
     changed: &[&str],
 ) -> (i32, String, String) {
@@ -36,8 +36,8 @@ fn run_is_affected(
 }
 
 fn run_is_affected_with(
-    binary: &PathBuf,
-    root: &PathBuf,
+    binary: &Path,
+    root: &Path,
     anchors: &[&str],
     changed: &[&str],
     extra_args: &[&str],
@@ -68,7 +68,7 @@ fn run_is_affected_with(
     )
 }
 
-fn setup_test_project(root: &PathBuf) {
+fn setup_test_project(root: &Path) {
     fs::create_dir_all(root.join("src/components")).unwrap();
     fs::create_dir_all(root.join("src/utils")).unwrap();
     fs::create_dir_all(root.join("src/pages")).unwrap();
@@ -924,7 +924,7 @@ fn test_unread_config_does_not_fail_the_run() {
 
 /// Lays a file with a mix of specifiers over the sample project: one that names
 /// nothing, and two that name no file by design.
-fn setup_unresolved_project(root: &PathBuf) {
+fn setup_unresolved_project(root: &Path) {
     setup_test_project(root);
 
     fs::write(
