@@ -1,0 +1,21 @@
+# Two declarations swapped places and neither was otherwise touched. Nothing either
+# one *is* has changed, only the order the module computes them in, so the change
+# belongs to module initialisation and to no declaration. Line ranges cannot tell a
+# move from a rewrite and mark both declarations instead.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true
+
+# The route is the whole point: the declaration is reached through the export table
+# without a base revision, and through module initialisation with one.
+[anchor.explain]
+symbol = [
+  "File(src/pages/DatePage.tsx)",
+  "Decl(src/pages/DatePage.tsx, DatePage)",
+  "Export(src/utils/helpers.ts, formatDate)",
+]
+base = [
+  "File(src/pages/DatePage.tsx)",
+  "ModuleInit(src/pages/DatePage.tsx)",
+  "ModuleInit(src/utils/helpers.ts)",
+]

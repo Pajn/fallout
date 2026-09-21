@@ -1,0 +1,14 @@
+# A private declaration went. Nothing outside the file could name it, so the export
+# table is what it always was and the file is not coarsened; what a reader outside
+# can tell is that its initialiser no longer runs, which is module initialisation.
+# Compare `renamed-export`, where the name was exported and the file goes with it.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+  "File(src/pages/DatePage.tsx)",
+  "ModuleInit(src/pages/DatePage.tsx)",
+  "ModuleInit(src/utils/helpers.ts)",
+]

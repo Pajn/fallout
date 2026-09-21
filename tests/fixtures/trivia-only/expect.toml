@@ -1,0 +1,8 @@
+# A reworded comment and a reflowed expression. The file's syntax is identical either
+# side, so with a base revision to compare against there is no change to report at
+# all. Without one there is no way to tell this from a rewrite of the same lines,
+# which is why the expectation only starts at the base level.
+[[anchor]]
+path = "src/pages/PricePage.tsx"
+affected = false
+from = "base"

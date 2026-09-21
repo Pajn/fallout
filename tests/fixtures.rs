@@ -18,29 +18,59 @@ const BINARY: &str = env!("CARGO_BIN_EXE_fallout");
 
 /// One cumulative refinement level from the roadmap.
 ///
-/// Step 0 has only `file`, which makes invariants 1 and 3 in section 7.2 vacuous
-/// today. The structure is here so that adding a level is the only work step 1 needs
-/// to do to get its invariant coverage.
+/// The levels are ordered coarsest first, and every invariant in section 7.2 is
+/// stated over that order, so adding a level is all a refinement needs to do to get
+/// its invariant coverage.
 #[derive(Copy, Clone, Debug)]
 struct Level {
     name: &'static str,
     args: &'static [&'static str],
+    /// Compares each file against an earlier version of itself, so it needs that
+    /// version to exist in git.
+    versioned: bool,
+    /// The level this one may only ever narrow from.
+    ///
+    /// The granularity levels form a chain, each describing the code more finely
+    /// than the last. A base revision is not a link in that chain: it describes the
+    /// *change* rather than the code, and it sees things a line range cannot — a
+    /// removed declaration, a swapped pair of statements — so it is bounded by the
+    /// file level and by nothing in between.
+    narrows_from: Option<&'static str>,
 }
 
 const LEVELS: &[Level] = &[
     Level {
         name: "file",
         args: &["--granularity", "file"],
+        versioned: false,
+        narrows_from: None,
     },
     Level {
         name: "symbol",
         args: &["--granularity", "symbol"],
+        versioned: false,
+        narrows_from: Some("file"),
+    },
+    Level {
+        name: "base",
+        args: &["--granularity", "symbol", "--base", "HEAD"],
+        versioned: true,
+        narrows_from: Some("file"),
     },
 ];
 
-/// The finest level, which is the one a `must skip` expectation is held to.
-fn finest() -> Level {
-    *LEVELS.last().expect("at least one level")
+fn level(name: &str) -> Level {
+    *LEVELS
+        .iter()
+        .find(|level| level.name == name)
+        .unwrap_or_else(|| panic!("no such level: {name}"))
+}
+
+fn position(name: &str) -> usize {
+    LEVELS
+        .iter()
+        .position(|level| level.name == name)
+        .unwrap_or_else(|| panic!("no such level: {name}"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,14 +82,31 @@ struct Expect {
 #[derive(Debug, Deserialize)]
 struct AnchorExpect {
     path: String,
-    /// `true` is a must-flag: it is held at *every* level, coarsest included, which
-    /// is the soundness contract. `false` is a must-skip: it is held at the finest
-    /// level only, because a coarser level is allowed to over-report.
+    /// `true` is a must-flag: the soundness contract, held at every level from
+    /// `from` onwards. `false` is a must-skip, held the same way.
     affected: bool,
+    /// The coarsest level this expectation is held at.
+    ///
+    /// A must-flag defaults to the coarsest level there is, because never missing a
+    /// change is the contract every level signs. A must-skip defaults to the
+    /// coarsest level that reasons about code rather than about text, because a
+    /// whole-file verdict is allowed to over-report and nothing else is. A fixture
+    /// names a level here only when what it turns on is the description of the
+    /// change rather than the analysis of the code.
+    #[serde(default)]
+    from: Option<String>,
     /// Expected `--explain` node path, keyed by level name. A right verdict reached
     /// by a wrong route is a latent bug, so this is checked wherever it is given.
     #[serde(default)]
     explain: BTreeMap<String, Vec<String>>,
+}
+
+impl AnchorExpect {
+    /// The levels this anchor's expectation is held at, coarsest first.
+    fn levels(&self) -> &'static [Level] {
+        let default = if self.affected { "file" } else { "symbol" };
+        &LEVELS[position(self.from.as_deref().unwrap_or(default))..]
+    }
 }
 
 struct Outcome {
@@ -69,6 +116,119 @@ struct Outcome {
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+/// One fixture, prepared once: the generated diff, and the `after` tree laid over a
+/// repository whose `HEAD` holds `before`, which is what a `--base` run reads.
+struct Case {
+    dir: PathBuf,
+    expect: Expect,
+    diff: PathBuf,
+    versioned: PathBuf,
+    /// Deletes both of the above when the case goes out of scope.
+    _keep: tempfile::TempDir,
+}
+
+impl Case {
+    fn load(dir: PathBuf) -> Self {
+        let keep = tempfile::tempdir().expect("temp dir");
+        let diff = keep.path().join("generated.diff");
+        fs::write(
+            &diff,
+            generate_diff(&dir.join("before"), &dir.join("after")),
+        )
+        .expect("writing generated diff");
+
+        let versioned = keep.path().join("repo");
+        build_repo(&dir, &versioned);
+
+        Self {
+            expect: read_expect(&dir),
+            dir,
+            diff,
+            versioned,
+            _keep: keep,
+        }
+    }
+
+    /// Where a level runs the tool.
+    fn root(&self, level: Level) -> PathBuf {
+        if level.versioned {
+            self.versioned.clone()
+        } else {
+            self.dir.join("after")
+        }
+    }
+
+    fn name(&self) -> String {
+        self.dir.display().to_string()
+    }
+}
+
+fn cases() -> Vec<Case> {
+    fixture_cases().into_iter().map(Case::load).collect()
+}
+
+/// A repository holding the fixture's `before` tree as its only commit, with the
+/// `after` tree checked out over the top: the shape a real `--base` run sees.
+fn build_repo(case: &Path, repo: &Path) {
+    fs::create_dir_all(repo).expect("creating fixture repository");
+    copy_tree(&case.join("before"), repo);
+    git(repo, &["init", "--quiet"]);
+    git(repo, &["add", "--all", "--force"]);
+    git(
+        repo,
+        &["commit", "--quiet", "--allow-empty", "--message", "before"],
+    );
+
+    clear_tree(repo);
+    copy_tree(&case.join("after"), repo);
+}
+
+/// The fixture repository stands alone: no identity, ignore list, hook or signing
+/// setting from anywhere else takes part in making its one commit.
+fn git(repo: &Path, args: &[&str]) {
+    let status = Command::new("git")
+        .current_dir(repo)
+        .args(["-c", "user.name=fallout"])
+        .args(["-c", "user.email=fallout@example.invalid"])
+        .args(["-c", "commit.gpgsign=false"])
+        .args(["-c", "core.excludesFile=/dev/null"])
+        .args(["-c", "core.hooksPath=/dev/null"])
+        .args(args)
+        .status()
+        .expect("running git");
+    assert!(
+        status.success(),
+        "git {:?} failed in {}",
+        args,
+        repo.display()
+    );
+}
+
+fn copy_tree(source: &Path, destination: &Path) {
+    for (relative, content) in collect_tree(source) {
+        let path = destination.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("creating fixture directory");
+        }
+        fs::write(&path, content).expect("writing fixture file");
+    }
+}
+
+/// Empties the working tree without touching the history it was committed to.
+fn clear_tree(repo: &Path) {
+    for entry in fs::read_dir(repo).expect("readable repository") {
+        let path = entry.expect("readable entry").path();
+        if path.file_name().is_some_and(|name| name == ".git") {
+            continue;
+        }
+        if path.is_dir() {
+            fs::remove_dir_all(&path).expect("removing fixture directory");
+        } else {
+            fs::remove_file(&path).expect("removing fixture file");
+        }
+    }
 }
 
 fn fixture_cases() -> Vec<PathBuf> {
@@ -172,16 +332,16 @@ fn generate_diff(before: &Path, after: &Path) -> String {
     diff
 }
 
-fn run(case: &Path, anchor: &str, diff_path: &Path, level: Level) -> Outcome {
-    let after = case.join("after");
+fn run(case: &Case, anchor: &str, level: Level) -> Outcome {
+    let root = case.root(level);
     let mut cmd = Command::new(BINARY);
-    cmd.current_dir(&after)
+    cmd.current_dir(&root)
         .arg("--anchor")
         .arg(anchor)
         .arg("--root")
-        .arg(&after)
+        .arg(&root)
         .arg("--diff")
-        .arg(diff_path)
+        .arg(&case.diff)
         .arg("--explain")
         .args(level.args);
 
@@ -193,7 +353,7 @@ fn run(case: &Path, anchor: &str, diff_path: &Path, level: Level) -> Outcome {
     assert!(
         code == 0 || code == 1,
         "{} [{}] anchor {}: unexpected exit {}\nstdout: {}\nstderr: {}",
-        case.display(),
+        case.name(),
         level.name,
         anchor,
         code,
@@ -217,55 +377,35 @@ fn run(case: &Path, anchor: &str, diff_path: &Path, level: Level) -> Outcome {
     }
 }
 
-/// Writes the generated diff next to the fixture's temp copy and returns its path.
-fn diff_file(case: &Path, keep: &tempfile::TempDir) -> PathBuf {
-    let diff = generate_diff(&case.join("before"), &case.join("after"));
-    let path = keep.path().join("generated.diff");
-    fs::write(&path, diff).expect("writing generated diff");
-    path
-}
-
 #[test]
 fn fixtures_match_their_expectations() {
-    for case in fixture_cases() {
-        let expect = read_expect(&case);
-        let keep = tempfile::tempdir().unwrap();
-        let diff_path = diff_file(&case, &keep);
+    for case in cases() {
+        for anchor in &case.expect.anchor {
+            for level in anchor.levels() {
+                let outcome = run(&case, &anchor.path, *level);
 
-        for anchor in &expect.anchor {
-            for level in LEVELS {
-                let outcome = run(&case, &anchor.path, &diff_path, *level);
-
-                if anchor.affected {
-                    assert!(
-                        outcome.affected,
-                        "{} [{}] anchor {}: a must-flag case was missed",
-                        case.display(),
-                        level.name,
-                        anchor.path
-                    );
-                } else if level.name == finest().name {
-                    assert!(
-                        !outcome.affected,
-                        "{} [{}] anchor {}: expected a skip at the finest level",
-                        case.display(),
-                        level.name,
-                        anchor.path
-                    );
-                }
+                assert_eq!(
+                    outcome.affected,
+                    anchor.affected,
+                    "{} [{}] anchor {}: expected affected = {}",
+                    case.name(),
+                    level.name,
+                    anchor.path,
+                    anchor.affected
+                );
 
                 if let Some(expected) = anchor.explain.get(level.name) {
                     assert!(
                         anchor.affected,
                         "{} anchor {}: an explain path only makes sense for a must-flag case",
-                        case.display(),
+                        case.name(),
                         anchor.path
                     );
                     assert_eq!(
                         &outcome.explain,
                         expected,
                         "{} [{}] anchor {}: wrong path to the change",
-                        case.display(),
+                        case.name(),
                         level.name,
                         anchor.path
                     );
@@ -279,17 +419,13 @@ fn fixtures_match_their_expectations() {
 /// including the coarsest. This is the test-shaped form of the soundness contract.
 #[test]
 fn positives_survive_every_level() {
-    for case in fixture_cases() {
-        let expect = read_expect(&case);
-        let keep = tempfile::tempdir().unwrap();
-        let diff_path = diff_file(&case, &keep);
-
-        for anchor in expect.anchor.iter().filter(|a| a.affected) {
-            for level in LEVELS {
+    for case in cases() {
+        for anchor in case.expect.anchor.iter().filter(|a| a.affected) {
+            for level in anchor.levels() {
                 assert!(
-                    run(&case, &anchor.path, &diff_path, *level).affected,
+                    run(&case, &anchor.path, *level).affected,
                     "{} [{}] anchor {}: a must-flag case was missed",
-                    case.display(),
+                    case.name(),
                     level.name,
                     anchor.path
                 );
@@ -298,37 +434,28 @@ fn positives_survive_every_level() {
     }
 }
 
-/// Section 7.2, invariants 1 and 3: `affected(level n+1)` is a subset of
-/// `affected(level n)`, so a refinement may only ever remove verdicts, and the
-/// file level is an upper bound on every finer one.
+/// Section 7.2, invariants 1 and 3: a refinement may only ever remove verdicts from
+/// the level it narrows, and the file level is an upper bound on every other.
 #[test]
 fn refinements_only_narrow() {
-    for case in fixture_cases() {
-        let expect = read_expect(&case);
-        let keep = tempfile::tempdir().unwrap();
-        let diff_path = diff_file(&case, &keep);
-
-        for anchor in &expect.anchor {
-            let verdicts: Vec<(Level, bool)> = LEVELS
+    for case in cases() {
+        for anchor in &case.expect.anchor {
+            let verdicts: Vec<bool> = LEVELS
                 .iter()
-                .map(|level| {
-                    (
-                        *level,
-                        run(&case, &anchor.path, &diff_path, *level).affected,
-                    )
-                })
+                .map(|level| run(&case, &anchor.path, *level).affected)
                 .collect();
 
-            for pair in verdicts.windows(2) {
-                let (coarse, coarse_affected) = pair[0];
-                let (fine, fine_affected) = pair[1];
+            for (index, fine) in LEVELS.iter().enumerate() {
+                let Some(coarser) = fine.narrows_from else {
+                    continue;
+                };
                 assert!(
-                    coarse_affected || !fine_affected,
+                    verdicts[position(coarser)] || !verdicts[index],
                     "{} anchor {}: {} reports affected but the coarser {} does not",
-                    case.display(),
+                    case.name(),
                     anchor.path,
                     fine.name,
-                    coarse.name
+                    level(coarser).name
                 );
             }
         }
@@ -341,30 +468,26 @@ fn refinements_only_narrow() {
 /// what keeps the backward-compatible path honest as `--diff` takes over.
 #[test]
 fn diff_and_changed_paths_agree() {
-    for case in fixture_cases() {
-        let expect = read_expect(&case);
-        let keep = tempfile::tempdir().unwrap();
-        let diff_path = diff_file(&case, &keep);
-
-        let before = collect_tree(&case.join("before"));
-        let after_tree = collect_tree(&case.join("after"));
+    for case in cases() {
+        let before = collect_tree(&case.dir.join("before"));
+        let after_tree = collect_tree(&case.dir.join("after"));
         let changed: Vec<String> = after_tree
             .iter()
             .filter(|(path, content)| before.get(*path) != Some(content))
             .map(|(path, _)| path.to_string_lossy().replace('\\', "/"))
             .collect();
 
-        for anchor in &expect.anchor {
+        for anchor in &case.expect.anchor {
             for level in LEVELS {
-                let via_diff = run(&case, &anchor.path, &diff_path, *level).affected;
+                let via_diff = run(&case, &anchor.path, *level).affected;
 
-                let after = case.join("after");
+                let root = case.root(*level);
                 let mut cmd = Command::new(BINARY);
-                cmd.current_dir(&after)
+                cmd.current_dir(&root)
                     .arg("--anchor")
                     .arg(&anchor.path)
                     .arg("--root")
-                    .arg(&after)
+                    .arg(&root)
                     .args(level.args);
                 for path in &changed {
                     cmd.arg("--changed").arg(path);
@@ -374,7 +497,7 @@ fn diff_and_changed_paths_agree() {
                 assert!(
                     via_changed || !via_diff,
                     "{} [{}] anchor {}: --diff flags but the coarser --changed does not",
-                    case.display(),
+                    case.name(),
                     level.name,
                     anchor.path
                 );

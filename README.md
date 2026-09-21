@@ -30,13 +30,15 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-a, --anchor <PATH>` | Target component. Repeatable; the anchor set is affected if *any* anchor is. |
 | `-c, --changed <PATH>` | A changed file, as produced by `git diff --name-only`. Repeatable. |
 | `-d, --diff <PATH>` | A unified diff describing the change; `-` reads standard input. |
+| `-b, --base <REV>` | Git revision to compare each changed file against. See below. |
 | `-r, --root <PATH>` | Root directory to resolve from. Defaults to the current directory. |
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
 | `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
 | `-e, --explain` | Print the chain of imports that produced the verdict. |
 
 `--diff` and `--changed` may be combined; their file sets are unioned. A diff is read
-as text rather than by shelling out, so the tool needs no git checkout at runtime.
+as text rather than by shelling out, so the tool needs no git checkout at runtime;
+`--base` is the one flag that does ask git, and only for the files already named.
 Files the change deletes are dropped: they have no after version to reach.
 
 Exit codes: `0` — affected, run the tests. `1` — not affected, or the arguments were
@@ -153,6 +155,44 @@ means "treat this as one unit", never "not affected".
 Only the downstream search narrows. Upstream stays at file granularity, because a
 change to a sibling component cannot reach a page through references even though the
 two render together.
+
+### Comparing against a base revision
+
+A diff describes lines. It cannot say whether the file means anything different
+afterwards, so a reworded comment and a rewritten function look alike. `--base` names
+a revision to read the earlier version of each changed file from — `origin/main`,
+`HEAD~1`, whatever the branch is measured against — and the two versions are then
+compared as syntax rather than as text:
+
+```sh
+git diff -U3 origin/main... | fallout --anchor src/pages/CheckoutPage.tsx \
+  --diff - --base origin/main --granularity symbol
+```
+
+Comments and formatting are not part of the comparison, so a change made only of
+those marks nothing at all. This is the one case where a file the diff names is
+reported as affecting nothing, and it holds at `file` granularity too.
+
+A statement is matched to its counterpart by what it introduces rather than by where
+it sits, which makes the remaining cases exact:
+
+- A statement that only moved marks module initialisation, because the order the
+  module computes things in is the only thing that changed about it.
+- A statement that really differs marks what it declares, exports or imports, with no
+  guessing at the statements around it.
+- A statement the base had and this version does not marks the whole file if it
+  exported anything. A removal is invisible from inside the file — everything left
+  behind reads as it did — yet a consumer still naming what went is not itself
+  changed, and a name missing from an export table resolves to the file. A rename is
+  this same case, which is what makes one detectable.
+- A private declaration, an import or a bare statement that went marks module
+  initialisation instead. Nothing outside the file could name it, so all an outsider
+  can tell is that what it did on evaluation is no longer done.
+
+Without `--base`, the diff's line ranges are laid over the statements they fall in,
+and a range landing between two statements marks both of them along with module
+initialisation. That fallback also covers a file either version of which does not
+parse, and one git has no earlier version of.
 
 ### Explaining a verdict
 

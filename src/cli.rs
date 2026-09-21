@@ -24,6 +24,11 @@ pub struct Cli {
     #[arg(short, long)]
     pub diff: Option<PathBuf>,
 
+    /// Git revision to compare against, so that comment-only and formatting-only
+    /// changes mark nothing (e.g. origin/main)
+    #[arg(short, long)]
+    pub base: Option<String>,
+
     /// Root directory to scan for source files (default: anchor's parent or current dir)
     #[arg(short, long)]
     pub root: Option<PathBuf>,
@@ -58,6 +63,7 @@ pub fn run() -> ExitCode {
         anchors: cli.anchor,
         changed: cli.changed,
         diff,
+        base: cli.base,
         root: root.clone(),
         only: cli.only,
         granularity: cli.granularity,

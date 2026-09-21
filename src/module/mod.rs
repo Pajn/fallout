@@ -4,6 +4,7 @@
 //! [`ModuleAnalysis::Coarse`]: one opaque node for the whole file, which is exactly
 //! the file-level behaviour. Nothing here may ever conclude "not affected".
 
+pub mod compare;
 pub mod decls;
 pub mod exports;
 pub mod init;

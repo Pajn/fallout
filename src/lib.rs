@@ -6,6 +6,7 @@
 //! how that is being refined, and for the soundness contract every refinement must
 //! honour: the tool may over-report, it may never under-report.
 
+pub mod base;
 pub mod changes;
 pub mod cli;
 pub mod diff;
@@ -52,6 +53,10 @@ pub struct Options {
     pub changed: Vec<PathBuf>,
     /// A unified diff describing the change.
     pub diff: Option<String>,
+    /// Revision the change is measured against. With one, a file is compared
+    /// against its earlier self as syntax rather than as lines, so a reformatting
+    /// or a reworded comment marks nothing.
+    pub base: Option<String>,
     /// Directory the anchors and diff paths are relative to.
     pub root: PathBuf,
     /// Search only this direction instead of both.
@@ -128,15 +133,23 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     }
 
     let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
+    let base = options.base.as_deref().map(base::Base::new);
 
     if options.granularity == Granularity::Symbol {
         // Only the declaration-level walk asks what is pure, so only it reads the
         // project's list.
         let pure = pure::PureList::load(&root).map_err(Error::Config)?;
-        return Ok(analyse_symbols(&anchors, &root, &change_set, options, pure));
+        return Ok(analyse_symbols(
+            &anchors,
+            &root,
+            &change_set,
+            options,
+            pure,
+            base.as_ref(),
+        ));
     }
 
-    let changed = changes::marked_files(&root, &change_set, &options.changed);
+    let changed = changes::marked_files(&root, &change_set, &options.changed, base.as_ref());
 
     if changed.is_empty() {
         return Ok(Verdict::NotAffected);
@@ -167,9 +180,10 @@ fn analyse_symbols(
     change_set: &diff::ChangeSet,
     options: &Options,
     pure: pure::PureList,
+    base: Option<&base::Base>,
 ) -> Verdict {
     let graph = graph::Graph::new(pure);
-    let marked = marks::marked_nodes(&graph, change_set, root, &options.changed);
+    let marked = marks::marked_nodes(&graph, change_set, root, &options.changed, base);
 
     if marked.is_empty() {
         return Verdict::NotAffected;
@@ -188,7 +202,7 @@ fn analyse_symbols(
     }
 
     if options.only != Some(Direction::Downstream) {
-        let changed = changes::marked_files(root, change_set, &options.changed);
+        let changed = changes::marked_files(root, change_set, &options.changed, base);
         let resolver = Resolver::new();
         if let Some(hit) = query::upstream(anchors, &changed, &resolver) {
             return Verdict::Affected(hit);
