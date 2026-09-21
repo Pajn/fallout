@@ -95,19 +95,28 @@ fn mark_against_base(
         return true;
     }
 
+    // Knowing exactly what changed is no use in a file with no interior to put it in:
+    // a consumer of a module the analyser gave up on reaches one node, so that is the
+    // node to mark.
+    let Some(module) = graph.analysis(file) else {
+        out.insert(Node::File(file));
+        return true;
+    };
+    let Some(module) = module.analysis.as_fine() else {
+        out.insert(Node::File(file));
+        return true;
+    };
+
     if comparison.whole_file {
         out.insert(Node::File(file));
         return true;
     }
 
-    let Some(analysed) = graph.analysis(file) else {
-        out.insert(Node::File(file));
-        return true;
-    };
-    let Some(module) = analysed.analysis.as_fine() else {
-        out.insert(Node::File(file));
-        return true;
-    };
+    // A name that has gone is still a node, and one only the consumers that ask for
+    // it arrive at.
+    for name in &comparison.lost_exports {
+        out.insert(graph.lose_export(file, name));
+    }
 
     if comparison.init_differs {
         out.insert(Node::ModuleInit(file));

@@ -180,19 +180,26 @@ it sits, which makes the remaining cases exact:
   module computes things in is the only thing that changed about it.
 - A statement that really differs marks what it declares, exports or imports, with no
   guessing at the statements around it.
-- A statement the base had and this version does not marks the whole file if it
-  exported anything. A removal is invisible from inside the file — everything left
-  behind reads as it did — yet a consumer still naming what went is not itself
-  changed, and a name missing from an export table resolves to the file. A rename is
+- An export the base had and this version does not marks that *name*. A removal is
+  invisible from inside the file — everything left behind reads as it did — so the
+  name has to carry the mark itself, and it reaches the consumers that still ask for
+  it whether by name, through a namespace, or through an `export *`. Nothing else
+  hears about it, so deleting an export nobody imports costs nothing. A rename is
   this same case, which is what makes one detectable.
-- A private declaration, an import or a bare statement that went marks module
-  initialisation instead. Nothing outside the file could name it, so all an outsider
-  can tell is that what it did on evaluation is no longer done.
+- Anything removed that the module used to *do* on evaluation — an import, a bare
+  statement, a declaration whose initialiser may have run something — marks module
+  initialisation. Removing an export whose value was computed marks both.
+- The whole file is marked only when the names that went cannot be listed: an
+  `export * from` that was itself removed, a base version the analyser cannot
+  describe, or a changed `"use client"`.
 
 Without `--base`, the diff's line ranges are laid over the statements they fall in,
 and a range landing between two statements marks both of them along with module
-initialisation. That fallback also covers a file either version of which does not
-parse, and one git has no earlier version of.
+initialisation. A removed export cannot be seen that way at all — nothing in the
+file after the change mentions it — so a consumer that was not updated alongside it
+is reported only when there is a base revision to compare against. That fallback
+also covers a file either version of which does not parse, and one git has no
+earlier version of.
 
 ### Explaining a verdict
 

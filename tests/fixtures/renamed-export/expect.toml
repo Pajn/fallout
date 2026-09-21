@@ -1,12 +1,17 @@
-# A renamed export. The page imports the other one, untouched, and is flagged anyway:
-# what changed is the file's export table, and a name that is no longer in it resolves
-# to the file rather than to any declaration, so the file is the only honest mark.
+# A renamed export, and two pages: one that imports the other export and one that
+# still asks for the old name. The rename has to reach the second and not the first,
+# which is the whole reason a departed name is a node of its own rather than a mark
+# on the file.
 #
-# The symbol level misses this. A line range sees the new declaration arrive and marks
-# it; it cannot see the old name leave, because nothing in the file after the change
-# mentions it. Comparing against a base revision is what makes a rename visible, which
-# is why the expectation starts there.
+# `LegacyPage` is left calling a name that no longer exists. That is broken code, and
+# deliberately so: the soundness question is exactly what happens to a consumer the
+# change forgot to update, and a consumer the change *did* update would be in the
+# diff and marked for its own sake.
 [[anchor]]
 path = "src/pages/DatePage.tsx"
-affected = true
+affected = false
 from = "base"
+
+[[anchor]]
+path = "src/pages/LegacyPage.tsx"
+affected = true

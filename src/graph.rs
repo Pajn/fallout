@@ -59,6 +59,13 @@ pub struct Graph {
     names: RefCell<Vec<String>>,
     name_ids: RefCell<AHashMap<String, NameId>>,
     analyses: RefCell<AHashMap<FileId, Option<Rc<Analysed>>>>,
+    /// Names a file used to export and no longer does.
+    ///
+    /// Empty unless a base revision said so, since a departed name leaves no trace
+    /// in the file it left. Keeping them here lets `Export(f, name)` stay a node the
+    /// consumers that ask for it still reach, so the mark that says it has gone
+    /// reaches exactly those consumers and no others.
+    lost_exports: RefCell<AHashMap<FileId, AHashSet<NameId>>>,
 }
 
 impl Graph {
@@ -71,6 +78,7 @@ impl Graph {
             names: RefCell::new(Vec::new()),
             name_ids: RefCell::new(AHashMap::default()),
             analyses: RefCell::new(AHashMap::default()),
+            lost_exports: RefCell::new(AHashMap::default()),
         }
     }
 
@@ -102,6 +110,33 @@ impl Graph {
 
     pub fn name(&self, name: NameId) -> String {
         self.names.borrow()[name.0 as usize].clone()
+    }
+
+    /// Records that `file` no longer exports `name`, and returns the node that says
+    /// so.
+    pub fn lose_export(&self, file: FileId, name: &str) -> Node {
+        let name = self.name_id(name);
+        self.lost_exports
+            .borrow_mut()
+            .entry(file)
+            .or_default()
+            .insert(name);
+        Node::Export(file, name)
+    }
+
+    fn has_lost(&self, file: FileId, name: NameId) -> bool {
+        self.lost_exports
+            .borrow()
+            .get(&file)
+            .is_some_and(|names| names.contains(&name))
+    }
+
+    fn lost(&self, file: FileId) -> Vec<NameId> {
+        self.lost_exports
+            .borrow()
+            .get(&file)
+            .map(|names| names.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.
@@ -281,8 +316,10 @@ impl Graph {
 
     /// The node a named import of `name` from `file` should point at.
     ///
-    /// A name the target does not export points at `File(target)`: that covers a
-    /// change which deleted an export without updating its users.
+    /// A name the target no longer exports points at `Export(target, name)`, which is
+    /// where the mark saying so is. A name it never exported points at
+    /// `File(target)`, since anything in the target could be where it was meant to
+    /// come from.
     pub fn resolve_export(&self, file: FileId, name: &str) -> Node {
         if !is_source_file(&self.path(file)) {
             return Node::File(file);
@@ -294,8 +331,9 @@ impl Graph {
             return Node::File(file);
         };
 
-        if module.export_named(name).is_some() {
-            return Node::Export(file, self.name_id(name));
+        let id = self.name_id(name);
+        if module.export_named(name).is_some() || self.has_lost(file, id) {
+            return Node::Export(file, id);
         }
 
         let mut seen = AHashSet::default();
@@ -320,8 +358,9 @@ impl Graph {
             };
             match target_analysis.analysis.as_fine() {
                 Some(target_module) => {
-                    if target_module.export_named(name).is_some() {
-                        return Some(Node::Export(target, self.name_id(name)));
+                    let id = self.name_id(name);
+                    if target_module.export_named(name).is_some() || self.has_lost(target, id) {
+                        return Some(Node::Export(target, id));
                     }
                     if let Some(node) = self.through_stars(target, name, seen) {
                         return Some(node);
@@ -361,6 +400,11 @@ impl Graph {
 
         for export in &module.exports {
             out.push(Node::Export(file, self.name_id(&export.name)));
+        }
+        // A namespace sees the whole table, including the shape of it, so a name that
+        // has left is part of what it sees.
+        for name in self.lost(file) {
+            out.push(Node::Export(file, name));
         }
         for &source in &module.export_stars {
             if let Some(target) = self.target_of(&analysed, source) {

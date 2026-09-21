@@ -84,13 +84,27 @@ pub fn analyse_file(path: &Path, pure: &PureList) -> Option<(ModuleAnalysis, Lin
     if !is_source_file(path) {
         return None;
     }
+    analyse_source(path, &fs::read_to_string(path).ok()?, pure)
+}
 
-    let source_text = fs::read_to_string(path).ok()?;
-    let line_table = LineTable::new(&source_text);
+/// Analyses text as if it were the contents of `path`.
+///
+/// `path` decides the dialect and nothing else, so an earlier version of a file can
+/// be analysed without being written anywhere.
+pub fn analyse_source(
+    path: &Path,
+    source_text: &str,
+    pure: &PureList,
+) -> Option<(ModuleAnalysis, LineTable)> {
+    if !is_source_file(path) {
+        return None;
+    }
+
+    let line_table = LineTable::new(source_text);
 
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_default();
-    let parsed = OxcParser::new(&allocator, &source_text, source_type).parse();
+    let parsed = OxcParser::new(&allocator, source_text, source_type).parse();
 
     let sources = collect_sources(&parsed.program);
 

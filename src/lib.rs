@@ -133,12 +133,21 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     }
 
     let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
-    let base = options.base.as_deref().map(base::Base::new);
+
+    // Both the declaration walk and the base comparison analyse modules, and both ask
+    // what the project calls pure. A run that does neither has no reason to read the
+    // list, nor to fail on one it cannot.
+    let pure = if options.granularity == Granularity::Symbol || options.base.is_some() {
+        pure::PureList::load(&root).map_err(Error::Config)?
+    } else {
+        pure::PureList::default()
+    };
+    let base = options
+        .base
+        .as_deref()
+        .map(|reference| base::Base::new(reference, pure.clone()));
 
     if options.granularity == Granularity::Symbol {
-        // Only the declaration-level walk asks what is pure, so only it reads the
-        // project's list.
-        let pure = pure::PureList::load(&root).map_err(Error::Config)?;
         return Ok(analyse_symbols(
             &anchors,
             &root,

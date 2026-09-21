@@ -15,30 +15,31 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{ContentEq, GetSpan, SourceType};
 
-use super::parse::{is_source_file, span_of};
-use super::{Span, decls};
+use super::parse::{analyse_source, is_source_file, span_of};
+use super::{FineModule, ModuleAnalysis, Span, decls};
+use crate::pure::PureList;
 
 /// How a file's current version differs from its base version.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Comparison {
     /// Spans, in the current version, of the top-level statements that differ.
     pub changed: Vec<Span>,
-    /// Nothing finer than the file can say what changed: the base version exported
-    /// something this one does not, or the two disagree about the module's
-    /// directives.
+    /// Names the base version exported and this one does not.
     ///
     /// A departed export is invisible from inside the file — everything left behind
     /// reads exactly as it did — and a consumer still naming it is not itself
-    /// changed. A name missing from an export table resolves to the file in any
-    /// case, so the file is both the honest mark and the only reachable one.
-    /// Renaming an export is this same case seen from the table, which is what makes
-    /// a rename detectable at all.
+    /// changed, so the name has to carry the mark. Renaming an export is this same
+    /// case seen from the table, which is what makes a rename detectable at all.
+    pub lost_exports: Vec<String>,
+    /// Nothing finer than the file can say what changed: the two disagree about the
+    /// module's directives, or an `export * from` went and took with it a set of
+    /// names that cannot be listed without reading the module it named.
     pub whole_file: bool,
     /// Something the base version did on evaluation is no longer done, or is done in
     /// a different order: an import or a bare statement went, a private declaration
@@ -50,14 +51,17 @@ pub struct Comparison {
 impl Comparison {
     /// Nothing observable differs between the two versions.
     pub fn is_empty(&self) -> bool {
-        self.changed.is_empty() && !self.whole_file && !self.init_differs
+        self.changed.is_empty()
+            && self.lost_exports.is_empty()
+            && !self.whole_file
+            && !self.init_differs
     }
 }
 
 /// Compares the file at `path` against the `before` text of it.
 ///
 /// `None` when the two cannot be compared statement by statement.
-pub fn compare(path: &Path, before: &str) -> Option<Comparison> {
+pub fn compare(path: &Path, before: &str, pure: &PureList) -> Option<Comparison> {
     if !is_source_file(path) {
         return None;
     }
@@ -129,23 +133,84 @@ pub fn compare(path: &Path, before: &str) -> Option<Comparison> {
         }
     }
 
-    // What is left is what the base version had and this one does not. A statement
-    // that put a name in the export table takes the whole file with it; one that only
-    // ran something takes module initialisation.
+    // What is left is what the base version had and this one does not. A removal
+    // costs two separate things: the names it took out of the export table, and the
+    // work it no longer does when the module is evaluated.
+    let removed: Vec<usize> = unmatched.into_values().flatten().collect();
+
+    // What the base version did on evaluation cannot be read off its syntax without
+    // guessing at which initialisers run something, so it is analysed the way any
+    // module is — but only when something went, which is not the common case.
+    let old_analysis = (!removed.is_empty())
+        .then(|| analyse_source(path, before, pure))
+        .flatten()
+        .map(|(analysis, _)| analysis);
+    let old_module = match &old_analysis {
+        Some(ModuleAnalysis::Fine(module)) => Some(module.as_ref()),
+        _ => None,
+    };
+
+    // A name the current version still exports has not gone, however its statement
+    // was rearranged.
+    let kept: AHashSet<&str> = new_statements
+        .iter()
+        .flat_map(|statement| statement.exports.names())
+        .map(String::as_str)
+        .collect();
+
     let mut whole_file = false;
-    for index in unmatched.into_values().flatten() {
-        if old_statements[index].exports {
+    let mut lost_exports = Vec::new();
+    for index in removed {
+        let statement = &old_statements[index];
+
+        let Some(module) = old_module else {
+            // A base version the analyser could not describe finely cannot be asked
+            // what it exported or what building it ran, so anything removed from one
+            // takes the file with it.
             whole_file = true;
-        } else {
+            init_differs = true;
+            continue;
+        };
+
+        match &statement.exports {
+            Exports::None => {}
+            Exports::Unknown => whole_file = true,
+            Exports::Names(names) => {
+                for name in names {
+                    if !kept.contains(name.as_str()) && !lost_exports.contains(name) {
+                        lost_exports.push(name.clone());
+                    }
+                }
+            }
+        }
+
+        if statement.runs || ran_on_evaluation(module, statement) {
             init_differs = true;
         }
     }
 
     Some(Comparison {
         changed,
+        lost_exports,
         whole_file,
         init_differs,
     })
+}
+
+/// Did evaluating the base version do this statement's work?
+///
+/// Only a statement that binds values has to ask; every other kind says so for
+/// itself. What the answer turns on is whether the initialiser may do anything, and
+/// that is a judgement the module analysis has already made.
+fn ran_on_evaluation(module: &FineModule, statement: &Keyed<'_>) -> bool {
+    if !matches!(statement.key, Key::Declares(_)) {
+        return false;
+    }
+    module
+        .init_decls
+        .iter()
+        .filter_map(|&decl| module.decls.get(decl as usize))
+        .any(|decl| decl.span == statement.span)
 }
 
 /// How a top-level statement is matched to its counterpart in the base version.
@@ -168,12 +233,37 @@ enum Key {
     Runs(usize),
 }
 
+/// What a statement puts in the file's export table.
+#[derive(Debug, PartialEq, Eq)]
+enum Exports {
+    /// Nothing.
+    None,
+    /// Exactly these names.
+    Names(Vec<String>),
+    /// Names that cannot be listed without reading another module, or without
+    /// leaving the language: `export * from "./g"`, `export =`.
+    Unknown,
+}
+
+impl Exports {
+    fn names(&self) -> &[String] {
+        match self {
+            Exports::Names(names) => names,
+            Exports::None | Exports::Unknown => &[],
+        }
+    }
+}
+
 struct Keyed<'a> {
     key: Key,
     node: &'a Statement<'a>,
     span: Span,
-    /// Puts at least one name in the file's export table.
-    exports: bool,
+    /// What it puts in the export table.
+    exports: Exports,
+    /// Evaluating the module does this statement's work, whatever its initialisers
+    /// turn out to do. A statement that only binds values is not decided here: what
+    /// its initialisers do is a question for the analysis.
+    runs: bool,
 }
 
 /// Every top-level statement, with the key it is matched by.
@@ -182,7 +272,7 @@ struct Keyed<'a> {
 /// the same condition that coarsens a module.
 fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
     let drafts = decls::collect(program)?;
-    let mut runs = 0;
+    let mut bare = 0;
     let mut statements = Vec::with_capacity(program.body.len());
 
     for (index, node) in program.body.iter().enumerate() {
@@ -192,33 +282,35 @@ fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
             .map(|draft| draft.name.clone())
             .collect();
 
+        // Every one of these brings in or runs something of its own. A statement
+        // that only binds values does not, and is left for the analysis to judge.
+        let mut runs = matches!(
+            node,
+            Statement::ImportDeclaration(_)
+                | Statement::ExportFromDeclaration(_)
+                | Statement::ExportAllDeclaration(_)
+        );
+
         let key = if !names.is_empty() {
-            Key::Declares(sorted(names))
+            Key::Declares(sorted(names.clone()))
         } else {
             match node {
                 Statement::ImportDeclaration(import) => {
                     Key::Imports(import.source.value.to_string())
                 }
-                Statement::ExportNamedDeclaration(export) => Key::Exports(sorted(
-                    export
-                        .specifiers
-                        .iter()
-                        .map(|specifier| specifier.exported.name().to_string())
-                        .collect(),
-                )),
-                Statement::ExportFromDeclaration(export) => Key::Exports(sorted(
-                    export
-                        .specifiers
-                        .iter()
-                        .map(|specifier| specifier.exported.name().to_string())
-                        .collect(),
-                )),
+                Statement::ExportNamedDeclaration(export) => {
+                    Key::Exports(sorted(exported_names(&export.specifiers)))
+                }
+                Statement::ExportFromDeclaration(export) => {
+                    Key::Exports(sorted(exported_names(&export.specifiers)))
+                }
                 Statement::ExportAllDeclaration(export) => {
                     Key::ExportsAll(export.source.value.to_string())
                 }
                 _ => {
-                    runs += 1;
-                    Key::Runs(runs - 1)
+                    runs = true;
+                    bare += 1;
+                    Key::Runs(bare - 1)
                 }
             }
         };
@@ -227,20 +319,46 @@ fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
             key,
             node,
             span: span_of(node.span()),
-            exports: matches!(
-                node,
-                Statement::ExportDeclaration(_)
-                    | Statement::ExportDefaultDeclaration(_)
-                    | Statement::ExportNamedDeclaration(_)
-                    | Statement::ExportFromDeclaration(_)
-                    | Statement::ExportAllDeclaration(_)
-                    | Statement::TSExportAssignment(_)
-                    | Statement::TSNamespaceExportDeclaration(_)
-            ),
+            exports: exports_of(node, names),
+            runs,
         });
     }
 
     Some(statements)
+}
+
+fn exported_names(specifiers: &oxc_allocator::Vec<'_, ExportSpecifier<'_>>) -> Vec<String> {
+    specifiers
+        .iter()
+        .map(|specifier| specifier.exported.name().to_string())
+        .collect()
+}
+
+/// What a statement puts in the export table, given the names it declares.
+fn exports_of(node: &Statement<'_>, declared: Vec<String>) -> Exports {
+    match node {
+        // `export const x = 1`, `export default ...`: what it declares is what it
+        // exports, and the default export is named for the slot it fills.
+        Statement::ExportDeclaration(_) | Statement::ExportDefaultDeclaration(_) => {
+            Exports::Names(declared)
+        }
+        Statement::ExportNamedDeclaration(export) => {
+            Exports::Names(exported_names(&export.specifiers))
+        }
+        Statement::ExportFromDeclaration(export) => {
+            Exports::Names(exported_names(&export.specifiers))
+        }
+        // `export * as ns from "./g"` exports one name it writes down; a plain
+        // `export * from "./g"` exports whatever the other module does.
+        Statement::ExportAllDeclaration(export) => match &export.exported {
+            Some(exported) => Exports::Names(vec![exported.name().to_string()]),
+            None => Exports::Unknown,
+        },
+        Statement::TSExportAssignment(_) | Statement::TSNamespaceExportDeclaration(_) => {
+            Exports::Unknown
+        }
+        _ => Exports::None,
+    }
 }
 
 /// One statement declaring several names must key the same however they were spelled.
@@ -258,7 +376,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("module.ts");
         fs::write(&path, after).expect("writing the current version");
-        compare(&path, before)
+        compare(&path, before, &PureList::default())
     }
 
     /// The text of each statement the comparison calls changed.
@@ -318,14 +436,15 @@ mod tests {
     }
 
     #[test]
-    fn a_renamed_declaration_is_a_removal() {
-        // The new name arrives as a change, and the old one leaving is what makes
-        // the file's export table something a consumer cannot be sure about.
+    fn a_renamed_export_loses_the_old_name() {
+        // The new name arrives as a change; the old one leaving is what a consumer
+        // still asking for it has to be told about.
         let before = "export const a = 1;\n";
         let after = "export const b = 1;\n";
 
         let comparison = compared(before, after).expect("comparable");
-        assert!(comparison.whole_file);
+        assert_eq!(comparison.lost_exports, vec!["a".to_string()]);
+        assert!(!comparison.whole_file);
     }
 
     #[test]
@@ -339,8 +458,41 @@ mod tests {
     }
 
     #[test]
-    fn a_removed_export_takes_the_file_with_it() {
+    fn a_removed_export_is_named_rather_than_coarsened() {
         let before = "export const a = 1;\nexport const b = 2;\n";
+        let after = "export const a = 1;\n";
+
+        let comparison = compared(before, after).expect("comparable");
+        assert_eq!(comparison.lost_exports, vec!["b".to_string()]);
+        // Nothing ran to build it, so nothing stopped running when it went.
+        assert!(!comparison.init_differs);
+        assert!(!comparison.whole_file);
+    }
+
+    #[test]
+    fn a_removed_export_whose_value_was_computed_changes_initialisation_too() {
+        let before = "export const a = 1;\nexport const b = register();\n";
+        let after = "export const a = 1;\n";
+
+        let comparison = compared(before, after).expect("comparable");
+        assert_eq!(comparison.lost_exports, vec!["b".to_string()]);
+        assert!(comparison.init_differs);
+    }
+
+    #[test]
+    fn a_reshuffled_export_has_not_gone() {
+        // The same name, exported by a different statement. The declaration is
+        // reported changed; the name is not reported lost.
+        let before = "export const a = 1;\n";
+        let after = "const a = 1;\nexport { a };\n";
+
+        let comparison = compared(before, after).expect("comparable");
+        assert!(comparison.lost_exports.is_empty());
+    }
+
+    #[test]
+    fn an_export_star_that_went_took_names_it_cannot_list() {
+        let before = "export * from \"./g\";\nexport const a = 1;\n";
         let after = "export const a = 1;\n";
 
         assert!(compared(before, after).expect("comparable").whole_file);

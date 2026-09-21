@@ -1,0 +1,29 @@
+# Deleting dead code, and the four ways a page can be looking at it.
+#
+# `formatPrice` goes. Building it was nothing the module did on evaluation, so the
+# only thing that changed about `helpers.ts` is that one name is no longer in its
+# export table. `DatePage` imports the other name and must not hear about it;
+# marking the file here would report every importer for a change none of them can
+# see, which is the most expensive way to be right.
+#
+# The other three are how a departed name is still reached. `LegacyPage` names it
+# directly, `NamespacePage` sees the shape of the whole table, and `BarrelPage` asks
+# for it through an `export *`. Each is left as the change forgot to leave it — a
+# consumer the change *did* update would be in the diff and marked for its own sake,
+# so the question a removal raises is only ever about the ones it did not.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false
+from = "base"
+
+[[anchor]]
+path = "src/pages/LegacyPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/NamespacePage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/BarrelPage.tsx"
+affected = true
