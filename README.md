@@ -36,6 +36,7 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
 | `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
 | `-e, --explain` | Print the chain of imports that produced the verdict. |
+| `--unresolved` | List the specifiers this run reached and could not place on disk. See below. |
 
 `--diff` and `--changed` may be combined; their file sets are unioned. A diff is read
 as text rather than by shelling out, so the tool needs no git checkout at runtime;
@@ -413,6 +414,37 @@ initialiser is a call, so it runs whenever the module is loaded.
 
 The chain always reads in import order — each file imports the next — so a downstream
 path starts at the anchor and an upstream path ends at it.
+
+### Unresolved imports
+
+An import specifier that resolves to nothing is an edge the graph does not have, and
+it is the quietest way this tool can be wrong: the edge is dropped, the search carries
+on, and out comes a confident "not affected" with no sign that anything went missing.
+
+```
+$ fallout --anchor apps/web/app/index.tsx --diff pr.diff --unresolved
+No reachability impact detected
+
+Resolved to nothing: 2 specifier(s), written in 3 file(s).
+  #app/assets/cover.png
+    apps/web/app/components/cover.tsx
+    apps/web/app/components/hero.tsx
+  ~sass/settings-and-mixins
+    apps/web/app/styles/page.scss
+```
+
+Nothing is done about it automatically, because an unresolved specifier is not by
+itself a fault: a package nobody installed on this machine looks exactly like a broken
+import, and a virtual module the bundler invents has no file to find. The flag reports
+and does not judge — the verdict and the exit code are the same with it and without.
+
+Two kinds are left out, because they are answers rather than failures: Node builtins
+(`fs`, `node:fs/promises`) and Sass modules (`@use "sass:math"`). Neither names a file
+and neither ever will.
+
+The report covers what the run **reached**. A search that stops at the first change it
+finds has not looked at the rest of the graph and does not report on it, so the widest
+report comes from a run that finds nothing.
 
 ## What counts as an import
 

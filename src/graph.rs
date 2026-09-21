@@ -74,9 +74,13 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(reading: Reading, inline_requires: bool) -> Self {
+    pub fn new(
+        reading: Reading,
+        inline_requires: bool,
+        unresolved: std::sync::Arc<crate::resolve::Unresolved>,
+    ) -> Self {
         Self {
-            resolver: Resolver::new(reading.configs.clone()),
+            resolver: Resolver::new(reading.configs.clone(), unresolved),
             reading,
             inline_requires,
             paths: RefCell::new(Vec::new()),
@@ -151,10 +155,13 @@ impl Graph {
         &self.reading
     }
 
-    /// What the project declared about itself, for the parts of the run that build a
-    /// resolver of their own and must resolve the same way.
-    pub fn configs(&self) -> std::sync::Arc<crate::config::Configs> {
-        self.reading.configs.clone()
+    /// The resolver this graph is built on.
+    ///
+    /// Shared rather than rebuilt by the parts of the run that need one of their own:
+    /// resolving the same specifier twice must give the same answer, and a second
+    /// resolver would start with an empty cache to prove it.
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
     }
 
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.
@@ -482,7 +489,11 @@ impl Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        Self::new(Reading::default(), false)
+        Self::new(
+            Reading::default(),
+            false,
+            std::sync::Arc::new(crate::resolve::Unresolved::default()),
+        )
     }
 }
 

@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 
 use crate::query::{Direction, Hit};
 
-use crate::resolve::Resolver;
+use crate::resolve::{Resolver, Unresolved};
 
 /// How finely the analysis distinguishes parts of a file.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
@@ -70,6 +70,15 @@ pub struct Options {
     pub include_types: bool,
 }
 
+/// One run's answer, and what it noticed on the way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub verdict: Verdict,
+    /// Specifiers the run asked for and could not place on disk, each with the files
+    /// that wrote it. Reported only when asked for: see [`resolve::Unresolved`].
+    pub unresolved: Vec<(String, Vec<PathBuf>)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
     Affected(Hit),
@@ -112,7 +121,16 @@ pub fn canonical_root(root: &Path) -> PathBuf {
     root.canonicalize().unwrap_or_else(|_| root.to_path_buf())
 }
 
-pub fn analyse(options: &Options) -> Result<Verdict, Error> {
+pub fn analyse(options: &Options) -> Result<Outcome, Error> {
+    let unresolved = std::sync::Arc::new(Unresolved::default());
+    let verdict = analysed(options, &unresolved)?;
+    Ok(Outcome {
+        verdict,
+        unresolved: unresolved.sorted(),
+    })
+}
+
+fn analysed(options: &Options, unresolved: &std::sync::Arc<Unresolved>) -> Result<Verdict, Error> {
     if options.anchors.is_empty() {
         return Err(Error::NoAnchors);
     }
@@ -156,15 +174,8 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         .map(|reference| base::Base::new(reference, reading.clone()));
 
     if options.granularity == Granularity::Symbol {
-        let verdict = analyse_symbols(
-            &anchors,
-            &root,
-            &change_set,
-            options,
-            reading,
-            inline_requires,
-            base.as_ref(),
-        );
+        let graph = graph::Graph::new(reading, inline_requires, unresolved.clone());
+        let verdict = analyse_symbols(&anchors, &root, &change_set, options, &graph, base.as_ref());
         return match configs.failure() {
             Some(error) => Err(Error::Config(error)),
             None => Ok(verdict),
@@ -183,7 +194,7 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         return Ok(Verdict::NotAffected);
     }
 
-    let resolver = Resolver::new(configs.clone());
+    let resolver = Resolver::new(configs.clone(), unresolved.clone());
 
     let mut verdict = Verdict::NotAffected;
     if options.only != Some(Direction::Upstream)
@@ -212,19 +223,17 @@ fn analyse_symbols(
     root: &Path,
     change_set: &diff::ChangeSet,
     options: &Options,
-    reading: module::Reading,
-    inline_requires: bool,
+    graph: &graph::Graph,
     base: Option<&base::Base>,
 ) -> Verdict {
-    let graph = graph::Graph::new(reading, inline_requires);
-    let marked = marks::marked_nodes(&graph, change_set, root, &options.changed, base);
+    let marked = marks::marked_nodes(graph, change_set, root, &options.changed, base);
 
     if marked.is_empty() {
         return Verdict::NotAffected;
     }
 
     if options.only != Some(Direction::Upstream) {
-        if let Some(nodes) = query::downstream_symbols(anchors, &marked, &graph) {
+        if let Some(nodes) = query::downstream_symbols(anchors, &marked, graph) {
             let path = nodes.iter().map(|node| graph.path(node.file())).collect();
             let rendered = nodes.iter().map(|node| graph.render(*node, root)).collect();
             return Verdict::Affected(Hit {
@@ -238,8 +247,7 @@ fn analyse_symbols(
     if options.only != Some(Direction::Downstream) {
         let changed =
             changes::marked_files(root, change_set, &options.changed, base, graph.reading());
-        let resolver = Resolver::new(graph.configs());
-        if let Some(hit) = query::upstream(anchors, &changed, &resolver, graph.reading()) {
+        if let Some(hit) = query::upstream(anchors, &changed, graph.resolver(), graph.reading()) {
             return Verdict::Affected(hit);
         }
     }

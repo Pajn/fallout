@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use clap::Parser as ClapParser;
 
 use crate::query::{Direction, Hit};
-use crate::{Granularity, Options, Verdict, analyse, canonical_root};
+use crate::{Granularity, Options, Outcome, Verdict, analyse, canonical_root};
 
 #[derive(ClapParser)]
 #[command(about = "Decide whether a change can reach a page, by walking the import graph")]
@@ -48,6 +48,17 @@ pub struct Cli {
     /// Print the chain of imports that produced the verdict
     #[arg(short, long)]
     pub explain: bool,
+
+    /// List the import specifiers this run reached and could not place on disk
+    ///
+    /// Each one is an edge the graph does not have. Some name no file and never
+    /// will — a package nobody installed here, a virtual module the bundler makes —
+    /// so this is a report to read rather than a check that passes or fails.
+    ///
+    /// It covers what the run reached. A search that stops at the first change it
+    /// finds has not looked at the rest of the graph, and does not report on it.
+    #[arg(long)]
+    pub unresolved: bool,
 }
 
 pub fn run() -> ExitCode {
@@ -62,6 +73,7 @@ pub fn run() -> ExitCode {
         None => None,
     };
 
+    let (explain, list_unresolved) = (cli.explain, cli.unresolved);
     let root = cli.root.unwrap_or_else(|| PathBuf::from("."));
     let options = Options {
         anchors: cli.anchor,
@@ -75,25 +87,68 @@ pub fn run() -> ExitCode {
     };
 
     match analyse(&options) {
-        Ok(Verdict::Affected(hit)) => {
-            println!(
-                "Impact detected on target anchor via: {:?}",
-                hit.changed_file()
-            );
-            if cli.explain {
-                print_explanation(&hit, &canonical_root(&root), options.granularity);
+        Ok(outcome) => {
+            let code = report(&outcome, explain, &root, options.granularity);
+            if list_unresolved {
+                print_unresolved(&outcome, &canonical_root(&root));
             }
-            ExitCode::SUCCESS
-        }
-        Ok(Verdict::NotAffected) => {
-            println!("No reachability impact detected");
-            ExitCode::FAILURE
+            code
         }
         Err(error) => {
             eprintln!("Error: {}", error);
             ExitCode::FAILURE
         }
     }
+}
+
+fn report(outcome: &Outcome, explain: bool, root: &Path, granularity: Granularity) -> ExitCode {
+    match &outcome.verdict {
+        Verdict::Affected(hit) => {
+            println!(
+                "Impact detected on target anchor via: {:?}",
+                hit.changed_file()
+            );
+            if explain {
+                print_explanation(hit, &canonical_root(root), granularity);
+            }
+            ExitCode::SUCCESS
+        }
+        Verdict::NotAffected => {
+            println!("No reachability impact detected");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Every specifier the run could not place on disk, and who wrote it.
+///
+/// Printed after the verdict and never instead of it. An unresolved specifier is not
+/// by itself a fault — a package nobody installed on this machine looks exactly the
+/// same — so this reports and does not judge.
+fn print_unresolved(outcome: &Outcome, root: &Path) {
+    if outcome.unresolved.is_empty() {
+        println!("\nEvery specifier this run reached resolved to a file.");
+        return;
+    }
+    let writers: usize = outcome.unresolved.iter().map(|(_, from)| from.len()).sum();
+    println!(
+        "\nResolved to nothing: {} specifier(s), written in {} file(s).",
+        outcome.unresolved.len(),
+        writers
+    );
+    for (specifier, from) in &outcome.unresolved {
+        println!("  {specifier}");
+        for file in from {
+            println!("    {}", shown(file, root));
+        }
+    }
+}
+
+fn shown(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 fn read_diff(path: &Path) -> Result<String, String> {

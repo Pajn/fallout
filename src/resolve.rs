@@ -15,8 +15,8 @@ use std::sync::{Arc, RwLock};
 
 use ahash::AHashMap;
 use oxc_resolver::{
-    PackageJson, Resolution, ResolveOptions, Resolver as OxcResolver, SideEffects as Declared,
-    TsconfigDiscovery,
+    PackageJson, Resolution, ResolveError, ResolveOptions, Resolver as OxcResolver,
+    SideEffects as Declared, TsconfigDiscovery,
 };
 
 use crate::config::{Chain, Configs};
@@ -39,6 +39,51 @@ const SASS_BUILTINS: &[&str] = &[
     "sass:string",
 ];
 
+/// Specifiers a run asked for and could not place on disk.
+///
+/// Resolving to nothing is the quietest way this tool can be wrong. The edge is
+/// dropped, the traversal carries on, and the verdict that comes out is a confident
+/// "not affected" with no sign that anything went missing. Nothing is done about it
+/// automatically — an import that names no file on this machine is usually a package
+/// nobody installed rather than a fault in the tree — but `--unresolved` will say
+/// what was asked for, so a whole app's worth of lost edges is something a person can
+/// go and look at rather than something they have to already suspect.
+///
+/// Specifiers that name no file *by design* are not recorded: a Node builtin and a
+/// `sass:` module are answers, not failures.
+#[derive(Debug, Default)]
+pub struct Unresolved {
+    seen: RwLock<AHashMap<String, Vec<PathBuf>>>,
+}
+
+impl Unresolved {
+    fn note(&self, from: &Path, specifier: &str) {
+        let mut seen = self.seen.write().unwrap();
+        let writers = seen.entry(specifier.to_string()).or_default();
+        if !writers.iter().any(|known| known == from) {
+            writers.push(from.to_path_buf());
+        }
+    }
+
+    /// Each specifier with the files that wrote it, both in a settled order so that
+    /// two runs over the same tree print the same report.
+    pub fn sorted(&self) -> Vec<(String, Vec<PathBuf>)> {
+        let mut out: Vec<(String, Vec<PathBuf>)> = self
+            .seen
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(specifier, writers)| {
+                let mut writers = writers.clone();
+                writers.sort();
+                (specifier.clone(), writers)
+            })
+            .collect();
+        out.sort();
+        out
+    }
+}
+
 /// What importing a file can do beyond defining its exports.
 ///
 /// This is the `sideEffects` field of the nearest `package.json`: a claim the author
@@ -59,6 +104,9 @@ pub struct Resolver {
     inner: OxcResolver,
     /// What each file's own directory chain declares. See [`crate::config`].
     configs: Arc<Configs>,
+    /// Specifiers this run could not place. Shared, because a run builds more than
+    /// one resolver and the report is about the run.
+    unresolved: Arc<Unresolved>,
     /// The same as `inner`, tuned for Sass, one per set of aliases. Keyed by the
     /// config directories that produced them, which is the identity of the answer.
     style: RwLock<AHashMap<Vec<PathBuf>, Arc<OxcResolver>>>,
@@ -71,7 +119,7 @@ pub struct Resolver {
 impl Resolver {
     /// `configs` is what the project declared about itself, which is the only place a
     /// stylesheet name that is not a path can come from. See [`crate::config`].
-    pub fn new(configs: Arc<Configs>) -> Self {
+    pub fn new(configs: Arc<Configs>, unresolved: Arc<Unresolved>) -> Self {
         let options = ResolveOptions {
             extensions: vec![
                 ".tsx".to_string(),
@@ -85,6 +133,10 @@ impl Resolver {
                 ".json".to_string(),
             ],
             tsconfig: Some(TsconfigDiscovery::Auto),
+            // So that `fs` and `node:fs` come back as themselves rather than as a
+            // package nobody installed. They name no file, and saying so is what
+            // keeps them out of the unresolved report.
+            builtin_modules: true,
             // TypeScript makes a module specifier name the file the compiler will
             // emit, not the file on disk, so `./helper.js` is how a `.ts` file next
             // door is spelled — and `"#app/*": "./app/*.js"` is how a whole package
@@ -119,6 +171,7 @@ impl Resolver {
         Self {
             inner: OxcResolver::new(options),
             configs,
+            unresolved,
             style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
             side_effects: RwLock::new(AHashMap::default()),
@@ -157,16 +210,26 @@ impl Resolver {
             return cached.clone();
         }
 
+        // Whether the specifier names no file *by design*, which is a different thing
+        // from one this run could not find and is not worth reporting as a failure.
+        let mut names_no_file = false;
         let resolution = if is_style_file(from_file) {
+            names_no_file = SASS_BUILTINS.contains(&specifier);
             self.resolve_style(from_file, specifier)
         } else {
-            let mut resolution = self.inner.resolve_file(from_file, specifier).ok();
-            if resolution.is_none()
+            let mut attempt = self.inner.resolve_file(from_file, specifier);
+            if attempt.is_err()
                 && let Some(request) = strip_inline_loaders(specifier)
             {
-                resolution = self.inner.resolve_file(from_file, request).ok();
+                attempt = self.inner.resolve_file(from_file, request);
             }
-            resolution
+            match attempt {
+                Ok(found) => Some(found),
+                Err(error) => {
+                    names_no_file = matches!(error, ResolveError::Builtin { .. });
+                    None
+                }
+            }
         };
 
         let result = resolution.map(|resolution| {
@@ -178,6 +241,9 @@ impl Resolver {
             path
         });
 
+        if result.is_none() && !names_no_file {
+            self.unresolved.note(from_file, specifier);
+        }
         self.cache
             .write()
             .unwrap()
@@ -277,7 +343,10 @@ fn matches(pattern: &str, relative: &str) -> bool {
 
 impl Default for Resolver {
     fn default() -> Self {
-        Self::new(Arc::new(Configs::new(Path::new("."))))
+        Self::new(
+            Arc::new(Configs::new(Path::new("."))),
+            Arc::new(Unresolved::default()),
+        )
     }
 }
 

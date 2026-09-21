@@ -778,3 +778,116 @@ fn test_unread_config_does_not_fail_the_run() {
 
     assert_eq!(code, 0, "still a verdict: {stdout}{stderr}");
 }
+
+/// Lays a file with a mix of specifiers over the sample project: one that names
+/// nothing, and two that name no file by design.
+fn setup_unresolved_project(root: &PathBuf) {
+    setup_test_project(root);
+
+    fs::write(
+        root.join("src/utils/lost.ts"),
+        r#"import { gone } from "./nowhere";
+import { readFile } from "fs";
+import { open } from "node:fs/promises";
+export const lost = () => gone(readFile, open);"#,
+    ).unwrap();
+
+    fs::write(
+        root.join("src/pages/lost.scss"),
+        "@use 'sass:math';\n@use './missing';\n.lost { width: math.div(1, 2); }\n",
+    ).unwrap();
+
+    fs::write(
+        root.join("src/pages/LostPage.tsx"),
+        r#"import { lost } from "../utils/lost";
+import "./lost.scss";
+export const LostPage = () => lost();"#,
+    ).unwrap();
+}
+
+#[test]
+fn test_unresolved_lists_what_named_no_file() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_unresolved_project(&root);
+
+    // A change the anchor cannot reach, so the search walks the whole graph rather
+    // than stopping at the first hit. The report covers what the run reached.
+    let (_, stdout, _) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/LostPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol", "--unresolved"],
+    );
+
+    assert!(
+        stdout.contains("./nowhere"),
+        "the specifier that named nothing is listed: {stdout}"
+    );
+    assert!(
+        stdout.contains("src/utils/lost.ts"),
+        "and the file that wrote it: {stdout}"
+    );
+    assert!(
+        stdout.contains("./missing"),
+        "a stylesheet's specifier counts too: {stdout}"
+    );
+}
+
+/// A Node builtin and a `sass:` module are answers, not failures.
+#[test]
+fn test_unresolved_leaves_out_what_names_no_file_by_design() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_unresolved_project(&root);
+
+    let (_, stdout, _) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/LostPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol", "--unresolved"],
+    );
+
+    for named in ["\"fs\"", "  fs\n", "node:fs/promises", "sass:math"] {
+        assert!(
+            !stdout.contains(named),
+            "{named} names no file and is not a failure: {stdout}"
+        );
+    }
+}
+
+/// The flag reports and does not judge: same verdict, same exit code.
+#[test]
+fn test_unresolved_does_not_change_the_verdict() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_unresolved_project(&root);
+
+    let plain = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/LostPage.tsx"],
+        &["src/utils/lost.ts"],
+        &["--granularity", "symbol"],
+    );
+    let listed = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/LostPage.tsx"],
+        &["src/utils/lost.ts"],
+        &["--granularity", "symbol", "--unresolved"],
+    );
+
+    assert_eq!(plain.0, listed.0, "same exit code");
+    assert!(
+        listed.1.starts_with(&plain.1),
+        "the verdict is untouched and the report follows it:\n{}\n---\n{}",
+        plain.1,
+        listed.1
+    );
+}
