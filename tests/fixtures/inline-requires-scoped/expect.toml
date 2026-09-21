@@ -1,0 +1,28 @@
+# One changed file, two anchors, opposite verdicts — decided by nothing but which app
+# the anchor is in. The trees are identical and neither page reaches a name in
+# `logger.ts`: `warn` is used by `checkTheme`, which no page reaches.
+#
+# The mobile app declares that its bundler defers each import to the first use of the
+# binding, so importing `theme.ts` evaluates nothing and the chain of module
+# initialisations that would carry the page to `logger.ts` does not exist. The web app
+# declares nothing, so it keeps the default and is reached.
+#
+# This is why the claim is scoped. Written once at the root it would be a false claim
+# about the web app, and a false claim here drops edges.
+[[anchor]]
+path = "apps/web/page.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(apps/web/page.tsx)",
+    "ModuleInit(apps/web/page.tsx)",
+    "ModuleInit(apps/web/badge.tsx)",
+    "ModuleInit(apps/web/theme.ts)",
+    "ModuleInit(packages/log/logger.ts)",
+    "Decl(packages/log/logger.ts, createPrefix)",
+]
+
+[[anchor]]
+path = "apps/mobile/page.tsx"
+affected = false

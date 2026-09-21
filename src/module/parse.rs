@@ -14,7 +14,6 @@ use oxc_span::{GetSpan, SourceType};
 use super::{
     Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, init, refs, types,
 };
-use crate::pure::PureList;
 
 /// Extensions we parse for further imports. Anything else that resolves — images,
 /// fonts, stylesheets, JSON — is a leaf: it can be reported as affected, but it is
@@ -195,7 +194,10 @@ pub fn analyse_source(
         .build(&parsed.program)
         .semantic;
 
-    let analysis = match build_fine(&parsed.program, &semantic, &sources, &reading.pure, &cjs) {
+    // Which callees count as pure is the claim of the files above this one, not of
+    // the run: a package may call its own factory pure without saying so for an app.
+    let chain = reading.configs.chain(path);
+    let analysis = match build_fine(&parsed.program, &semantic, &sources, chain.pure(), &cjs) {
         Some(module) => ModuleAnalysis::Fine(Box::new(module)),
         None => ModuleAnalysis::Coarse { sources },
     };
@@ -206,7 +208,7 @@ fn build_fine(
     program: &Program<'_>,
     semantic: &Semantic<'_>,
     sources: &[String],
-    pure: &PureList,
+    pure: &crate::pure::PureList,
     cjs: &cjs::Table,
 ) -> Option<FineModule> {
     let statements = program

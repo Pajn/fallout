@@ -722,3 +722,59 @@ fn test_only_rejects_unknown_direction() {
     assert_ne!(code, 0, "Expected non-zero exit code for an unknown direction, got {}. stdout: {}", code, stdout);
     assert!(stderr.contains("sideways"), "Expected the error to name the bad value, got stderr: {}", stderr);
 }
+
+/// A config the run needs and cannot read replaces the verdict.
+///
+/// Silence is the failure mode this guards against. A setting that quietly does
+/// nothing shows up later as a verdict nobody can explain, and the whole point of
+/// declaring it was to be believed.
+#[test]
+fn test_unreadable_config_is_reported_rather_than_ignored() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+
+    fs::write(root.join("src/components/fallout.toml"), "inline-requires = 3\n").unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/components/Card.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol"],
+    );
+
+    let said = format!("{stdout}{stderr}");
+    assert_ne!(
+        code, 0,
+        "a config that cannot be read is not a verdict: {said}"
+    );
+    assert!(
+        said.contains("inline-requires"),
+        "the message names the setting: {said}"
+    );
+}
+
+/// A config in a subtree the run never enters cannot have changed the answer, so it
+/// is not this run's business to fail on it.
+#[test]
+fn test_unread_config_does_not_fail_the_run() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+
+    fs::create_dir_all(root.join("src/elsewhere")).unwrap();
+    fs::write(root.join("src/elsewhere/fallout.toml"), "inline-requires = 3\n").unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/components/Card.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol"],
+    );
+
+    assert_eq!(code, 0, "still a verdict: {stdout}{stderr}");
+}

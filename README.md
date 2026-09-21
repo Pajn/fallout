@@ -109,7 +109,7 @@ Three things take a call back out of initialisation:
 - entries in the project's `fallout.toml`.
 
 ```toml
-# fallout.toml, read from --root
+# fallout.toml
 pure = [
   "react-native#StyleSheet.create",
   "app/graphql#graphql",
@@ -120,7 +120,8 @@ builtin-pure = true
 ```
 
 The same file carries `inline-requires`, under [Inline requires](#inline-requires),
-and `[style.aliases]`, under [Stylesheets](#stylesheets).
+and `[style.aliases]`, under [Stylesheets](#stylesheets). Where it sits decides who it
+speaks for — see [Where a claim applies](#where-a-claim-applies).
 
 An entry is written as the import source, `#`, and the path taken from the binding
 that import introduces. The first segment is the name the target exports, with
@@ -131,6 +132,49 @@ local function called `memo` is not React's, and keeps its call impure.
 An entry is a claim about someone else's function. It says nothing about the
 arguments, which still run, and nothing about the exports of the file it sits in,
 which are reached by name however the declaration was built.
+
+### Where a claim applies
+
+A `fallout.toml` is read from `--root`, and from any directory beneath it. A file in
+`d` speaks for the files under `d`, and each file is answered by the chain from its
+own directory up to the root.
+
+A monorepo is why. Its apps are bundled by different tools and its packages give the
+same name different meanings, so one file at the root cannot state what is true of all
+of them: a single `inline-requires` would be a false claim about every app that does
+not inline, and a single `[style.aliases]` table hands every app's names to every
+other app's directories.
+
+```
+fallout.toml               pure = [...]            # everywhere
+apps/mobile/fallout.toml   inline-requires = true  # this app's bundler
+packages/ui/fallout.toml   [style.aliases]         # this package's stylesheets
+```
+
+What happens where several files apply follows from the direction each setting is
+wrong in:
+
+| setting | several apply |
+|---------|---------------|
+| `[style.aliases]` | accumulate, nearest first — a name gets every directory claimed for it, tried in order |
+| `pure` | accumulate, and an entry only ever applies below the file that wrote it |
+| `builtin-pure`, `inline-requires` | one answer, so the nearest wins |
+
+Aliases and pure entries accumulate rather than override because a name that resolves
+to nothing loses an edge: the chain must never offer fewer candidates than the root
+alone.
+
+Which file does the asking is not the same for every setting, because they are not
+claims about the same thing. An alias and a pure entry belong to the file doing the
+importing — `packages/ui/card.scss` means one thing by `settings` whoever bundles it —
+so they are read from the chain above that file. `inline-requires` is not a property
+of a file at all but of the bundler, and the bundler is picked by the app being asked
+about: the same shared module is inlined when a mobile bundler pulls it in and is not
+when a web bundler does. So it is read from the chain above the **anchor**, and with
+several anchors it holds only if every one of them claims it.
+
+Files are read as the run reaches what they speak for. A malformed file in a subtree
+the run never enters is not reported, and could not have changed the answer.
 
 ### `sideEffects`
 
@@ -164,9 +208,14 @@ so importing a module does nothing until something reads one of its names. A pro
 built that way says so:
 
 ```toml
-# fallout.toml, read from --root
+# apps/mobile/fallout.toml
 inline-requires = true
 ```
+
+Written beside the app it describes, not at the root, unless every app in the tree is
+bundled the same way. It is read from the chain above the anchor, so it is the page
+being asked about that decides — see [Where a claim
+applies](#where-a-claim-applies).
 
 Then importing no longer evaluates, and reaching a name does. `ModuleInit(g)` hangs
 off `Export(g, name)` instead of off `ModuleInit(f)`, which is the same work
@@ -182,8 +231,9 @@ to hang its evaluation on.
 
 The setting is a claim about the build, and a wrong one under-reports: it would put
 every top-level side effect behind a name nobody reads. It is off unless the project
-turns it on, and it only affects `--granularity symbol`, since a whole-file verdict
-has no separate node for module initialisation.
+turns it on, several anchors have to agree before it applies, and it only affects
+`--granularity symbol`, since a whole-file verdict has no separate node for module
+initialisation.
 
 ### CommonJS
 
@@ -409,26 +459,29 @@ bundler config gives to a directory, and that config is a program rather than da
 the project declares what it means:
 
 ```toml
-# fallout.toml, read from --root
+# apps/web/fallout.toml
 [style.aliases]
-styles = "apps/web/app/styles"
+styles = "app/styles"
 
-# Several apps, one name. Each is tried in turn.
-sass = ["apps/business/app/sass", "apps/storefront/styles"]
+# One name, several directories. Each is tried in turn.
+sass = ["app/sass", "../../packages/ui/sass"]
 ```
 
-Targets are relative to `fallout.toml`. Write the name without the `~`: it is dropped
-before anything is looked up, so one entry covers `~styles/settings` and
-`styles/settings` both. A name with no entry resolves to nothing, and a stylesheet
-reached only through it is not reached at all.
+Targets are relative to the `fallout.toml` that declares them. Write the name without
+the `~`: it is dropped before anything is looked up, so one entry covers
+`~styles/settings` and `styles/settings` both. A name with no entry resolves to
+nothing, and a stylesheet reached only through it is not reached at all.
+
+Two apps may give one name two meanings, because a table is read from the chain above
+the stylesheet that wrote the import — see [Where a claim
+applies](#where-a-claim-applies). A table nearer the file is tried before one further
+up, and both are tried, so a root table stays the fallback for the packages neither
+app owns.
 
 ### Known gaps
 
 - An image referenced only by `url()` inside a stylesheet is not reached: a stylesheet
   is read for the stylesheets it pulls in, not for the assets it points at.
-- A stylesheet alias is one name for one list of directories, for the whole run. A
-  monorepo where two apps give the same name different meanings has to list both, and
-  gets the union.
 - Workers named by a bare string — `new Worker("./worker.js")` or
   `navigator.serviceWorker.register("/sw.js")` — are not detected. Bundlers require the
   `new URL` form, but a service worker registered by public URL has no source path to

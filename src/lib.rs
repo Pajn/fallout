@@ -86,12 +86,10 @@ impl Verdict {
 pub enum Error {
     NoAnchors,
     MissingAnchors(Vec<String>),
-    /// The project's `fallout.toml` is there but could not be read. Reported rather
-    /// than ignored: a setting that silently does nothing would show up as a verdict
-    /// nobody can explain.
-    Config(pure::Error),
-    /// The same, for the claims that file makes about the project itself.
-    Project(config::Error),
+    /// A `fallout.toml` the run needed is there but could not be read. Reported
+    /// rather than ignored: a setting that silently does nothing would show up as a
+    /// verdict nobody can explain.
+    Config(config::Error),
 }
 
 impl fmt::Display for Error {
@@ -102,7 +100,6 @@ impl fmt::Display for Error {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
             }
             Error::Config(error) => write!(f, "{error}"),
-            Error::Project(error) => write!(f, "{error}"),
         }
     }
 }
@@ -143,37 +140,35 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
 
     let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
 
-    // Both the declaration walk and the base comparison analyse modules, and both ask
-    // what the project calls pure. A run that does neither has no reason to read the
-    // list, nor to fail on one it cannot.
-    let pure = if options.granularity == Granularity::Symbol || options.base.is_some() {
-        pure::PureList::load(&root).map_err(Error::Config)?
-    } else {
-        pure::PureList::default()
-    };
+    // Every `fallout.toml` at or below the root, read as the run reaches the files
+    // each one speaks for. A run that analyses no module reads none of them.
+    let configs = std::sync::Arc::new(config::Configs::new(&root));
     let reading = module::Reading {
-        pure,
+        configs: configs.clone(),
         ignore_types: !options.include_types,
     };
-    // Unlike the pure list, this is read on every run: a stylesheet alias decides
-    // which files exist in the graph at all, which every granularity depends on. The
-    // rest of the file is parsed with it, since it is one file and one read.
-    let project = config::Project::load(&root).map_err(Error::Project)?;
+    // Whether imports are deferred describes the bundler, and the anchors are what
+    // pick one. Decided here, once, because the graph has no anchors of its own.
+    let inline_requires = configs.inline_requires(&anchors);
     let base = options
         .base
         .as_deref()
         .map(|reference| base::Base::new(reference, reading.clone()));
 
     if options.granularity == Granularity::Symbol {
-        return Ok(analyse_symbols(
+        let verdict = analyse_symbols(
             &anchors,
             &root,
             &change_set,
             options,
             reading,
-            &project,
+            inline_requires,
             base.as_ref(),
-        ));
+        );
+        return match configs.failure() {
+            Some(error) => Err(Error::Config(error)),
+            None => Ok(verdict),
+        };
     }
 
     let changed = changes::marked_files(
@@ -188,21 +183,26 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         return Ok(Verdict::NotAffected);
     }
 
-    let resolver = Resolver::new(&project.style);
+    let resolver = Resolver::new(configs.clone());
 
-    if options.only != Some(Direction::Upstream) {
-        if let Some(hit) = query::downstream(&anchors, &changed, &resolver, &reading) {
-            return Ok(Verdict::Affected(hit));
-        }
+    let mut verdict = Verdict::NotAffected;
+    if options.only != Some(Direction::Upstream)
+        && let Some(hit) = query::downstream(&anchors, &changed, &resolver, &reading)
+    {
+        verdict = Verdict::Affected(hit);
+    }
+    if verdict == Verdict::NotAffected
+        && options.only != Some(Direction::Downstream)
+        && let Some(hit) = query::upstream(&anchors, &changed, &resolver, &reading)
+    {
+        verdict = Verdict::Affected(hit);
     }
 
-    if options.only != Some(Direction::Downstream) {
-        if let Some(hit) = query::upstream(&anchors, &changed, &resolver, &reading) {
-            return Ok(Verdict::Affected(hit));
-        }
+    // A file that could not be read replaces the answer rather than shaping it.
+    match configs.failure() {
+        Some(error) => Err(Error::Config(error)),
+        None => Ok(verdict),
     }
-
-    Ok(Verdict::NotAffected)
 }
 
 /// Declaration granularity. Only the downstream search narrows; upstream keeps its
@@ -213,10 +213,10 @@ fn analyse_symbols(
     change_set: &diff::ChangeSet,
     options: &Options,
     reading: module::Reading,
-    project: &config::Project,
+    inline_requires: bool,
     base: Option<&base::Base>,
 ) -> Verdict {
-    let graph = graph::Graph::new(reading, project.clone());
+    let graph = graph::Graph::new(reading, inline_requires);
     let marked = marks::marked_nodes(&graph, change_set, root, &options.changed, base);
 
     if marked.is_empty() {
@@ -238,7 +238,7 @@ fn analyse_symbols(
     if options.only != Some(Direction::Downstream) {
         let changed =
             changes::marked_files(root, change_set, &options.changed, base, graph.reading());
-        let resolver = Resolver::new(graph.style());
+        let resolver = Resolver::new(graph.configs());
         if let Some(hit) = query::upstream(anchors, &changed, &resolver, graph.reading()) {
             return Verdict::Affected(hit);
         }

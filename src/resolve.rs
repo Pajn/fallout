@@ -3,9 +3,15 @@
 //! Two resolvers, because a stylesheet is not resolved the way a module is. Sass has
 //! its own rules — see [`Resolver::resolve`] — and running them through the
 //! JavaScript resolver would find nothing.
+//!
+//! There is one JavaScript resolver and a Sass resolver per set of aliases in use. An
+//! alias belongs to the stylesheet that writes it rather than to the run, so two apps
+//! can mean different directories by one name; the aliases are baked into the
+//! resolver when it is built, so the resolvers are cached by the chain of config
+//! directories that produced them. Most trees have one.
 
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use ahash::AHashMap;
 use oxc_resolver::{
@@ -13,7 +19,7 @@ use oxc_resolver::{
     TsconfigDiscovery,
 };
 
-use crate::config::Style;
+use crate::config::{Chain, Configs};
 
 use crate::module::is_style_file;
 
@@ -51,8 +57,11 @@ pub enum SideEffects {
 /// (including failures) per `(importing file, specifier)` pair.
 pub struct Resolver {
     inner: OxcResolver,
-    /// The same, tuned for Sass. Used when the importing file is a stylesheet.
-    style: OxcResolver,
+    /// What each file's own directory chain declares. See [`crate::config`].
+    configs: Arc<Configs>,
+    /// The same as `inner`, tuned for Sass, one per set of aliases. Keyed by the
+    /// config directories that produced them, which is the identity of the answer.
+    style: RwLock<AHashMap<Vec<PathBuf>, Arc<OxcResolver>>>,
     cache: RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>,
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
     /// while the resolution that found its `package.json` is still in hand.
@@ -60,9 +69,9 @@ pub struct Resolver {
 }
 
 impl Resolver {
-    /// `style` is what the project declared about its stylesheets, which is the only
-    /// place a name that is not a path can come from. See [`crate::config`].
-    pub fn new(style: &Style) -> Self {
+    /// `configs` is what the project declared about itself, which is the only place a
+    /// stylesheet name that is not a path can come from. See [`crate::config`].
+    pub fn new(configs: Arc<Configs>) -> Self {
         let options = ResolveOptions {
             extensions: vec![
                 ".tsx".to_string(),
@@ -79,26 +88,37 @@ impl Resolver {
             ..ResolveOptions::default()
         };
 
-        // Sass looks for `_name.scss` beside `name.scss`, takes `_index.scss` for a
-        // directory, and tries the importing file's own directory before anything
-        // else — so a bare `@use "mixins"` is usually a sibling rather than a
-        // package. The `exports` field is left out because Sass tooling resolves a
-        // subpath by path, and honouring it would refuse targets that do resolve.
-        let style_options = ResolveOptions {
+        Self {
+            inner: OxcResolver::new(options),
+            configs,
+            style: RwLock::new(AHashMap::default()),
+            cache: RwLock::new(AHashMap::default()),
+            side_effects: RwLock::new(AHashMap::default()),
+        }
+    }
+
+    /// The Sass resolver for one chain of config directories, built on first use.
+    ///
+    /// Sass looks for `_name.scss` beside `name.scss`, takes `_index.scss` for a
+    /// directory, and tries the importing file's own directory before anything else —
+    /// so a bare `@use "mixins"` is usually a sibling rather than a package. The
+    /// `exports` field is left out because Sass tooling resolves a subpath by path,
+    /// and honouring it would refuse targets that do resolve.
+    fn style_resolver(&self, chain: &Chain) -> Arc<OxcResolver> {
+        let key = chain.dirs().to_vec();
+        if let Some(cached) = self.style.read().unwrap().get(&key) {
+            return cached.clone();
+        }
+        let resolver = Arc::new(OxcResolver::new(ResolveOptions {
             extensions: vec![".scss".to_string(), ".css".to_string()],
             main_files: vec!["_index".to_string(), "index".to_string()],
             exports_fields: Vec::new(),
             prefer_relative: true,
-            alias: style.aliases.clone(),
+            alias: chain.aliases().clone(),
             ..ResolveOptions::default()
-        };
-
-        Self {
-            inner: OxcResolver::new(options),
-            style: OxcResolver::new(style_options),
-            cache: RwLock::new(AHashMap::default()),
-            side_effects: RwLock::new(AHashMap::default()),
-        }
+        }));
+        self.style.write().unwrap().insert(key, resolver.clone());
+        resolver
     }
 
     /// Resolves `specifier` as written in `from_file`, or `None` if it does not
@@ -160,9 +180,10 @@ impl Resolver {
             _ => None,
         };
 
+        let resolver = self.style_resolver(&self.configs.chain(from_file));
         std::iter::once(request.to_string())
             .chain(partial)
-            .find_map(|candidate| self.style.resolve_file(from_file, &candidate).ok())
+            .find_map(|candidate| resolver.resolve_file(from_file, &candidate).ok())
     }
 
     /// What the nearest `package.json` says about importing `path`.
@@ -228,7 +249,7 @@ fn matches(pattern: &str, relative: &str) -> bool {
 
 impl Default for Resolver {
     fn default() -> Self {
-        Self::new(&Style::default())
+        Self::new(Arc::new(Configs::new(Path::new("."))))
     }
 }
 

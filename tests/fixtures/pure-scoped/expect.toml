@@ -1,0 +1,29 @@
+# Two pages, the same shape, and the same edit to each one's `build`. The difference
+# is that `packages/ui` declares its own factory pure and the app does not.
+#
+# Neither page reaches `build` by name: each takes a string constant from its
+# component and nothing else. What reaches it is module initialisation — a `const`
+# whose initialiser is a call runs when the module is loaded, so the call is part of
+# loading and everyone importing the file gets it. Calling it pure takes the
+# declaration back out of initialisation, and the page stops being reached.
+#
+# The claim is written in `packages/ui/fallout.toml` and speaks only for the files
+# under it. The app writes the same `./make#build` in its own code and never made the
+# claim, so its page is still reached. A list at the root could not tell the two
+# apart: `./make` is whatever file is beside the one doing the importing.
+[[anchor]]
+path = "apps/web/PanelPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(apps/web/PanelPage.tsx)",
+    "ModuleInit(apps/web/PanelPage.tsx)",
+    "ModuleInit(apps/web/panel.tsx)",
+    "Decl(apps/web/panel.tsx, panel)",
+    "Export(apps/web/make.ts, build)",
+]
+
+[[anchor]]
+path = "apps/web/HomePage.tsx"
+affected = false

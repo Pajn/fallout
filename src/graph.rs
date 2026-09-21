@@ -54,7 +54,11 @@ pub struct Analysed {
 pub struct Graph {
     resolver: Resolver,
     reading: Reading,
-    project: crate::config::Project,
+    /// Whether this run may treat an import as deferred to its first use.
+    ///
+    /// One answer for the whole run rather than one per file: it describes the
+    /// bundler, and the anchor is what picks one. See [`crate::config`].
+    inline_requires: bool,
     paths: RefCell<Vec<PathBuf>>,
     path_ids: RefCell<AHashMap<PathBuf, FileId>>,
     names: RefCell<Vec<String>>,
@@ -70,11 +74,11 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(reading: Reading, project: crate::config::Project) -> Self {
+    pub fn new(reading: Reading, inline_requires: bool) -> Self {
         Self {
-            resolver: Resolver::new(&project.style),
+            resolver: Resolver::new(reading.configs.clone()),
             reading,
-            project,
+            inline_requires,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -147,10 +151,10 @@ impl Graph {
         &self.reading
     }
 
-    /// What the project declared about its stylesheets, for the parts of the run that
-    /// build a resolver of their own and must resolve the same way.
-    pub fn style(&self) -> &crate::config::Style {
-        &self.project.style
+    /// What the project declared about itself, for the parts of the run that build a
+    /// resolver of their own and must resolve the same way.
+    pub fn configs(&self) -> std::sync::Arc<crate::config::Configs> {
+        self.reading.configs.clone()
     }
 
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.
@@ -290,7 +294,7 @@ impl Graph {
         // way of reaching into another module lands on an export node, so stating it
         // here states it once — for a plain import, for a re-export, for a name that
         // arrived through `export *`, and for each name of a namespace.
-        if self.project.inline_requires {
+        if self.inline_requires {
             edges.push(Node::ModuleInit(file));
         }
         edges
@@ -321,7 +325,7 @@ impl Graph {
         for (source, target) in analysed.resolved.iter().enumerate() {
             let Some(target) = *target else { continue };
             let bare = module.bare_sources.contains(&(source as SourceId));
-            if self.project.inline_requires && !bare {
+            if self.inline_requires && !bare {
                 continue;
             }
             if is_source_file(&self.path(target)) {
@@ -420,7 +424,7 @@ impl Graph {
         // Taking the whole module reaches it whether or not it exports anything, so
         // with imports deferred this is the one reference that cannot be covered by
         // the export nodes it produces: there may be none.
-        if self.project.inline_requires {
+        if self.inline_requires {
             nodes.push(Node::ModuleInit(file));
         }
         nodes
@@ -478,7 +482,7 @@ impl Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        Self::new(Reading::default(), crate::config::Project::default())
+        Self::new(Reading::default(), false)
     }
 }
 

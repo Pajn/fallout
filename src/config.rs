@@ -6,72 +6,62 @@
 //! A malformed entry is an error rather than something skipped. A setting that
 //! silently does nothing shows up later as a verdict nobody can explain, and the
 //! whole point of declaring it was to be believed.
+//!
+//! # Where a claim applies
+//!
+//! A monorepo is not one project. Its apps are bundled by different tools and its
+//! packages give the same name different meanings, so a single file at the root
+//! cannot state what is true of all of them: one `inline-requires` would be a false
+//! claim about every app that does not inline, and one `[style.aliases]` table hands
+//! every app's names to every other app's directories.
+//!
+//! So a claim is scoped to where it is written. `d/fallout.toml` speaks for the files
+//! under `d`, the chain is walked from a file up to `--root`, and what happens at each
+//! step follows from the direction the setting is wrong in:
+//!
+//! - **Aliases accumulate**, nearest first. A name an app resolves and an ancestor
+//!   also resolves gets both, tried in that order. Accumulating rather than
+//!   overriding is what keeps the chain from ever offering fewer candidates than the
+//!   root alone, and a name that resolves to nothing loses an edge.
+//! - **`pure` accumulates** the same way, and an entry applies only below the file
+//!   that wrote it. A package calling its own factory pure cannot quiet a call in an
+//!   app that never made the claim.
+//! - **`builtin-pure` and `inline-requires` are single answers**, so the nearest one
+//!   wins.
+//!
+//! # Which file asks
+//!
+//! Not every claim is asked by the same file, because not every claim is about the
+//! same thing.
+//!
+//! An alias belongs to the stylesheet doing the importing: `packages/ui/card.scss`
+//! means one thing by `settings` whoever bundles it. So does a pure call, which is a
+//! claim about a function the file calls. Both are read from the chain above *that*
+//! file.
+//!
+//! `inline-requires` is not a property of a file at all. It is a property of the
+//! bundler, and the bundler is chosen by the app being asked about — the same shared
+//! module is inlined when a mobile bundler pulls it in and is not when a web bundler
+//! does. So it is read from the chain above the *anchor*, and with several anchors it
+//! holds only if every one of them claims it, since it is the setting that narrows.
+//!
+//! # When a file is read
+//!
+//! Lazily, and cached per directory: a run reads the configs it needs for the
+//! question it was asked. A malformed file in a subtree the run never enters is never
+//! reported, and could not have changed the answer if it had been.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 
+use ahash::AHashMap;
 use oxc_resolver::{Alias, AliasValue};
 
-/// The name of the file, read from `--root`.
+use crate::pure::{PureCall, PureList};
+
+/// The name of the file. Read from `--root`, and from any directory beneath it.
 pub const FILE: &str = "fallout.toml";
-
-/// What a project says about itself in `fallout.toml`.
-///
-/// One parse, handed to everything that needs to know. The list of pure functions
-/// is read separately, because a run that asks no question about purity has no
-/// reason to fail on a list it cannot read.
-#[derive(Debug, Clone, Default)]
-pub struct Project {
-    pub style: Style,
-    /// The project's bundler moves each `require` to the first use of the binding it
-    /// introduces, so importing a module does not evaluate it.
-    ///
-    /// Off unless the project says otherwise, because saying it wrongly under-reports:
-    /// every top-level side effect in the graph would then be attributed to the first
-    /// declaration that happens to use something from the module, and a module nobody
-    /// takes a binding from would never be evaluated at all.
-    pub inline_requires: bool,
-}
-
-impl Project {
-    pub fn load(root: &Path) -> Result<Self, Error> {
-        let path = root.join(FILE);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return Ok(Self::default());
-        };
-        let shown = path.display().to_string();
-
-        let document: toml::Table = text.parse().map_err(|error| Error::Unreadable {
-            path: shown.clone(),
-            detail: format!("{error}"),
-        })?;
-
-        Ok(Self {
-            style: Style::read(&document, root, &shown)?,
-            inline_requires: flag(&document, "inline-requires", &shown)?,
-        })
-    }
-}
-
-fn flag(document: &toml::Table, key: &str, shown: &str) -> Result<bool, Error> {
-    match document.get(key) {
-        None => Ok(false),
-        Some(value) => value.as_bool().ok_or_else(|| Error::NotABoolean {
-            path: shown.to_string(),
-            key: key.to_string(),
-        }),
-    }
-}
-
-/// The `[style]` table: how stylesheets are read and resolved.
-#[derive(Debug, Clone, Default)]
-pub struct Style {
-    /// Names a stylesheet may import that are not paths, and where each points.
-    ///
-    /// Written without the `~` a bundler spells them with, because the `~` is
-    /// dropped before anything is looked up — so one entry covers both spellings.
-    pub aliases: Alias,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -83,6 +73,8 @@ pub enum Error {
     BadAlias { path: String, name: String },
     /// A setting that is either on or off was written as something else.
     NotABoolean { path: String, key: String },
+    /// Something wrong with this file's `pure` list.
+    Pure(crate::pure::Error),
 }
 
 impl fmt::Display for Error {
@@ -98,172 +90,484 @@ impl fmt::Display for Error {
             Error::NotABoolean { path, key } => {
                 write!(f, "{path}: `{key}` must be true or false")
             }
+            Error::Pure(error) => write!(f, "{error}"),
         }
     }
 }
 
-impl Style {
-    /// Reads the `[style]` table of an already-parsed `fallout.toml`.
-    fn read(document: &toml::Table, root: &Path, shown: &str) -> Result<Self, Error> {
-        let Some(style) = document.get("style") else {
-            return Ok(Self::default());
-        };
-        let style = style.as_table().ok_or_else(|| Error::NotATable {
-            path: shown.to_string(),
-            key: "style".to_string(),
-        })?;
+impl From<crate::pure::Error> for Error {
+    fn from(error: crate::pure::Error) -> Self {
+        Error::Pure(error)
+    }
+}
 
-        let Some(aliases) = style.get("aliases") else {
-            return Ok(Self::default());
-        };
-        let aliases = aliases.as_table().ok_or_else(|| Error::NotATable {
-            path: shown.to_string(),
-            key: "style.aliases".to_string(),
-        })?;
+/// One `fallout.toml`, as written.
+#[derive(Debug, Default)]
+struct Declared {
+    aliases: Alias,
+    pure: Vec<PureCall>,
+    builtin_pure: Option<bool>,
+    inline_requires: Option<bool>,
+}
 
-        let mut out = Alias::new();
-        for (name, value) in aliases {
-            // A target is relative to the file that declares it, and the resolver
-            // wants somewhere it can start from rather than another specifier.
-            let targets: Vec<AliasValue> = match value {
-                toml::Value::String(one) => vec![absolute(root, one)],
-                toml::Value::Array(many) => many
+/// What the files above one directory add up to.
+///
+/// Built once per directory and shared. The directories that contributed are kept
+/// because they are the identity of the answer: two files with the same chain get the
+/// same aliases, which is what lets a resolver be built once and reused.
+#[derive(Debug)]
+pub struct Chain {
+    dirs: Vec<PathBuf>,
+    aliases: Alias,
+    pure: PureList,
+    inline_requires: bool,
+}
+
+impl Chain {
+    /// Every directory that contributed, nearest first. Equal lists mean equal
+    /// answers, so this is usable as a cache key.
+    pub fn dirs(&self) -> &[PathBuf] {
+        &self.dirs
+    }
+
+    /// Alias names, nearest first. See the module docs for why they accumulate.
+    pub fn aliases(&self) -> &Alias {
+        &self.aliases
+    }
+
+    pub fn pure(&self) -> &PureList {
+        &self.pure
+    }
+
+    pub fn inline_requires(&self) -> bool {
+        self.inline_requires
+    }
+}
+
+/// Every `fallout.toml` at or below `--root`, read on demand.
+#[derive(Debug)]
+pub struct Configs {
+    root: PathBuf,
+    /// One directory's own file, or `None` if it has not got one.
+    declared: RwLock<AHashMap<PathBuf, Option<Arc<Declared>>>>,
+    /// What a directory inherits, once worked out.
+    chains: RwLock<AHashMap<PathBuf, Arc<Chain>>>,
+    /// The first thing that could not be read.
+    ///
+    /// Held rather than returned because the answers are wanted deep inside the
+    /// resolver and the analyser, where there is nothing useful to do with an error.
+    /// The run checks this before reporting a verdict, so a file that cannot be read
+    /// replaces the answer rather than quietly shaping it.
+    failure: RwLock<Option<Error>>,
+}
+
+impl Configs {
+    pub fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            declared: RwLock::new(AHashMap::default()),
+            chains: RwLock::new(AHashMap::default()),
+            failure: RwLock::new(None),
+        }
+    }
+
+    /// What `file` inherits, from the directory holding it up to `--root`.
+    pub fn chain(&self, file: &Path) -> Arc<Chain> {
+        let start = match file.parent() {
+            Some(parent) if !file.is_dir() => parent.to_path_buf(),
+            _ => file.to_path_buf(),
+        };
+        if let Some(cached) = self.chains.read().unwrap().get(&start) {
+            return cached.clone();
+        }
+
+        let mut dirs = Vec::new();
+        let mut declared = Vec::new();
+        for dir in self.upwards(&start) {
+            if let Some(found) = self.declared(&dir) {
+                dirs.push(dir);
+                declared.push(found);
+            }
+        }
+
+        let chain = Arc::new(Chain {
+            aliases: declared
+                .iter()
+                .flat_map(|one| one.aliases.iter().cloned())
+                .collect(),
+            pure: PureList::of(
+                declared
                     .iter()
-                    .map(|each| {
-                        each.as_str()
-                            .map(|each| absolute(root, each))
-                            .ok_or_else(|| Error::BadAlias {
-                                path: shown.to_string(),
-                                name: name.clone(),
-                            })
-                    })
-                    .collect::<Result<_, _>>()?,
-                _ => {
-                    return Err(Error::BadAlias {
-                        path: shown.to_string(),
-                        name: name.clone(),
-                    });
-                }
-            };
-            out.push((name.clone(), targets));
+                    .find_map(|one| one.builtin_pure)
+                    .unwrap_or(true),
+                declared
+                    .iter()
+                    .flat_map(|one| one.pure.iter().cloned())
+                    .collect(),
+            ),
+            inline_requires: declared
+                .iter()
+                .find_map(|one| one.inline_requires)
+                .unwrap_or(false),
+            dirs,
+        });
+
+        self.chains.write().unwrap().insert(start, chain.clone());
+        chain
+    }
+
+    /// Whether this run may treat an import as deferred to its first use.
+    ///
+    /// Read from the anchors rather than from each file, because it describes the
+    /// bundler and the anchor is what picks one. Several anchors have to agree: this
+    /// is the setting that drops edges, so one anchor in an app that does not inline
+    /// is enough to turn it off for the run.
+    pub fn inline_requires(&self, anchors: &[PathBuf]) -> bool {
+        !anchors.is_empty()
+            && anchors
+                .iter()
+                .all(|anchor| self.chain(anchor).inline_requires())
+    }
+
+    /// The first file that could not be read, if any.
+    pub fn failure(&self) -> Option<Error> {
+        self.failure.read().unwrap().clone()
+    }
+
+    /// `start` and each ancestor up to and including `--root`.
+    ///
+    /// A file outside the root is answered by the root alone: `--root` is the edge of
+    /// what this run was pointed at, and reading above it would take claims from a
+    /// project nobody named.
+    fn upwards(&self, start: &Path) -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        let mut here = Some(start);
+        while let Some(dir) = here {
+            if !dir.starts_with(&self.root) {
+                break;
+            }
+            dirs.push(dir.to_path_buf());
+            if dir == self.root {
+                return dirs;
+            }
+            here = dir.parent();
         }
-        Ok(Self { aliases: out })
+        vec![self.root.clone()]
+    }
+
+    fn declared(&self, dir: &Path) -> Option<Arc<Declared>> {
+        if let Some(cached) = self.declared.read().unwrap().get(dir) {
+            return cached.clone();
+        }
+        let found = match read(&dir.join(FILE), dir) {
+            Ok(found) => found.map(Arc::new),
+            Err(error) => {
+                self.note(error);
+                None
+            }
+        };
+        self.declared
+            .write()
+            .unwrap()
+            .insert(dir.to_path_buf(), found.clone());
+        found
+    }
+
+    fn note(&self, error: Error) {
+        let mut failure = self.failure.write().unwrap();
+        if failure.is_none() {
+            *failure = Some(error);
+        }
     }
 }
 
-fn absolute(root: &Path, target: &str) -> AliasValue {
-    AliasValue::Path(root.join(target).to_string_lossy().into_owned())
+/// Reads one file. `None` when there is not one here.
+fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(None);
+    };
+    let shown = path.display().to_string();
+
+    let document: toml::Table = text.parse().map_err(|error| Error::Unreadable {
+        path: shown.clone(),
+        detail: format!("{error}"),
+    })?;
+
+    let (builtin_pure, pure) = crate::pure::read(&document, &shown)?;
+    Ok(Some(Declared {
+        aliases: aliases(&document, dir, &shown)?,
+        pure,
+        builtin_pure,
+        inline_requires: flag(&document, "inline-requires", &shown)?,
+    }))
+}
+
+/// The `[style.aliases]` table, with each target made absolute.
+fn aliases(document: &toml::Table, dir: &Path, shown: &str) -> Result<Alias, Error> {
+    let Some(style) = document.get("style") else {
+        return Ok(Alias::new());
+    };
+    let style = style.as_table().ok_or_else(|| Error::NotATable {
+        path: shown.to_string(),
+        key: "style".to_string(),
+    })?;
+
+    let Some(aliases) = style.get("aliases") else {
+        return Ok(Alias::new());
+    };
+    let aliases = aliases.as_table().ok_or_else(|| Error::NotATable {
+        path: shown.to_string(),
+        key: "style.aliases".to_string(),
+    })?;
+
+    let mut out = Alias::new();
+    for (name, value) in aliases {
+        // A target is relative to the file that declares it, and the resolver wants
+        // somewhere it can start from rather than another specifier.
+        let targets: Vec<AliasValue> = match value {
+            toml::Value::String(one) => vec![absolute(dir, one)],
+            toml::Value::Array(many) => many
+                .iter()
+                .map(|each| {
+                    each.as_str()
+                        .map(|each| absolute(dir, each))
+                        .ok_or_else(|| Error::BadAlias {
+                            path: shown.to_string(),
+                            name: name.clone(),
+                        })
+                })
+                .collect::<Result<_, _>>()?,
+            _ => {
+                return Err(Error::BadAlias {
+                    path: shown.to_string(),
+                    name: name.clone(),
+                });
+            }
+        };
+        out.push((name.clone(), targets));
+    }
+    Ok(out)
+}
+
+fn flag(document: &toml::Table, key: &str, shown: &str) -> Result<Option<bool>, Error> {
+    match document.get(key) {
+        None => Ok(None),
+        Some(value) => value.as_bool().map(Some).ok_or_else(|| Error::NotABoolean {
+            path: shown.to_string(),
+            key: key.to_string(),
+        }),
+    }
+}
+
+fn absolute(dir: &Path, target: &str) -> AliasValue {
+    AliasValue::Path(dir.join(target).to_string_lossy().into_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn written(body: &str) -> Result<Project, Error> {
+    /// A tree of `fallout.toml` files, given as (directory, body) pairs.
+    fn tree(files: &[(&str, &str)]) -> (tempfile::TempDir, Configs) {
         let dir = tempfile::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join(FILE), body).expect("writing the config");
-        Project::load(dir.path())
+        for (at, body) in files {
+            let here = dir.path().join(at);
+            std::fs::create_dir_all(&here).expect("a directory");
+            std::fs::write(here.join(FILE), body).expect("writing the config");
+        }
+        let configs = Configs::new(dir.path());
+        (dir, configs)
     }
 
-    fn style(body: &str) -> Result<Style, Error> {
-        written(body).map(|project| project.style)
-    }
-
-    fn names(style: &Style) -> Vec<&str> {
-        style
-            .aliases
+    fn names(chain: &Chain) -> Vec<String> {
+        chain
+            .aliases()
             .iter()
-            .map(|(name, _)| name.as_str())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    fn targets(chain: &Chain) -> Vec<String> {
+        chain
+            .aliases()
+            .iter()
+            .flat_map(|(_, targets)| targets)
+            .map(|value| match value {
+                AliasValue::Path(path) => path.clone(),
+                AliasValue::Ignore => "ignore".to_string(),
+            })
             .collect()
     }
 
     #[test]
-    fn no_file_is_no_entries() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let project = Project::load(dir.path()).expect("no file");
-        assert!(project.style.aliases.is_empty());
-        assert!(!project.inline_requires);
+    fn no_file_is_no_claims() {
+        let (dir, configs) = tree(&[]);
+        let chain = configs.chain(&dir.path().join("src/page.scss"));
+        assert!(chain.aliases().is_empty());
+        assert!(!chain.inline_requires());
+        assert!(configs.failure().is_none());
     }
 
     #[test]
-    fn a_file_without_the_table_is_no_entries() {
-        let style = style("pure = [\"react#memo\"]\n").expect("readable");
-        assert!(style.aliases.is_empty());
-    }
-
-    #[test]
-    fn an_alias_points_somewhere_below_the_file() {
-        let style = style("[style.aliases]\nsass = \"app/sass\"\n").expect("readable");
-        assert_eq!(names(&style), vec!["sass"]);
-        let AliasValue::Path(target) = &style.aliases[0].1[0] else {
-            panic!("a path");
-        };
+    fn a_file_without_the_table_is_no_aliases() {
+        let (dir, configs) = tree(&[("", "pure = [\"react#memo\"]\n")]);
         assert!(
-            target.ends_with("app/sass") && target.starts_with('/'),
-            "a target is absolute and below the file: {target}"
+            configs
+                .chain(&dir.path().join("a.scss"))
+                .aliases()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_alias_points_somewhere_below_the_file_that_declares_it() {
+        let (dir, configs) = tree(&[("apps/web", "[style.aliases]\nsass = \"app/sass\"\n")]);
+        let chain = configs.chain(&dir.path().join("apps/web/src/page.scss"));
+        assert_eq!(names(&chain), vec!["sass".to_string()]);
+        let target = &targets(&chain)[0];
+        assert!(
+            target.ends_with("apps/web/app/sass") && target.starts_with('/'),
+            "relative to its own file, not to the root: {target}"
         );
     }
 
     #[test]
     fn a_list_is_tried_in_the_order_it_is_written() {
-        let style = style("[style.aliases]\nsass = [\"a/sass\", \"b/sass\"]\n").expect("readable");
-        let targets: Vec<String> = style.aliases[0]
-            .1
-            .iter()
-            .map(|value| match value {
-                AliasValue::Path(path) => path.clone(),
-                AliasValue::Ignore => "ignore".to_string(),
-            })
-            .collect();
-        assert_eq!(targets.len(), 2);
-        assert!(targets[0].ends_with("a/sass"), "{targets:?}");
-        assert!(targets[1].ends_with("b/sass"), "{targets:?}");
+        let (dir, configs) = tree(&[("", "[style.aliases]\nsass = [\"a/sass\", \"b/sass\"]\n")]);
+        let found = targets(&configs.chain(&dir.path().join("a.scss")));
+        assert_eq!(found.len(), 2);
+        assert!(found[0].ends_with("a/sass"), "{found:?}");
+        assert!(found[1].ends_with("b/sass"), "{found:?}");
     }
 
     #[test]
-    fn a_target_that_is_not_a_path_is_an_error() {
-        assert!(matches!(
-            written("[style.aliases]\nsass = 3\n"),
-            Err(Error::BadAlias { .. })
-        ));
-        assert!(matches!(
-            written("[style.aliases]\nsass = [\"ok\", 3]\n"),
-            Err(Error::BadAlias { .. })
-        ));
+    fn an_alias_is_not_visible_to_a_sibling_app() {
+        let (dir, configs) = tree(&[
+            ("apps/one", "[style.aliases]\nsass = \"styles\"\n"),
+            ("apps/two", "[style.aliases]\nsass = \"scss\"\n"),
+        ]);
+        let one = targets(&configs.chain(&dir.path().join("apps/one/a.scss")));
+        let two = targets(&configs.chain(&dir.path().join("apps/two/a.scss")));
+        assert_eq!(one.len(), 1, "one app, one answer: {one:?}");
+        assert!(one[0].ends_with("apps/one/styles"), "{one:?}");
+        assert!(two[0].ends_with("apps/two/scss"), "{two:?}");
     }
 
     #[test]
-    fn a_table_that_is_not_a_table_is_an_error() {
-        assert!(matches!(
-            written("style = 3\n"),
-            Err(Error::NotATable { .. })
-        ));
-        assert!(matches!(
-            written("[style]\naliases = 3\n"),
-            Err(Error::NotATable { .. })
-        ));
+    fn a_nearer_alias_is_tried_first_and_the_root_still_answers() {
+        let (dir, configs) = tree(&[
+            ("", "[style.aliases]\nsass = \"shared/sass\"\n"),
+            ("apps/one", "[style.aliases]\nsass = \"styles\"\n"),
+        ]);
+        let found = targets(&configs.chain(&dir.path().join("apps/one/a.scss")));
+        assert_eq!(found.len(), 2, "accumulated, not overridden: {found:?}");
+        assert!(found[0].ends_with("apps/one/styles"), "nearest first");
+        assert!(found[1].ends_with("shared/sass"));
     }
 
     #[test]
     fn a_setting_is_off_until_the_project_turns_it_on() {
-        assert!(!written("pure = []\n").expect("readable").inline_requires);
-        assert!(
-            written("inline-requires = true\n")
-                .expect("readable")
-                .inline_requires
-        );
+        let (dir, configs) = tree(&[("apps/mobile", "inline-requires = true\n")]);
+        assert!(configs.inline_requires(&[dir.path().join("apps/mobile/page.tsx")]));
+        assert!(!configs.inline_requires(&[dir.path().join("apps/web/page.tsx")]));
+        assert!(!configs.inline_requires(&[]), "no anchors claim nothing");
     }
 
     #[test]
-    fn a_setting_that_is_not_a_boolean_is_an_error() {
-        assert!(matches!(
-            written("inline-requires = \"yes\"\n"),
-            Err(Error::NotABoolean { .. })
-        ));
+    fn every_anchor_has_to_claim_it() {
+        // It is the setting that drops edges, so one anchor that does not inline is
+        // enough to turn it off: the alternative is under-reporting for that anchor.
+        let (dir, configs) = tree(&[("apps/mobile", "inline-requires = true\n")]);
+        let mobile = dir.path().join("apps/mobile/page.tsx");
+        let web = dir.path().join("apps/web/page.tsx");
+        assert!(configs.inline_requires(std::slice::from_ref(&mobile)));
+        assert!(!configs.inline_requires(&[mobile, web]));
     }
 
     #[test]
-    fn a_file_that_is_not_toml_is_an_error() {
-        assert!(matches!(written("[style\n"), Err(Error::Unreadable { .. })));
+    fn the_nearest_answer_wins_for_a_setting() {
+        let (dir, configs) = tree(&[
+            ("", "inline-requires = true\n"),
+            ("apps/web", "inline-requires = false\n"),
+        ]);
+        assert!(configs.inline_requires(&[dir.path().join("apps/mobile/page.tsx")]));
+        assert!(!configs.inline_requires(&[dir.path().join("apps/web/page.tsx")]));
+    }
+
+    #[test]
+    fn a_pure_entry_applies_below_the_file_that_wrote_it() {
+        let (dir, configs) = tree(&[("packages/ui", "pure = [\"./make#build\"]\n")]);
+        let inside = configs.chain(&dir.path().join("packages/ui/card.tsx"));
+        let outside = configs.chain(&dir.path().join("apps/web/page.tsx"));
+        assert!(inside.pure().contains("./make", &["build"]));
+        assert!(!outside.pure().contains("./make", &["build"]));
+        // The built-ins are there either way.
+        assert!(outside.pure().contains("react", &["memo"]));
+    }
+
+    #[test]
+    fn a_target_that_is_not_a_path_is_a_failure() {
+        for body in [
+            "[style.aliases]\nsass = 3\n",
+            "[style.aliases]\nsass = [\"ok\", 3]\n",
+        ] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.scss"));
+            assert!(
+                matches!(configs.failure(), Some(Error::BadAlias { .. })),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_table_that_is_not_a_table_is_a_failure() {
+        for body in ["style = 3\n", "[style]\naliases = 3\n"] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.scss"));
+            assert!(
+                matches!(configs.failure(), Some(Error::NotATable { .. })),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_setting_that_is_not_a_boolean_is_a_failure() {
+        let (dir, configs) = tree(&[("", "inline-requires = \"yes\"\n")]);
+        configs.chain(&dir.path().join("a.tsx"));
+        assert!(matches!(configs.failure(), Some(Error::NotABoolean { .. })));
+    }
+
+    #[test]
+    fn a_file_that_is_not_toml_is_a_failure() {
+        let (dir, configs) = tree(&[("", "[style\n")]);
+        configs.chain(&dir.path().join("a.scss"));
+        assert!(matches!(configs.failure(), Some(Error::Unreadable { .. })));
+    }
+
+    #[test]
+    fn a_bad_pure_entry_is_a_failure() {
+        let (dir, configs) = tree(&[("", "pure = [\"memo\"]\n")]);
+        configs.chain(&dir.path().join("a.tsx"));
+        assert!(matches!(configs.failure(), Some(Error::Pure(_))));
+    }
+
+    #[test]
+    fn a_file_the_run_never_needs_is_never_read() {
+        // Lazy on purpose: a config in a subtree this run does not enter cannot have
+        // changed the answer, so it is not this run's business to fail on it.
+        let (dir, configs) = tree(&[("apps/other", "[style\n")]);
+        configs.chain(&dir.path().join("apps/web/a.scss"));
+        assert!(configs.failure().is_none());
+        configs.chain(&dir.path().join("apps/other/a.scss"));
+        assert!(configs.failure().is_some());
+    }
+
+    #[test]
+    fn a_file_above_the_root_is_answered_by_the_root() {
+        let (dir, configs) = tree(&[("", "inline-requires = true\n")]);
+        let outside = dir.path().parent().expect("a parent").join("elsewhere.tsx");
+        assert!(configs.inline_requires(&[outside]));
     }
 }

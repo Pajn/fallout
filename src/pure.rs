@@ -9,10 +9,10 @@
 //!
 //! This is a claim about someone else's function, so it is the project's to make:
 //! the built-in list holds only the React factories every bundler already treats this
-//! way, and everything else comes from the project's own file.
+//! way, and everything else comes from the project's own file. The claim applies to
+//! the files below the file that wrote it — see [`crate::config`] for why.
 
 use std::fmt;
-use std::path::Path;
 
 /// A callee declared free of side effects.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,9 +31,10 @@ pub struct PureList {
     entries: Vec<PureCall>,
 }
 
-/// The name of the file a project puts its own entries in, read from `--root`.
+/// The name of the file a project puts its own entries in.
 ///
-/// The same file carries everything else the project declares. See [`crate::config`].
+/// The same file carries everything else the project declares. See [`crate::config`],
+/// which owns reading it and decides which files each entry speaks for.
 pub use crate::config::FILE as CONFIG_FILE;
 
 /// Factories from React itself. Each returns a value and does nothing else, which is
@@ -88,51 +89,19 @@ impl PureList {
         }
     }
 
-    /// The built-in entries plus whatever `root/fallout.toml` adds.
-    ///
-    /// A missing file is not an error: most projects need no entries at all.
-    pub fn load(root: &Path) -> Result<Self, Error> {
-        let path = root.join(CONFIG_FILE);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return Ok(Self::builtin());
-        };
-        let shown = path.display().to_string();
-
-        let document: toml::Table = text.parse().map_err(|error| Error::Unreadable {
-            path: shown.clone(),
-            detail: format!("{error}"),
-        })?;
-
-        let mut list = if document
-            .get("builtin-pure")
-            .and_then(toml::Value::as_bool)
-            .unwrap_or(true)
-        {
+    /// The built-in entries, if asked for, plus `entries`.
+    pub fn of(builtin: bool, entries: Vec<PureCall>) -> Self {
+        let mut list = if builtin {
             Self::builtin()
         } else {
             Self::default()
         };
-
-        let Some(pure) = document.get("pure") else {
-            return Ok(list);
-        };
-        let Some(pure) = pure.as_array() else {
-            return Err(Error::NotAList { path: shown });
-        };
-
-        for value in pure {
-            let entry = value.as_str().ok_or_else(|| Error::NotAList {
-                path: shown.clone(),
-            })?;
-            let parsed = parse_entry(entry).ok_or_else(|| Error::BadEntry {
-                path: shown.clone(),
-                entry: entry.to_string(),
-            })?;
-            if !list.entries.contains(&parsed) {
-                list.entries.push(parsed);
+        for entry in entries {
+            if !list.entries.contains(&entry) {
+                list.entries.push(entry);
             }
         }
-        Ok(list)
+        list
     }
 
     /// Is a callee reached by `path` from an import of `source` pure?
@@ -145,6 +114,46 @@ impl PureList {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+}
+
+/// The `pure` list and the `builtin-pure` flag of one already-parsed `fallout.toml`.
+///
+/// `None` for the flag means the file did not say, which is what lets the nearest
+/// file that *did* say decide for a whole subtree.
+pub(crate) fn read(
+    document: &toml::Table,
+    shown: &str,
+) -> Result<(Option<bool>, Vec<PureCall>), Error> {
+    let builtin = match document.get("builtin-pure") {
+        None => None,
+        Some(value) => Some(value.as_bool().ok_or_else(|| Error::NotAList {
+            path: shown.to_string(),
+        })?),
+    };
+
+    let Some(pure) = document.get("pure") else {
+        return Ok((builtin, Vec::new()));
+    };
+    let Some(pure) = pure.as_array() else {
+        return Err(Error::NotAList {
+            path: shown.to_string(),
+        });
+    };
+
+    let mut entries = Vec::new();
+    for value in pure {
+        let entry = value.as_str().ok_or_else(|| Error::NotAList {
+            path: shown.to_string(),
+        })?;
+        let parsed = parse_entry(entry).ok_or_else(|| Error::BadEntry {
+            path: shown.to_string(),
+            entry: entry.to_string(),
+        })?;
+        if !entries.contains(&parsed) {
+            entries.push(parsed);
+        }
+    }
+    Ok((builtin, entries))
 }
 
 /// `"react-native#StyleSheet.create"` into its two halves.
@@ -204,49 +213,41 @@ mod tests {
         assert!(!list.contains("./memo", &["memo"]));
     }
 
+    fn written(body: &str) -> Result<(Option<bool>, Vec<PureCall>), Error> {
+        read(
+            &body.parse::<toml::Table>().expect("readable toml"),
+            "fallout.toml",
+        )
+    }
+
     #[test]
     fn a_project_file_adds_to_the_builtin_list() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join(CONFIG_FILE),
-            "pure = [\"react-native#StyleSheet.create\"]\n",
-        )
-        .unwrap();
-
-        let list = PureList::load(dir.path()).unwrap();
+        let (builtin, entries) = written("pure = [\"react-native#StyleSheet.create\"]\n").unwrap();
+        let list = PureList::of(builtin.unwrap_or(true), entries);
         assert!(list.contains("react-native", &["StyleSheet", "create"]));
         assert!(list.contains("react", &["memo"]));
     }
 
     #[test]
     fn a_project_file_can_drop_the_builtin_list() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join(CONFIG_FILE),
-            "builtin-pure = false\npure = [\"./local#make\"]\n",
-        )
-        .unwrap();
-
-        let list = PureList::load(dir.path()).unwrap();
+        let (builtin, entries) =
+            written("builtin-pure = false\npure = [\"./local#make\"]\n").unwrap();
+        assert_eq!(builtin, Some(false));
+        let list = PureList::of(builtin.unwrap_or(true), entries);
         assert!(list.contains("./local", &["make"]));
         assert!(!list.contains("react", &["memo"]));
     }
 
     #[test]
-    fn a_missing_file_leaves_the_builtin_list() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(
-            PureList::load(dir.path())
-                .unwrap()
-                .contains("react", &["memo"])
-        );
+    fn a_file_that_says_nothing_leaves_the_builtin_list() {
+        let (builtin, entries) = written("").unwrap();
+        assert_eq!(builtin, None, "so a nearer file can decide");
+        assert!(PureList::of(builtin.unwrap_or(true), entries).contains("react", &["memo"]));
     }
 
     #[test]
     fn a_misspelt_entry_is_reported_rather_than_ignored() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(CONFIG_FILE), "pure = [\"memo\"]\n").unwrap();
-        let error = PureList::load(dir.path()).unwrap_err();
+        let error = written("pure = [\"memo\"]\n").unwrap_err();
         assert!(matches!(error, Error::BadEntry { .. }), "{error}");
     }
 }

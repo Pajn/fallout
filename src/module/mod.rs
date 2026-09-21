@@ -164,8 +164,9 @@ impl ModuleAnalysis {
 /// be compared.
 #[derive(Clone)]
 pub struct Reading {
-    /// Callees the project has declared free of side effects.
-    pub pure: crate::pure::PureList,
+    /// What each file's own directory chain declares, including the callees the
+    /// project calls free of side effects. See [`crate::config`].
+    pub configs: std::sync::Arc<crate::config::Configs>,
     /// Erase type-only syntax before reading anything, so that a change made only of
     /// types reaches nobody. See [`types`].
     ///
@@ -178,7 +179,7 @@ pub struct Reading {
 impl Default for Reading {
     fn default() -> Self {
         Self {
-            pure: crate::pure::PureList::default(),
+            configs: std::sync::Arc::new(crate::config::Configs::new(Path::new("."))),
             ignore_types: true,
         }
     }

@@ -1,0 +1,14 @@
+# Both apps spell the name `~sass/palette` and both mean their own directory. Each
+# `fallout.toml` speaks for the files under it, so the name resolves twice, to two
+# different files, and a change to one app's palette is not a change to the other's.
+#
+# One table at the root could not say this. It would have to list both directories
+# under one name and hand each app the other's — which resolves, so the edge exists,
+# so every page in both apps is reached by an edit to either.
+[[anchor]]
+path = "apps/one/Page.tsx"
+affected = true
+
+[[anchor]]
+path = "apps/two/Page.tsx"
+affected = false
