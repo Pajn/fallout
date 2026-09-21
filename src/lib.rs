@@ -9,6 +9,7 @@
 pub mod base;
 pub mod changes;
 pub mod cli;
+pub mod config;
 pub mod diff;
 pub mod graph;
 pub mod marks;
@@ -86,9 +87,11 @@ pub enum Error {
     NoAnchors,
     MissingAnchors(Vec<String>),
     /// The project's `fallout.toml` is there but could not be read. Reported rather
-    /// than ignored: a list of pure callees that silently does nothing would show up
-    /// as a verdict nobody can explain.
+    /// than ignored: a setting that silently does nothing would show up as a verdict
+    /// nobody can explain.
     Config(pure::Error),
+    /// The same, for the part of that file about stylesheets.
+    StyleConfig(config::Error),
 }
 
 impl fmt::Display for Error {
@@ -99,6 +102,7 @@ impl fmt::Display for Error {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
             }
             Error::Config(error) => write!(f, "{error}"),
+            Error::StyleConfig(error) => write!(f, "{error}"),
         }
     }
 }
@@ -151,6 +155,9 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         pure,
         ignore_types: !options.include_types,
     };
+    // Unlike the pure list, this is read on every run: a stylesheet alias decides
+    // which files exist in the graph at all, which every granularity depends on.
+    let style = config::Style::load(&root).map_err(Error::StyleConfig)?;
     let base = options
         .base
         .as_deref()
@@ -163,6 +170,7 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
             &change_set,
             options,
             reading,
+            &style,
             base.as_ref(),
         ));
     }
@@ -179,7 +187,7 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         return Ok(Verdict::NotAffected);
     }
 
-    let resolver = Resolver::new();
+    let resolver = Resolver::new(&style);
 
     if options.only != Some(Direction::Upstream) {
         if let Some(hit) = query::downstream(&anchors, &changed, &resolver, &reading) {
@@ -204,9 +212,10 @@ fn analyse_symbols(
     change_set: &diff::ChangeSet,
     options: &Options,
     reading: module::Reading,
+    style: &config::Style,
     base: Option<&base::Base>,
 ) -> Verdict {
-    let graph = graph::Graph::new(reading);
+    let graph = graph::Graph::new(reading, style.clone());
     let marked = marks::marked_nodes(&graph, change_set, root, &options.changed, base);
 
     if marked.is_empty() {
@@ -228,7 +237,7 @@ fn analyse_symbols(
     if options.only != Some(Direction::Downstream) {
         let changed =
             changes::marked_files(root, change_set, &options.changed, base, graph.reading());
-        let resolver = Resolver::new();
+        let resolver = Resolver::new(graph.style());
         if let Some(hit) = query::upstream(anchors, &changed, &resolver, graph.reading()) {
             return Verdict::Affected(hit);
         }

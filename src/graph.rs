@@ -54,6 +54,7 @@ pub struct Analysed {
 pub struct Graph {
     resolver: Resolver,
     reading: Reading,
+    style: crate::config::Style,
     paths: RefCell<Vec<PathBuf>>,
     path_ids: RefCell<AHashMap<PathBuf, FileId>>,
     names: RefCell<Vec<String>>,
@@ -69,10 +70,11 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(reading: Reading) -> Self {
+    pub fn new(reading: Reading, style: crate::config::Style) -> Self {
         Self {
-            resolver: Resolver::new(),
+            resolver: Resolver::new(&style),
             reading,
+            style,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -143,6 +145,12 @@ impl Graph {
     /// the graph and must read them the same way.
     pub fn reading(&self) -> &Reading {
         &self.reading
+    }
+
+    /// What the project declared about its stylesheets, for the parts of the run that
+    /// build a resolver of their own and must resolve the same way.
+    pub fn style(&self) -> &crate::config::Style {
+        &self.style
     }
 
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.
@@ -444,7 +452,7 @@ impl Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        Self::new(Reading::default())
+        Self::new(Reading::default(), crate::config::Style::default())
     }
 }
 

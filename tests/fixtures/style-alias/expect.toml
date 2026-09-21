@@ -1,0 +1,10 @@
+# `~settings/palette` is not a path. It is a name the app's bundler config gives
+# to a directory, and nothing in the stylesheet or on disk says where that is —
+# so the project says, in `fallout.toml`, and the edge exists because it did.
+#
+# Without the entry this page is not reached at all, which is the shape of the
+# gap the entry closes: the stylesheet is read, its import is found, and the
+# import names somewhere nothing can resolve.
+[[anchor]]
+path = "src/pages/BrandPage.tsx"
+affected = true

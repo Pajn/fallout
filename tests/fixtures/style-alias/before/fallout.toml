@@ -1,0 +1,4 @@
+# `~settings` is a name this project's bundler knows and no path names. Written
+# without the `~`, because that is dropped before anything is looked up.
+[style.aliases]
+settings = "app/sass"

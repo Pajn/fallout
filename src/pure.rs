@@ -32,7 +32,9 @@ pub struct PureList {
 }
 
 /// The name of the file a project puts its own entries in, read from `--root`.
-pub const CONFIG_FILE: &str = "fallout.toml";
+///
+/// The same file carries everything else the project declares. See [`crate::config`].
+pub use crate::config::FILE as CONFIG_FILE;
 
 /// Factories from React itself. Each returns a value and does nothing else, which is
 /// why every bundler drops an unused one.

@@ -13,6 +13,8 @@ use oxc_resolver::{
     TsconfigDiscovery,
 };
 
+use crate::config::Style;
+
 use crate::module::is_style_file;
 
 /// Modules Sass ships with.
@@ -58,7 +60,9 @@ pub struct Resolver {
 }
 
 impl Resolver {
-    pub fn new() -> Self {
+    /// `style` is what the project declared about its stylesheets, which is the only
+    /// place a name that is not a path can come from. See [`crate::config`].
+    pub fn new(style: &Style) -> Self {
         let options = ResolveOptions {
             extensions: vec![
                 ".tsx".to_string(),
@@ -85,6 +89,7 @@ impl Resolver {
             main_files: vec!["_index".to_string(), "index".to_string()],
             exports_fields: Vec::new(),
             prefer_relative: true,
+            alias: style.aliases.clone(),
             ..ResolveOptions::default()
         };
 
@@ -223,7 +228,7 @@ fn matches(pattern: &str, relative: &str) -> bool {
 
 impl Default for Resolver {
     fn default() -> Self {
-        Self::new()
+        Self::new(&Style::default())
     }
 }
 

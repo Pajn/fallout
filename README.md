@@ -119,6 +119,8 @@ pure = [
 builtin-pure = true
 ```
 
+The same file carries `[style.aliases]`, under [Stylesheets](#stylesheets).
+
 An entry is written as the import source, `#`, and the path taken from the binding
 that import introduces. The first segment is the name the target exports, with
 `default` and `*` for the two unnamed forms, so `React.memo` is `react#default.memo`.
@@ -366,16 +368,31 @@ Specifiers are resolved the way Sass resolves them, not the way JavaScript does:
 | `@use "~pkg/x"` | `pkg/x.scss`, the leading `~` dropped |
 | `@use "sass:math"` | nothing — it names no file |
 
-**Aliases are not resolved.** A specifier like `~styles/settings` usually means a
-directory named by the app's bundler config, and that config is a program rather than
-data. Such an import is not an edge, so a stylesheet reached only through one is not
-reached at all.
+A specifier like `~styles/settings` is neither of those. It is a name the app's
+bundler config gives to a directory, and that config is a program rather than data, so
+the project declares what it means:
+
+```toml
+# fallout.toml, read from --root
+[style.aliases]
+styles = "apps/web/app/styles"
+
+# Several apps, one name. Each is tried in turn.
+sass = ["apps/business/app/sass", "apps/storefront/styles"]
+```
+
+Targets are relative to `fallout.toml`. Write the name without the `~`: it is dropped
+before anything is looked up, so one entry covers `~styles/settings` and
+`styles/settings` both. A name with no entry resolves to nothing, and a stylesheet
+reached only through it is not reached at all.
 
 ### Known gaps
 
 - An image referenced only by `url()` inside a stylesheet is not reached: a stylesheet
   is read for the stylesheets it pulls in, not for the assets it points at.
-- A stylesheet named through a bundler alias is not reached — see above.
+- A stylesheet alias is one name for one list of directories, for the whole run. A
+  monorepo where two apps give the same name different meanings has to list both, and
+  gets the union.
 - Workers named by a bare string — `new Worker("./worker.js")` or
   `navigator.serviceWorker.register("/sw.js")` — are not detected. Bundlers require the
   `new URL` form, but a service worker registered by public URL has no source path to
