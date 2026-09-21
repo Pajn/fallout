@@ -1,0 +1,9 @@
+# An annotation shares its line with the value it is written about, so a line range
+# cannot say which of the two moved and the change stands at every level that reads
+# one. Compared against the earlier version with the types erased, the two functions
+# are the same function.
+[[anchor]]
+path = "src/pages/LabelPage.tsx"
+affected = false
+ignore_types = true
+from = "base"

@@ -31,6 +31,7 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-c, --changed <PATH>` | A changed file, as produced by `git diff --name-only`. Repeatable. |
 | `-d, --diff <PATH>` | A unified diff describing the change; `-` reads standard input. |
 | `-b, --base <REV>` | Git revision to compare each changed file against. See below. |
+| `--ignore-types` | Read every file with its type-only syntax erased. See below. |
 | `-r, --root <PATH>` | Root directory to resolve from. Defaults to the current directory. |
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
 | `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
@@ -261,6 +262,49 @@ file after the change mentions it — so a consumer that was not updated alongsi
 is reported only when there is a base revision to compare against. That fallback
 also covers a file either version of which does not parse, and one git has no
 earlier version of.
+
+### Ignoring types
+
+`--ignore-types` reads every file with its type-only syntax taken out, so a change
+made only of types reaches nobody:
+
+```sh
+git diff -U3 origin/main... | fallout --anchor src/pages/CheckoutPage.tsx \
+  --diff - --base origin/main --ignore-types
+```
+
+A type cannot change what a page renders. It can break the build, but a broken build
+breaks every page at once and needs no answer about reachability. That is what makes
+the flag defensible, and also what makes it a flag: it is right for a job running
+alongside a typecheck and wrong for one standing in for it.
+
+The erasure happens once, on the source, before anything reads it, and everything
+else follows from that rather than from a rule of its own. An `interface` is no
+longer a statement, so nothing declares it and nothing depends on it. An
+`import type` is no longer an import, so it is no longer an edge. Two versions of a
+file that differ only in their annotations become the same text, so `--base` finds
+nothing between them. A line the erasure empties is a line no change to it can mark,
+which is the one thing a diff can prove on its own — so the flag works at `file`
+granularity too, without a base revision.
+
+What goes is what the language erases: annotations, type parameters and arguments,
+`as`, `satisfies` and `!`, `implements`, interfaces, type aliases, anything
+`declare`d, an overload signature, and a type-only name inside an import or export
+that carries values too. What stays is everything that exists while the program runs,
+however type-like it reads: an enum, a namespace, `import x = require(...)`, a
+parameter property, an accessibility modifier.
+
+A type does not always come away cleanly. A name in a list is held there by a comma,
+`implements` needs something to name, `x!: T` carries its mark in front of the
+annotation, and nothing may come between an arrow function's parameters and its `=>`
+but spaces — so a return type written across lines is the one thing left where it
+stands. Whatever is left behind is reparsed, and if it is no longer the language the
+file is read as it was written, so a shape the eraser gets wrong costs precision
+rather than an answer.
+
+Taking syntax away can only ever take verdicts away with it, so every fixture in the
+suite is also a test of the flag: whatever a plain read reports, an erased read of
+the same change may report that or less, and never more.
 
 ### Explaining a verdict
 

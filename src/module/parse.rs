@@ -11,7 +11,9 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
-use super::{Decl, FineModule, ModuleAnalysis, Span, cjs, decls, exports, init, refs};
+use super::{
+    Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, init, refs, types,
+};
 use crate::pure::PureList;
 
 /// Extensions we parse for further imports. Anything else that resolves — images,
@@ -31,6 +33,12 @@ pub fn is_source_file(path: &Path) -> bool {
 pub struct LineTable {
     starts: Vec<u32>,
     len: u32,
+    /// Lines with nothing left on them once types were erased, by 0-based index.
+    ///
+    /// Empty when nothing was erased, which is also how "do not ask" is spelled: a
+    /// blank line in a file read as it was written is just a blank line, and marking
+    /// nothing for it would be a narrowing nobody asked for.
+    runtime_blank: Vec<bool>,
 }
 
 impl LineTable {
@@ -44,7 +52,34 @@ impl LineTable {
         Self {
             starts,
             len: source.len() as u32,
+            runtime_blank: Vec::new(),
         }
+    }
+
+    /// A table over source whose type-only syntax has been blanked out, which also
+    /// records which lines that left with nothing on them.
+    pub fn erased(source: &str) -> Self {
+        let mut table = Self::new(source);
+        table.runtime_blank = source.lines().map(|line| line.trim().is_empty()).collect();
+        table
+    }
+
+    /// Whether every line from `start` for `len` lines has nothing on it that runs.
+    ///
+    /// Always false without an erasure to judge by, and false for a line that holds
+    /// a type and a value both: which of the two a diff touched is not a question
+    /// line numbers can answer. A range with no lines in it is false for the same
+    /// reason — what a change removed is not there to be read.
+    pub fn runs_nothing(&self, start: u32, len: u32) -> bool {
+        if self.runtime_blank.is_empty() || len == 0 {
+            return false;
+        }
+        (start..start + len).all(|line| {
+            self.runtime_blank
+                .get(line.saturating_sub(1) as usize)
+                .copied()
+                .unwrap_or(false)
+        })
     }
 
     pub fn line_count(&self) -> u32 {
@@ -81,11 +116,11 @@ impl Ctx<'_> {
     }
 }
 
-pub fn analyse_file(path: &Path, pure: &PureList) -> Option<(ModuleAnalysis, LineTable)> {
+pub fn analyse_file(path: &Path, reading: &Reading) -> Option<(ModuleAnalysis, LineTable)> {
     if !is_source_file(path) {
         return None;
     }
-    analyse_source(path, &fs::read_to_string(path).ok()?, pure)
+    analyse_source(path, &fs::read_to_string(path).ok()?, reading)
 }
 
 /// Analyses text as if it were the contents of `path`.
@@ -95,24 +130,48 @@ pub fn analyse_file(path: &Path, pure: &PureList) -> Option<(ModuleAnalysis, Lin
 pub fn analyse_source(
     path: &Path,
     source_text: &str,
-    pure: &PureList,
+    reading: &Reading,
 ) -> Option<(ModuleAnalysis, LineTable)> {
     if !is_source_file(path) {
         return None;
     }
 
-    let line_table = LineTable::new(source_text);
-
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_default();
     let parsed = OxcParser::new(&allocator, source_text, source_type).parse();
 
-    let sources = collect_sources(&parsed.program);
-
     // A parse error means the AST is a guess, so nothing finer than the file is safe.
     if !parsed.diagnostics.is_empty() {
-        return Some((ModuleAnalysis::Coarse { sources }, line_table));
+        return Some((
+            ModuleAnalysis::Coarse {
+                sources: collect_sources(&parsed.program),
+            },
+            LineTable::new(source_text),
+        ));
     }
+
+    // Erasing leaves the file the same length and the same shape, so everything below
+    // reads spans and lines exactly as it would have. What it must not do is leave
+    // behind something that is no longer the language: if it has, read the original.
+    let erased = reading
+        .ignore_types
+        .then(|| types::erase(source_text, &parsed.program))
+        .flatten();
+    let reparsed = erased
+        .as_deref()
+        .map(|erased| OxcParser::new(&allocator, erased, source_type).parse());
+    let (erased_text, parsed) = match (&erased, &reparsed) {
+        (Some(erased), Some(reparsed)) if reparsed.diagnostics.is_empty() => {
+            (Some(erased.as_str()), reparsed)
+        }
+        _ => (None, &parsed),
+    };
+
+    let line_table = match erased_text {
+        Some(erased) => LineTable::erased(erased),
+        None => LineTable::new(source_text),
+    };
+    let sources = collect_sources(&parsed.program);
 
     // Read first, so the coarsener knows which mentions of `module` and `exports` an
     // export table it could read has already spoken for.
@@ -129,7 +188,7 @@ pub fn analyse_source(
         .build(&parsed.program)
         .semantic;
 
-    let analysis = match build_fine(&parsed.program, &semantic, &sources, pure, &cjs) {
+    let analysis = match build_fine(&parsed.program, &semantic, &sources, &reading.pure, &cjs) {
         Some(module) => ModuleAnalysis::Fine(Box::new(module)),
         None => ModuleAnalysis::Coarse { sources },
     };

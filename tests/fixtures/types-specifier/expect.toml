@@ -1,0 +1,8 @@
+# One import and one export, each carrying a value and a type, and only the types
+# are renamed. A type-only name inside a list of names is not a name the erased file
+# has, so the two versions of the module are the same module and nothing changed.
+[[anchor]]
+path = "src/pages/BoardPage.tsx"
+affected = false
+ignore_types = true
+from = "base"

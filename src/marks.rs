@@ -145,6 +145,12 @@ fn mark_ranges(graph: &Graph, file: FileId, ranges: &[LineRange], out: &mut AHas
     };
 
     for range in ranges {
+        // Nothing on these lines runs, so whatever changed on them was a type. Only
+        // a run that asked for types to be ignored ever says this.
+        if analysed.line_table.runs_nothing(range.start, range.len) {
+            continue;
+        }
+
         let (start, end) = byte_range(&analysed.line_table, *range);
 
         if attribute(graph, file, module, start, end, out) {

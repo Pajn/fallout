@@ -1,0 +1,8 @@
+# Widening an interface changes what the compiler will accept and nothing a browser
+# runs. The page imports `build` for its value and `Widget` for its type, and only
+# the type moved.
+[[anchor]]
+path = "src/pages/WidgetPage.tsx"
+affected = false
+ignore_types = true
+from = "file"

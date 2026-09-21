@@ -11,6 +11,7 @@
 //! a statement whose bindings cannot be enumerated — is reported as "no answer", and
 //! the caller falls back on the diff's line ranges.
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
@@ -22,8 +23,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::{ContentEq, GetSpan, SourceType};
 
 use super::parse::{analyse_source, is_source_file, span_of};
-use super::{FineModule, ModuleAnalysis, Span, cjs, decls};
-use crate::pure::PureList;
+use super::{FineModule, ModuleAnalysis, Reading, Span, cjs, decls, types};
 
 /// How a file's current version differs from its base version.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -58,10 +58,42 @@ impl Comparison {
     }
 }
 
+/// The source this run reads, which is the source as written unless types are being
+/// ignored and there are any to erase.
+///
+/// An erasure that leaves behind something no longer parseable is discarded, so the
+/// worst it can do is leave the file read as it was.
+fn erase<'a>(
+    allocator: &Allocator,
+    source: &'a str,
+    source_type: SourceType,
+    reading: &Reading,
+) -> Cow<'a, str> {
+    if !reading.ignore_types {
+        return Cow::Borrowed(source);
+    }
+    let parsed = OxcParser::new(allocator, source, source_type).parse();
+    if !parsed.diagnostics.is_empty() {
+        return Cow::Borrowed(source);
+    }
+    let Some(erased) = types::erase(source, &parsed.program) else {
+        return Cow::Borrowed(source);
+    };
+    if OxcParser::new(allocator, &erased, source_type)
+        .parse()
+        .diagnostics
+        .is_empty()
+    {
+        Cow::Owned(erased)
+    } else {
+        Cow::Borrowed(source)
+    }
+}
+
 /// Compares the file at `path` against the `before` text of it.
 ///
 /// `None` when the two cannot be compared statement by statement.
-pub fn compare(path: &Path, before: &str, pure: &PureList) -> Option<Comparison> {
+pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Comparison> {
     if !is_source_file(path) {
         return None;
     }
@@ -71,7 +103,13 @@ pub fn compare(path: &Path, before: &str, pure: &PureList) -> Option<Comparison>
     // compared against each other at all.
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_default();
-    let old = OxcParser::new(&allocator, before, source_type).parse();
+
+    // Erased or not, both versions are read the same way: a comparison between a
+    // file with its types and a file without would find every annotation changed.
+    let before = erase(&allocator, before, source_type, reading);
+    let after = erase(&allocator, &after, source_type, reading);
+
+    let old = OxcParser::new(&allocator, &before, source_type).parse();
     let new = OxcParser::new(&allocator, &after, source_type).parse();
 
     // A parse error means one of the trees is a guess. Guessing is what the
@@ -142,7 +180,7 @@ pub fn compare(path: &Path, before: &str, pure: &PureList) -> Option<Comparison>
     // guessing at which initialisers run something, so it is analysed the way any
     // module is — but only when something went, which is not the common case.
     let old_analysis = (!removed.is_empty())
-        .then(|| analyse_source(path, before, pure))
+        .then(|| analyse_source(path, &before, reading))
         .flatten()
         .map(|(analysis, _)| analysis);
     let old_module = match &old_analysis {
@@ -389,7 +427,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("module.ts");
         fs::write(&path, after).expect("writing the current version");
-        compare(&path, before, &PureList::default())
+        compare(&path, before, &Reading::default())
     }
 
     /// The text of each statement the comparison calls changed.

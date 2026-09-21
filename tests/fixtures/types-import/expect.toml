@@ -1,0 +1,15 @@
+# The page names the module it takes `Shape` from, but `import type` imports no
+# module: nothing is fetched, nothing is evaluated, and the value the change is to
+# never arrives. The import is not an edge, so the change cannot travel along it.
+[[anchor]]
+path = "src/pages/ShapePage.tsx"
+affected = false
+ignore_types = true
+from = "file"
+
+# The same change, reached as the value it is. Erasing types takes away the type-only
+# import above and leaves every other edge where it was.
+[[anchor]]
+path = "src/pages/DrawPage.tsx"
+affected = true
+ignore_types = true

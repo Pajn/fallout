@@ -11,6 +11,7 @@ pub mod exports;
 pub mod init;
 pub mod parse;
 pub mod refs;
+pub mod types;
 
 use std::path::Path;
 
@@ -147,23 +148,35 @@ impl ModuleAnalysis {
     }
 }
 
+/// What a run reads a module as.
+///
+/// Both of these are decided once, by the command line and the project's config, and
+/// then travel together wherever a module is read — including to the earlier version
+/// of a file, which has to be read the same way as the current one or the two cannot
+/// be compared.
+#[derive(Clone, Default)]
+pub struct Reading {
+    /// Callees the project has declared free of side effects.
+    pub pure: crate::pure::PureList,
+    /// Erase type-only syntax before reading anything, so that a change made only of
+    /// types reaches nobody. See [`types`].
+    pub ignore_types: bool,
+}
+
 /// Analyses one file, falling back to [`ModuleAnalysis::Coarse`] whenever anything is
 /// not understood.
-pub fn analyse(path: &Path, pure: &crate::pure::PureList) -> Option<(ModuleAnalysis, LineTable)> {
-    parse::analyse_file(path, pure)
+pub fn analyse(path: &Path, reading: &Reading) -> Option<(ModuleAnalysis, LineTable)> {
+    parse::analyse_file(path, reading)
 }
 
 /// Every import specifier written in `path`, in source order.
 ///
 /// `None` means the file has no outgoing edges to offer: it is a leaf, or it could
 /// not be read.
-pub fn imported_specifiers(path: &Path) -> Option<Vec<String>> {
-    // The specifier list is read straight off the syntax, so which callees a
-    // project calls pure cannot change it.
-    Some(
-        analyse(path, &crate::pure::PureList::default())?
-            .0
-            .sources()
-            .to_vec(),
-    )
+///
+/// Which callees a project calls pure cannot change this list, but how the file is
+/// read can: an `import type` is not an import at all, and with `--ignore-types` it
+/// is gone before anything counts the specifiers.
+pub fn imported_specifiers(path: &Path, reading: &Reading) -> Option<Vec<String>> {
+    Some(analyse(path, reading)?.0.sources().to_vec())
 }

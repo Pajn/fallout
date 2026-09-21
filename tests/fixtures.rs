@@ -95,6 +95,15 @@ struct AnchorExpect {
     /// change rather than the analysis of the code.
     #[serde(default)]
     from: Option<String>,
+    /// Run this anchor with `--ignore-types`.
+    ///
+    /// The flag is not a level: it is a way of reading the code that every level can
+    /// be asked for, so it sits beside the chain rather than at the end of it. Every
+    /// anchor that sets it is also checked to come out the other way without it, so
+    /// that a case which would have passed regardless cannot pass for the wrong
+    /// reason.
+    #[serde(default)]
+    ignore_types: bool,
     /// Expected `--explain` node path, keyed by level name. A right verdict reached
     /// by a wrong route is a latent bug, so this is checked wherever it is given.
     #[serde(default)]
@@ -332,7 +341,7 @@ fn generate_diff(before: &Path, after: &Path) -> String {
     diff
 }
 
-fn run(case: &Case, anchor: &str, level: Level) -> Outcome {
+fn run(case: &Case, anchor: &str, level: Level, ignore_types: bool) -> Outcome {
     let root = case.root(level);
     let mut cmd = Command::new(BINARY);
     cmd.current_dir(&root)
@@ -344,6 +353,9 @@ fn run(case: &Case, anchor: &str, level: Level) -> Outcome {
         .arg(&case.diff)
         .arg("--explain")
         .args(level.args);
+    if ignore_types {
+        cmd.arg("--ignore-types");
+    }
 
     let output = cmd.output().expect("running fallout");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -382,7 +394,7 @@ fn fixtures_match_their_expectations() {
     for case in cases() {
         for anchor in &case.expect.anchor {
             for level in anchor.levels() {
-                let outcome = run(&case, &anchor.path, *level);
+                let outcome = run(&case, &anchor.path, *level, anchor.ignore_types);
 
                 assert_eq!(
                     outcome.affected,
@@ -423,7 +435,7 @@ fn positives_survive_every_level() {
         for anchor in case.expect.anchor.iter().filter(|a| a.affected) {
             for level in anchor.levels() {
                 assert!(
-                    run(&case, &anchor.path, *level).affected,
+                    run(&case, &anchor.path, *level, anchor.ignore_types).affected,
                     "{} [{}] anchor {}: a must-flag case was missed",
                     case.name(),
                     level.name,
@@ -442,7 +454,7 @@ fn refinements_only_narrow() {
         for anchor in &case.expect.anchor {
             let verdicts: Vec<bool> = LEVELS
                 .iter()
-                .map(|level| run(&case, &anchor.path, *level).affected)
+                .map(|level| run(&case, &anchor.path, *level, anchor.ignore_types).affected)
                 .collect();
 
             for (index, fine) in LEVELS.iter().enumerate() {
@@ -479,7 +491,7 @@ fn diff_and_changed_paths_agree() {
 
         for anchor in &case.expect.anchor {
             for level in LEVELS {
-                let via_diff = run(&case, &anchor.path, *level).affected;
+                let via_diff = run(&case, &anchor.path, *level, anchor.ignore_types).affected;
 
                 let root = case.root(*level);
                 let mut cmd = Command::new(BINARY);
@@ -489,6 +501,9 @@ fn diff_and_changed_paths_agree() {
                     .arg("--root")
                     .arg(&root)
                     .args(level.args);
+                if anchor.ignore_types {
+                    cmd.arg("--ignore-types");
+                }
                 for path in &changed {
                     cmd.arg("--changed").arg(path);
                 }
@@ -502,6 +517,59 @@ fn diff_and_changed_paths_agree() {
                     anchor.path
                 );
             }
+        }
+    }
+}
+
+/// Section 7.2, invariant 1 again, for the reading rather than the level: ignoring
+/// types may only ever remove verdicts. This holds for every fixture, not only the
+/// ones written about types, so every case in the suite is a test of the flag.
+#[test]
+fn ignoring_types_only_narrows() {
+    for case in cases() {
+        for anchor in &case.expect.anchor {
+            for level in LEVELS {
+                let plain = run(&case, &anchor.path, *level, false).affected;
+                let ignored = run(&case, &anchor.path, *level, true).affected;
+                assert!(
+                    plain || !ignored,
+                    "{} [{}] anchor {}: --ignore-types reports affected but a plain read does not",
+                    case.name(),
+                    level.name,
+                    anchor.path
+                );
+            }
+        }
+    }
+}
+
+/// A must-skip written about `--ignore-types` has to be the flag's doing.
+///
+/// Without this, a fixture whose change reaches nobody either way would sit in the
+/// suite looking like evidence and proving nothing. Asserting the flip at the
+/// coarsest level the expectation is held at is the strongest form available: it is
+/// the level with the least to go on, so the others follow.
+///
+/// A must-flag needs no such check. That one is the soundness contract, and
+/// [`positives_survive_every_level`] already holds it at every level with the flag
+/// turned on.
+#[test]
+fn a_types_case_needs_the_flag() {
+    for case in cases() {
+        for anchor in case
+            .expect
+            .anchor
+            .iter()
+            .filter(|a| a.ignore_types && !a.affected)
+        {
+            let level = anchor.levels()[0];
+            assert!(
+                run(&case, &anchor.path, level, false).affected,
+                "{} [{}] anchor {}: reads the same with and without --ignore-types",
+                case.name(),
+                level.name,
+                anchor.path
+            );
         }
     }
 }

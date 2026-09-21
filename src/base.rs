@@ -15,23 +15,23 @@ use std::process::Command;
 
 use ahash::AHashMap;
 
+use crate::module::Reading;
 use crate::module::compare::{self, Comparison};
-use crate::pure::PureList;
 
 /// A revision to compare against, plus the contents already read from it.
 pub struct Base {
     reference: String,
-    /// The base version of a module is analysed like any other, and that asks what
-    /// the project calls pure.
-    pure: PureList,
+    /// The earlier version of a module is analysed like any other, and has to be:
+    /// two versions read under different rules cannot be compared.
+    reading: Reading,
     contents: RefCell<AHashMap<PathBuf, Option<String>>>,
 }
 
 impl Base {
-    pub fn new(reference: &str, pure: PureList) -> Self {
+    pub fn new(reference: &str, reading: Reading) -> Self {
         Self {
             reference: reference.to_string(),
-            pure,
+            reading,
             contents: RefCell::new(AHashMap::default()),
         }
     }
@@ -40,7 +40,7 @@ impl Base {
     /// to be had: no version of it in this revision, or two versions that cannot be
     /// compared. The caller then falls back on what the diff says.
     pub fn comparison(&self, path: &Path) -> Option<Comparison> {
-        compare::compare(path, &self.before(path)?, &self.pure)
+        compare::compare(path, &self.before(path)?, &self.reading)
     }
 
     /// What `path` contained at the base revision, or `None` when there is no such

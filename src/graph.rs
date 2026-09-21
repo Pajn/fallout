@@ -10,10 +10,10 @@ use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 
+use crate::module::Reading;
 use crate::module::{
     DeclId, ExportTarget, ImportTarget, LineTable, ModuleAnalysis, SourceId, is_source_file,
 };
-use crate::pure::PureList;
 use crate::resolve::{Resolver, SideEffects};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -53,7 +53,7 @@ pub struct Analysed {
 
 pub struct Graph {
     resolver: Resolver,
-    pure: PureList,
+    reading: Reading,
     paths: RefCell<Vec<PathBuf>>,
     path_ids: RefCell<AHashMap<PathBuf, FileId>>,
     names: RefCell<Vec<String>>,
@@ -69,10 +69,10 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(pure: PureList) -> Self {
+    pub fn new(reading: Reading) -> Self {
         Self {
             resolver: Resolver::new(),
-            pure,
+            reading,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -139,6 +139,12 @@ impl Graph {
             .unwrap_or_default()
     }
 
+    /// How this run reads a module, for the parts of the analysis that sit outside
+    /// the graph and must read them the same way.
+    pub fn reading(&self) -> &Reading {
+        &self.reading
+    }
+
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.
     pub fn analysis(&self, file: FileId) -> Option<Rc<Analysed>> {
         if let Some(cached) = self.analyses.borrow().get(&file) {
@@ -146,22 +152,23 @@ impl Graph {
         }
 
         let path = self.path(file);
-        let analysed = crate::module::analyse(&path, &self.pure).map(|(analysis, line_table)| {
-            let resolved = analysis
-                .sources()
-                .iter()
-                .map(|specifier| {
-                    self.resolver
-                        .resolve(&path, specifier)
-                        .map(|target| self.file_id(&target))
+        let analysed =
+            crate::module::analyse(&path, &self.reading).map(|(analysis, line_table)| {
+                let resolved = analysis
+                    .sources()
+                    .iter()
+                    .map(|specifier| {
+                        self.resolver
+                            .resolve(&path, specifier)
+                            .map(|target| self.file_id(&target))
+                    })
+                    .collect();
+                Rc::new(Analysed {
+                    analysis,
+                    line_table,
+                    resolved,
                 })
-                .collect();
-            Rc::new(Analysed {
-                analysis,
-                line_table,
-                resolved,
-            })
-        });
+            });
 
         self.analyses.borrow_mut().insert(file, analysed.clone());
         analysed
@@ -437,7 +444,7 @@ impl Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        Self::new(PureList::default())
+        Self::new(Reading::default())
     }
 }
 

@@ -11,6 +11,7 @@ use ahash::AHashSet;
 
 use crate::base::Base;
 use crate::diff::{ChangeSet, FileChange};
+use crate::module::Reading;
 
 /// Resolves everything a run considers changed to absolute paths.
 ///
@@ -19,12 +20,14 @@ use crate::diff::{ChangeSet, FileChange};
 ///
 /// With a base revision, a file whose syntax is unchanged from it is dropped too. A
 /// reformatting or a reworded comment is not a change to anything a page can see,
-/// whatever granularity the run asked for.
+/// whatever granularity the run asked for. The same goes for a change made only of
+/// types, when the run asked for those to be ignored.
 pub fn marked_files(
     root: &Path,
     diff: &ChangeSet,
     explicit: &[PathBuf],
     base: Option<&Base>,
+    reading: &Reading,
 ) -> AHashSet<PathBuf> {
     let mut marked = AHashSet::default();
 
@@ -32,9 +35,13 @@ pub fn marked_files(
         if file.change == FileChange::Deleted {
             continue;
         }
-        if let Ok(path) = root.join(&file.path).canonicalize() {
-            marked.insert(path);
+        let Ok(path) = root.join(&file.path).canonicalize() else {
+            continue;
+        };
+        if only_types_changed(&path, &file.change, reading) {
+            continue;
         }
+        marked.insert(path);
     }
 
     for path in explicit {
@@ -51,6 +58,27 @@ pub fn marked_files(
 fn unchanged_since_base(path: &Path, base: Option<&Base>) -> bool {
     base.and_then(|base| base.comparison(path))
         .is_some_and(|comparison| comparison.is_empty())
+}
+
+/// Whether every line the diff names has nothing on it that runs.
+///
+/// This is all a line range can prove without an earlier version to compare against:
+/// a line holding an annotation and a value both could have changed in either, so it
+/// counts. A file named without line information counts too.
+fn only_types_changed(path: &Path, change: &FileChange, reading: &Reading) -> bool {
+    if !reading.ignore_types {
+        return false;
+    }
+    let FileChange::Modified { ranges } = change else {
+        return false;
+    };
+    let Some((_, line_table)) = crate::module::analyse(path, reading) else {
+        return false;
+    };
+    !ranges.is_empty()
+        && ranges
+            .iter()
+            .all(|range| line_table.runs_nothing(range.start, range.len))
 }
 
 #[cfg(test)]
@@ -77,7 +105,7 @@ mod tests {
             ],
         };
 
-        let marked = marked_files(root, &diff, &[], None);
+        let marked = marked_files(root, &diff, &[], None, &Reading::default());
         assert_eq!(marked.len(), 1);
         assert!(marked.contains(&root.join("kept.ts").canonicalize().unwrap()));
     }
@@ -92,7 +120,7 @@ mod tests {
             }],
         };
 
-        assert!(marked_files(dir.path(), &diff, &[], None).is_empty());
+        assert!(marked_files(dir.path(), &diff, &[], None, &Reading::default()).is_empty());
     }
 
     #[test]
@@ -109,7 +137,7 @@ mod tests {
             }],
         };
 
-        let marked = marked_files(root, &diff, &[root.join("b.ts")], None);
+        let marked = marked_files(root, &diff, &[root.join("b.ts")], None, &Reading::default());
         assert_eq!(marked.len(), 2);
     }
 }

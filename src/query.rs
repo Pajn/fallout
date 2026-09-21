@@ -7,7 +7,7 @@ use ahash::{AHashMap, AHashSet};
 use clap::ValueEnum;
 
 use crate::graph::{Graph, Node};
-use crate::module::imported_specifiers;
+use crate::module::{Reading, imported_specifiers};
 use crate::resolve::Resolver;
 
 /// Which way to walk the import graph between the anchor and a changed file.
@@ -57,6 +57,7 @@ pub fn downstream(
     anchors: &[PathBuf],
     changed: &AHashSet<PathBuf>,
     resolver: &Resolver,
+    reading: &Reading,
 ) -> Option<Hit> {
     let mut came_from: AHashMap<PathBuf, Option<PathBuf>> = AHashMap::default();
     let mut queue = VecDeque::new();
@@ -76,7 +77,7 @@ pub fn downstream(
             });
         }
 
-        for next in edges_from(&current, resolver) {
+        for next in edges_from(&current, resolver, reading) {
             if !came_from.contains_key(&next) {
                 came_from.insert(next.clone(), Some(current.clone()));
                 queue.push_back(next);
@@ -95,6 +96,7 @@ pub fn upstream(
     anchors: &[PathBuf],
     changed: &AHashSet<PathBuf>,
     resolver: &Resolver,
+    reading: &Reading,
 ) -> Option<Hit> {
     let anchor_set: AHashSet<&PathBuf> = anchors.iter().collect();
 
@@ -116,7 +118,7 @@ pub fn upstream(
                 });
             }
 
-            for next in edges_from(&current, resolver) {
+            for next in edges_from(&current, resolver, reading) {
                 if !came_from.contains_key(&next) {
                     came_from.insert(next.clone(), Some(current.clone()));
                     queue.push_back(next);
@@ -128,8 +130,8 @@ pub fn upstream(
     None
 }
 
-fn edges_from(file: &Path, resolver: &Resolver) -> Vec<PathBuf> {
-    let Some(specifiers) = imported_specifiers(file) else {
+fn edges_from(file: &Path, resolver: &Resolver, reading: &Reading) -> Vec<PathBuf> {
+    let Some(specifiers) = imported_specifiers(file, reading) else {
         return Vec::new();
     };
 

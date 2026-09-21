@@ -62,6 +62,10 @@ pub struct Options {
     /// Search only this direction instead of both.
     pub only: Option<Direction>,
     pub granularity: Granularity,
+    /// Read every file with its type-only syntax erased, so that a change made only
+    /// of types reaches nobody. A type error fails the build for every page at once,
+    /// which is a different question from the one this tool answers.
+    pub ignore_types: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,10 +146,14 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     } else {
         pure::PureList::default()
     };
+    let reading = module::Reading {
+        pure,
+        ignore_types: options.ignore_types,
+    };
     let base = options
         .base
         .as_deref()
-        .map(|reference| base::Base::new(reference, pure.clone()));
+        .map(|reference| base::Base::new(reference, reading.clone()));
 
     if options.granularity == Granularity::Symbol {
         return Ok(analyse_symbols(
@@ -153,12 +161,18 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
             &root,
             &change_set,
             options,
-            pure,
+            reading,
             base.as_ref(),
         ));
     }
 
-    let changed = changes::marked_files(&root, &change_set, &options.changed, base.as_ref());
+    let changed = changes::marked_files(
+        &root,
+        &change_set,
+        &options.changed,
+        base.as_ref(),
+        &reading,
+    );
 
     if changed.is_empty() {
         return Ok(Verdict::NotAffected);
@@ -167,13 +181,13 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     let resolver = Resolver::new();
 
     if options.only != Some(Direction::Upstream) {
-        if let Some(hit) = query::downstream(&anchors, &changed, &resolver) {
+        if let Some(hit) = query::downstream(&anchors, &changed, &resolver, &reading) {
             return Ok(Verdict::Affected(hit));
         }
     }
 
     if options.only != Some(Direction::Downstream) {
-        if let Some(hit) = query::upstream(&anchors, &changed, &resolver) {
+        if let Some(hit) = query::upstream(&anchors, &changed, &resolver, &reading) {
             return Ok(Verdict::Affected(hit));
         }
     }
@@ -188,10 +202,10 @@ fn analyse_symbols(
     root: &Path,
     change_set: &diff::ChangeSet,
     options: &Options,
-    pure: pure::PureList,
+    reading: module::Reading,
     base: Option<&base::Base>,
 ) -> Verdict {
-    let graph = graph::Graph::new(pure);
+    let graph = graph::Graph::new(reading);
     let marked = marks::marked_nodes(&graph, change_set, root, &options.changed, base);
 
     if marked.is_empty() {
@@ -211,9 +225,10 @@ fn analyse_symbols(
     }
 
     if options.only != Some(Direction::Downstream) {
-        let changed = changes::marked_files(root, change_set, &options.changed, base);
+        let changed =
+            changes::marked_files(root, change_set, &options.changed, base, graph.reading());
         let resolver = Resolver::new();
-        if let Some(hit) = query::upstream(anchors, &changed, &resolver) {
+        if let Some(hit) = query::upstream(anchors, &changed, &resolver, graph.reading()) {
             return Verdict::Affected(hit);
         }
     }

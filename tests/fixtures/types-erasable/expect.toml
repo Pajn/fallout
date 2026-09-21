@@ -1,0 +1,11 @@
+# The awkward corners of erasing, in one file: a type-only name in a list that also
+# carries a value, `implements`, a definite-assignment `!`, an optional `?`, and a
+# return type written across lines with the arrow below it. Each of those is a place
+# where taking the type out can leave behind something that is no longer the
+# language — and a file that no longer parses is read as it was written, so the
+# widened interface at the top would reach the page after all.
+[[anchor]]
+path = "src/pages/GadgetPage.tsx"
+affected = false
+ignore_types = true
+from = "file"
