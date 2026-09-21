@@ -119,7 +119,8 @@ pure = [
 builtin-pure = true
 ```
 
-The same file carries `[style.aliases]`, under [Stylesheets](#stylesheets).
+The same file carries `inline-requires`, under [Inline requires](#inline-requires),
+and `[style.aliases]`, under [Stylesheets](#stylesheets).
 
 An entry is written as the import source, `#`, and the path taken from the binding
 that import introduces. The first segment is the name the target exports, with
@@ -148,6 +149,41 @@ no directory matching at any depth (`"*.css"` covers a stylesheet anywhere). Abs
 `true`, or a pattern that cannot be read leaves a file analysed normally, since the
 alternative is dropping an edge on a guess. Workspace packages reached through
 `node_modules` symlinks are covered along with the app itself.
+
+### Inline requires
+
+By default, importing a module evaluates it. That is what the language says and what
+most bundlers emit, so `ModuleInit(f)` reaches `ModuleInit(g)` for every module `f`
+imports — and, transitively, for everything `g` imports. In an app where the entry
+point pulls in a global store, that chain reaches most of the tree from most of the
+tree, which is file-level reachability wearing a symbol-shaped node.
+
+Some bundlers do not emit that. Metro's `inlineRequires`, and the equivalent under
+other names, moves each `require` down to the first use of the binding it introduces,
+so importing a module does nothing until something reads one of its names. A project
+built that way says so:
+
+```toml
+# fallout.toml, read from --root
+inline-requires = true
+```
+
+Then importing no longer evaluates, and reaching a name does. `ModuleInit(g)` hangs
+off `Export(g, name)` instead of off `ModuleInit(f)`, which is the same work
+attributed to whoever actually causes it: a declaration that uses `g`'s export
+reaches `g`'s top-level statements, and a module that imports `g` and never touches
+it reaches nothing.
+
+Two things are unchanged. A bare `import "./setup"` introduces no binding, so there
+is nothing to defer and it still runs when the importing module is evaluated. And a
+namespace reference — `import * as ns`, `require(...)` — reaches the module itself
+whether or not it exports anything, since a module that exports nothing has no name
+to hang its evaluation on.
+
+The setting is a claim about the build, and a wrong one under-reports: it would put
+every top-level side effect behind a name nobody reads. It is off unless the project
+turns it on, and it only affects `--granularity symbol`, since a whole-file verdict
+has no separate node for module initialisation.
 
 ### CommonJS
 

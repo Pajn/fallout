@@ -54,7 +54,7 @@ pub struct Analysed {
 pub struct Graph {
     resolver: Resolver,
     reading: Reading,
-    style: crate::config::Style,
+    project: crate::config::Project,
     paths: RefCell<Vec<PathBuf>>,
     path_ids: RefCell<AHashMap<PathBuf, FileId>>,
     names: RefCell<Vec<String>>,
@@ -70,11 +70,11 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new(reading: Reading, style: crate::config::Style) -> Self {
+    pub fn new(reading: Reading, project: crate::config::Project) -> Self {
         Self {
-            resolver: Resolver::new(&style),
+            resolver: Resolver::new(&project.style),
             reading,
-            style,
+            project,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -150,7 +150,7 @@ impl Graph {
     /// What the project declared about its stylesheets, for the parts of the run that
     /// build a resolver of their own and must resolve the same way.
     pub fn style(&self) -> &crate::config::Style {
-        &self.style
+        &self.project.style
     }
 
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.
@@ -262,7 +262,7 @@ impl Graph {
         };
 
         let text = self.name(name);
-        match module.export_named(&text).map(|e| &e.target) {
+        let mut edges = match module.export_named(&text).map(|e| &e.target) {
             Some(ExportTarget::Local(decl)) => vec![Node::Decl(file, *decl)],
             Some(ExportTarget::Reexport { source, name }) => {
                 match self.target_of(&analysed, *source) {
@@ -284,7 +284,16 @@ impl Graph {
                     None => vec![Node::File(file)],
                 }
             }
+        };
+        // With imports deferred to first use, this is where a module gets evaluated:
+        // not when it is imported, but when something reaches one of its names. Every
+        // way of reaching into another module lands on an export node, so stating it
+        // here states it once — for a plain import, for a re-export, for a name that
+        // arrived through `export *`, and for each name of a namespace.
+        if self.project.inline_requires {
+            edges.push(Node::ModuleInit(file));
         }
+        edges
     }
 
     fn init_edges(&self, file: FileId) -> Vec<Node> {
@@ -304,22 +313,27 @@ impl Graph {
                 edges.push(Node::Decl(file, decl));
             }
         }
-        // Importing a module runs its initialisation, in any form.
-        for target in analysed.resolved.iter().flatten() {
-            if is_source_file(&self.path(*target)) {
-                edges.push(Node::ModuleInit(*target));
+        // Importing a module runs its initialisation, in any form — unless the
+        // project defers each import to the first use of the binding it introduces,
+        // in which case importing runs nothing and the edge belongs to whoever uses
+        // the binding. A *bare* import introduces no binding, so there is nothing to
+        // defer and it runs either way.
+        for (source, target) in analysed.resolved.iter().enumerate() {
+            let Some(target) = *target else { continue };
+            let bare = module.bare_sources.contains(&(source as SourceId));
+            if self.project.inline_requires && !bare {
+                continue;
             }
-        }
-        // Only a *bare* import of a non-source file is a module-level side effect:
-        // `import "./theme.css"` affects everyone importing this module. A binding
-        // import of an asset reaches only the declarations that use the binding, so
-        // it is a declaration edge instead. Whether loading the target runs anything
-        // is the target's claim to make, not this module's.
-        for &source in &module.bare_sources {
-            if let Some(target) = self.target_of(&analysed, source) {
-                if !is_source_file(&self.path(target)) && self.runs_on_import(target) {
-                    edges.push(Node::File(target));
-                }
+            if is_source_file(&self.path(target)) {
+                edges.push(Node::ModuleInit(target));
+            } else if bare && self.runs_on_import(target) {
+                // Only a *bare* import of a non-source file is a module-level side
+                // effect: `import "./theme.css"` affects everyone importing this
+                // module. A binding import of an asset reaches only the declarations
+                // that use the binding, so it is a declaration edge instead. Whether
+                // loading the target runs anything is the target's claim to make,
+                // not this module's.
+                edges.push(Node::File(target));
             }
         }
         edges
@@ -403,6 +417,12 @@ impl Graph {
         let mut seen = AHashSet::default();
         let mut nodes = Vec::new();
         self.collect_exports(file, &mut seen, &mut nodes);
+        // Taking the whole module reaches it whether or not it exports anything, so
+        // with imports deferred this is the one reference that cannot be covered by
+        // the export nodes it produces: there may be none.
+        if self.project.inline_requires {
+            nodes.push(Node::ModuleInit(file));
+        }
         nodes
     }
 
@@ -458,7 +478,7 @@ impl Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        Self::new(Reading::default(), crate::config::Style::default())
+        Self::new(Reading::default(), crate::config::Project::default())
     }
 }
 

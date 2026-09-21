@@ -15,6 +15,54 @@ use oxc_resolver::{Alias, AliasValue};
 /// The name of the file, read from `--root`.
 pub const FILE: &str = "fallout.toml";
 
+/// What a project says about itself in `fallout.toml`.
+///
+/// One parse, handed to everything that needs to know. The list of pure functions
+/// is read separately, because a run that asks no question about purity has no
+/// reason to fail on a list it cannot read.
+#[derive(Debug, Clone, Default)]
+pub struct Project {
+    pub style: Style,
+    /// The project's bundler moves each `require` to the first use of the binding it
+    /// introduces, so importing a module does not evaluate it.
+    ///
+    /// Off unless the project says otherwise, because saying it wrongly under-reports:
+    /// every top-level side effect in the graph would then be attributed to the first
+    /// declaration that happens to use something from the module, and a module nobody
+    /// takes a binding from would never be evaluated at all.
+    pub inline_requires: bool,
+}
+
+impl Project {
+    pub fn load(root: &Path) -> Result<Self, Error> {
+        let path = root.join(FILE);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Ok(Self::default());
+        };
+        let shown = path.display().to_string();
+
+        let document: toml::Table = text.parse().map_err(|error| Error::Unreadable {
+            path: shown.clone(),
+            detail: format!("{error}"),
+        })?;
+
+        Ok(Self {
+            style: Style::read(&document, root, &shown)?,
+            inline_requires: flag(&document, "inline-requires", &shown)?,
+        })
+    }
+}
+
+fn flag(document: &toml::Table, key: &str, shown: &str) -> Result<bool, Error> {
+    match document.get(key) {
+        None => Ok(false),
+        Some(value) => value.as_bool().ok_or_else(|| Error::NotABoolean {
+            path: shown.to_string(),
+            key: key.to_string(),
+        }),
+    }
+}
+
 /// The `[style]` table: how stylesheets are read and resolved.
 #[derive(Debug, Clone, Default)]
 pub struct Style {
@@ -33,6 +81,8 @@ pub enum Error {
     NotATable { path: String, key: String },
     /// An alias points at something that is not a path or a list of them.
     BadAlias { path: String, name: String },
+    /// A setting that is either on or off was written as something else.
+    NotABoolean { path: String, key: String },
 }
 
 impl fmt::Display for Error {
@@ -45,31 +95,21 @@ impl fmt::Display for Error {
                 "{path}: alias `{name}` must be a path or a list of paths, relative to \
                  this file — for example sass = \"app/sass\""
             ),
+            Error::NotABoolean { path, key } => {
+                write!(f, "{path}: `{key}` must be true or false")
+            }
         }
     }
 }
 
 impl Style {
-    /// Reads the `[style]` table of `root/fallout.toml`.
-    ///
-    /// A missing file is not an error: most projects need no entries at all.
-    pub fn load(root: &Path) -> Result<Self, Error> {
-        let path = root.join(FILE);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return Ok(Self::default());
-        };
-        let shown = path.display().to_string();
-
-        let document: toml::Table = text.parse().map_err(|error| Error::Unreadable {
-            path: shown.clone(),
-            detail: format!("{error}"),
-        })?;
-
+    /// Reads the `[style]` table of an already-parsed `fallout.toml`.
+    fn read(document: &toml::Table, root: &Path, shown: &str) -> Result<Self, Error> {
         let Some(style) = document.get("style") else {
             return Ok(Self::default());
         };
         let style = style.as_table().ok_or_else(|| Error::NotATable {
-            path: shown.clone(),
+            path: shown.to_string(),
             key: "style".to_string(),
         })?;
 
@@ -77,7 +117,7 @@ impl Style {
             return Ok(Self::default());
         };
         let aliases = aliases.as_table().ok_or_else(|| Error::NotATable {
-            path: shown.clone(),
+            path: shown.to_string(),
             key: "style.aliases".to_string(),
         })?;
 
@@ -93,14 +133,14 @@ impl Style {
                         each.as_str()
                             .map(|each| absolute(root, each))
                             .ok_or_else(|| Error::BadAlias {
-                                path: shown.clone(),
+                                path: shown.to_string(),
                                 name: name.clone(),
                             })
                     })
                     .collect::<Result<_, _>>()?,
                 _ => {
                     return Err(Error::BadAlias {
-                        path: shown.clone(),
+                        path: shown.to_string(),
                         name: name.clone(),
                     });
                 }
@@ -119,10 +159,14 @@ fn absolute(root: &Path, target: &str) -> AliasValue {
 mod tests {
     use super::*;
 
-    fn written(body: &str) -> Result<Style, Error> {
+    fn written(body: &str) -> Result<Project, Error> {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::write(dir.path().join(FILE), body).expect("writing the config");
-        Style::load(dir.path())
+        Project::load(dir.path())
+    }
+
+    fn style(body: &str) -> Result<Style, Error> {
+        written(body).map(|project| project.style)
     }
 
     fn names(style: &Style) -> Vec<&str> {
@@ -136,18 +180,20 @@ mod tests {
     #[test]
     fn no_file_is_no_entries() {
         let dir = tempfile::tempdir().expect("temp dir");
-        assert!(Style::load(dir.path()).expect("no file").aliases.is_empty());
+        let project = Project::load(dir.path()).expect("no file");
+        assert!(project.style.aliases.is_empty());
+        assert!(!project.inline_requires);
     }
 
     #[test]
     fn a_file_without_the_table_is_no_entries() {
-        let style = written("pure = [\"react#memo\"]\n").expect("readable");
+        let style = style("pure = [\"react#memo\"]\n").expect("readable");
         assert!(style.aliases.is_empty());
     }
 
     #[test]
     fn an_alias_points_somewhere_below_the_file() {
-        let style = written("[style.aliases]\nsass = \"app/sass\"\n").expect("readable");
+        let style = style("[style.aliases]\nsass = \"app/sass\"\n").expect("readable");
         assert_eq!(names(&style), vec!["sass"]);
         let AliasValue::Path(target) = &style.aliases[0].1[0] else {
             panic!("a path");
@@ -160,8 +206,7 @@ mod tests {
 
     #[test]
     fn a_list_is_tried_in_the_order_it_is_written() {
-        let style =
-            written("[style.aliases]\nsass = [\"a/sass\", \"b/sass\"]\n").expect("readable");
+        let style = style("[style.aliases]\nsass = [\"a/sass\", \"b/sass\"]\n").expect("readable");
         let targets: Vec<String> = style.aliases[0]
             .1
             .iter()
@@ -196,6 +241,24 @@ mod tests {
         assert!(matches!(
             written("[style]\naliases = 3\n"),
             Err(Error::NotATable { .. })
+        ));
+    }
+
+    #[test]
+    fn a_setting_is_off_until_the_project_turns_it_on() {
+        assert!(!written("pure = []\n").expect("readable").inline_requires);
+        assert!(
+            written("inline-requires = true\n")
+                .expect("readable")
+                .inline_requires
+        );
+    }
+
+    #[test]
+    fn a_setting_that_is_not_a_boolean_is_an_error() {
+        assert!(matches!(
+            written("inline-requires = \"yes\"\n"),
+            Err(Error::NotABoolean { .. })
         ));
     }
 

@@ -1,0 +1,12 @@
+# The same trees as `module-init-cascade`, under a project whose bundler moves each
+# `require` to the first use of the binding it introduces. Importing `theme.ts` no
+# longer evaluates it, so the chain of module initialisations that carried the page
+# to `logger.ts` does not exist, and the page reaches no name in that file: `warn` is
+# used by `checkTheme`, which nothing on this page reaches.
+#
+# This is the claim doing the narrowing. Without it every module reaches the module
+# initialisation of everything it imports, transitively, which is file-level
+# reachability wearing a symbol-shaped node.
+[[anchor]]
+path = "src/pages/HomePage.tsx"
+affected = false

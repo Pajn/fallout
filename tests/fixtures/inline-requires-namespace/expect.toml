@@ -1,0 +1,21 @@
+# `registry.ts` exports nothing at all: requiring it is worth doing only for what it
+# does when it runs. So it is the one reference that cannot be carried by an export
+# node, because there is no export node to carry it, and taking the module whole has
+# to reach the module itself.
+#
+# Deferring an import makes this the only route there is. Under the default,
+# `ModuleInit(badge.tsx)` would reach it regardless.
+[[anchor]]
+path = "src/pages/HomePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/HomePage.tsx)",
+    "Decl(src/pages/HomePage.tsx, default)",
+    "Export(src/components/badge.tsx, Badge)",
+    "Decl(src/components/badge.tsx, Badge)",
+    "Decl(src/components/badge.tsx, registry)",
+    "ModuleInit(src/lib/registry.ts)",
+    "Decl(src/lib/registry.ts, register)",
+]

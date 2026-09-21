@@ -1,0 +1,21 @@
+# Nothing the page reaches by name comes from `logger`: it takes `theme` from
+# `theme.ts`, and only `checkTheme` — which the page never reaches — uses `warn`.
+# The route is initialisation alone. Importing a module runs it, running it imports
+# the next one, and four files down that chain is a module with work to do at the
+# top level.
+#
+# This is the default, and it is what a bundler that evaluates an import where it is
+# written does. `inline-requires` is the same trees under a bundler that does not.
+[[anchor]]
+path = "src/pages/HomePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/HomePage.tsx)",
+    "ModuleInit(src/pages/HomePage.tsx)",
+    "ModuleInit(src/components/badge.tsx)",
+    "ModuleInit(src/lib/theme.ts)",
+    "ModuleInit(src/lib/logger.ts)",
+    "Decl(src/lib/logger.ts, createPrefix)",
+]

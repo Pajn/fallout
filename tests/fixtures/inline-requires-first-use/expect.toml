@@ -1,0 +1,22 @@
+# The other half of the same claim. Deferring an import does not delete the work a
+# module does when it is evaluated — it moves it to whoever first uses one of the
+# module's names. `Badge` calls `warn`, so reaching `Badge` is what evaluates
+# `logger.ts`, and the top-level call in that file is reached through the export
+# rather than through the import.
+#
+# Read together with `inline-requires`: the same setting must lose the page that only
+# imports and keep the page that uses.
+[[anchor]]
+path = "src/pages/HomePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/HomePage.tsx)",
+    "Decl(src/pages/HomePage.tsx, default)",
+    "Export(src/components/badge.tsx, Badge)",
+    "Decl(src/components/badge.tsx, Badge)",
+    "Export(src/lib/logger.ts, warn)",
+    "ModuleInit(src/lib/logger.ts)",
+    "Decl(src/lib/logger.ts, createPrefix)",
+]

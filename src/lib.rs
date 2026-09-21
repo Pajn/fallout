@@ -90,8 +90,8 @@ pub enum Error {
     /// than ignored: a setting that silently does nothing would show up as a verdict
     /// nobody can explain.
     Config(pure::Error),
-    /// The same, for the part of that file about stylesheets.
-    StyleConfig(config::Error),
+    /// The same, for the claims that file makes about the project itself.
+    Project(config::Error),
 }
 
 impl fmt::Display for Error {
@@ -102,7 +102,7 @@ impl fmt::Display for Error {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
             }
             Error::Config(error) => write!(f, "{error}"),
-            Error::StyleConfig(error) => write!(f, "{error}"),
+            Error::Project(error) => write!(f, "{error}"),
         }
     }
 }
@@ -156,8 +156,9 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         ignore_types: !options.include_types,
     };
     // Unlike the pure list, this is read on every run: a stylesheet alias decides
-    // which files exist in the graph at all, which every granularity depends on.
-    let style = config::Style::load(&root).map_err(Error::StyleConfig)?;
+    // which files exist in the graph at all, which every granularity depends on. The
+    // rest of the file is parsed with it, since it is one file and one read.
+    let project = config::Project::load(&root).map_err(Error::Project)?;
     let base = options
         .base
         .as_deref()
@@ -170,7 +171,7 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
             &change_set,
             options,
             reading,
-            &style,
+            &project,
             base.as_ref(),
         ));
     }
@@ -187,7 +188,7 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
         return Ok(Verdict::NotAffected);
     }
 
-    let resolver = Resolver::new(&style);
+    let resolver = Resolver::new(&project.style);
 
     if options.only != Some(Direction::Upstream) {
         if let Some(hit) = query::downstream(&anchors, &changed, &resolver, &reading) {
@@ -212,10 +213,10 @@ fn analyse_symbols(
     change_set: &diff::ChangeSet,
     options: &Options,
     reading: module::Reading,
-    style: &config::Style,
+    project: &config::Project,
     base: Option<&base::Base>,
 ) -> Verdict {
-    let graph = graph::Graph::new(reading, style.clone());
+    let graph = graph::Graph::new(reading, project.clone());
     let marked = marks::marked_nodes(&graph, change_set, root, &options.changed, base);
 
     if marked.is_empty() {
