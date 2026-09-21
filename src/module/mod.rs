@@ -154,13 +154,26 @@ impl ModuleAnalysis {
 /// then travel together wherever a module is read — including to the earlier version
 /// of a file, which has to be read the same way as the current one or the two cannot
 /// be compared.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Reading {
     /// Callees the project has declared free of side effects.
     pub pure: crate::pure::PureList,
     /// Erase type-only syntax before reading anything, so that a change made only of
     /// types reaches nobody. See [`types`].
+    ///
+    /// On unless a run asks otherwise. The question this tool answers is whether a
+    /// change can alter what a user sees, and a type cannot: it can fail the build,
+    /// which fails every page at once and needs no answer about reachability.
     pub ignore_types: bool,
+}
+
+impl Default for Reading {
+    fn default() -> Self {
+        Self {
+            pure: crate::pure::PureList::default(),
+            ignore_types: true,
+        }
+    }
 }
 
 /// Analyses one file, falling back to [`ModuleAnalysis::Coarse`] whenever anything is

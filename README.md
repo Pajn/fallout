@@ -31,7 +31,7 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-c, --changed <PATH>` | A changed file, as produced by `git diff --name-only`. Repeatable. |
 | `-d, --diff <PATH>` | A unified diff describing the change; `-` reads standard input. |
 | `-b, --base <REV>` | Git revision to compare each changed file against. See below. |
-| `--ignore-types` | Read every file with its type-only syntax erased. See below. |
+| `--include-types` | Read every file as written, so a type-only change still counts. See below. |
 | `-r, --root <PATH>` | Root directory to resolve from. Defaults to the current directory. |
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
 | `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
@@ -263,29 +263,31 @@ is reported only when there is a base revision to compare against. That fallback
 also covers a file either version of which does not parse, and one git has no
 earlier version of.
 
-### Ignoring types
+### Types
 
-`--ignore-types` reads every file with its type-only syntax taken out, so a change
-made only of types reaches nobody:
+A type cannot change what a page renders. It can break the build, but a broken build
+breaks every page at once and needs no answer about reachability — reachability is
+no help with it. So a change made only of types is not a change this tool reports,
+and every file is read with its type-only syntax erased:
 
 ```sh
 git diff -U3 origin/main... | fallout --anchor src/pages/CheckoutPage.tsx \
-  --diff - --base origin/main --ignore-types
+  --diff - --base origin/main
 ```
 
-A type cannot change what a page renders. It can break the build, but a broken build
-breaks every page at once and needs no answer about reachability. That is what makes
-the flag defensible, and also what makes it a flag: it is right for a job running
-alongside a typecheck and wrong for one standing in for it.
+`--include-types` turns that off and reads each file as it was written, for a run
+that wants a type change to count.
 
 The erasure happens once, on the source, before anything reads it, and everything
 else follows from that rather than from a rule of its own. An `interface` is no
 longer a statement, so nothing declares it and nothing depends on it. An
-`import type` is no longer an import, so it is no longer an edge. Two versions of a
-file that differ only in their annotations become the same text, so `--base` finds
-nothing between them. A line the erasure empties is a line no change to it can mark,
-which is the one thing a diff can prove on its own — so the flag works at `file`
-granularity too, without a base revision.
+`import type` is no longer an import, so it is no longer an edge — which matters
+more than it sounds, because a file whose imports are all type-only stops reaching
+anything at all, and a barrel passing a type through stops carrying the module
+behind it. Two versions of a file that differ only in their annotations become the
+same text, so `--base` finds nothing between them. And a line the erasure empties is
+a line no change to it can mark, which is the one thing a diff can prove on its own,
+so this narrows at `file` granularity too.
 
 What goes is what the language erases: annotations, type parameters and arguments,
 `as`, `satisfies` and `!`, `implements`, interfaces, type aliases, anything
@@ -302,9 +304,9 @@ stands. Whatever is left behind is reparsed, and if it is no longer the language
 file is read as it was written, so a shape the eraser gets wrong costs precision
 rather than an answer.
 
-Taking syntax away can only ever take verdicts away with it, so every fixture in the
-suite is also a test of the flag: whatever a plain read reports, an erased read of
-the same change may report that or less, and never more.
+Erasing only ever takes syntax away, so it can only ever take verdicts away with it.
+Every fixture in the suite is run both ways and held to that: whatever a read as
+written reports, the default reports that or less, and never more.
 
 ### Explaining a verdict
 

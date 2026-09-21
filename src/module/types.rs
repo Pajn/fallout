@@ -2,8 +2,7 @@
 //!
 //! A type cannot change what a page renders. It can break the build, but a broken
 //! build breaks every page at once and needs no answer about reachability — which is
-//! what makes `--ignore-types` defensible, and why it is a flag rather than the
-//! default.
+//! why erasing is what a run does unless `--include-types` asks otherwise.
 //!
 //! The erasure happens once, on the source, before anything reads it: every byte of
 //! type-only syntax becomes a space, and newlines stay newlines. Everything

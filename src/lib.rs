@@ -62,10 +62,11 @@ pub struct Options {
     /// Search only this direction instead of both.
     pub only: Option<Direction>,
     pub granularity: Granularity,
-    /// Read every file with its type-only syntax erased, so that a change made only
-    /// of types reaches nobody. A type error fails the build for every page at once,
-    /// which is a different question from the one this tool answers.
-    pub ignore_types: bool,
+    /// Read every file as it was written, types and all, so that a change made only
+    /// of types still counts as a change. Off by default: a type error fails the
+    /// build for every page at once, which is a different question from the one this
+    /// tool answers, and reachability is no help with it.
+    pub include_types: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,7 +149,7 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     };
     let reading = module::Reading {
         pure,
-        ignore_types: options.ignore_types,
+        ignore_types: !options.include_types,
     };
     let base = options
         .base

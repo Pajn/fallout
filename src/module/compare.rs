@@ -424,10 +424,23 @@ mod tests {
 
     /// Compares `before` against `after` as one TypeScript file.
     fn compared(before: &str, after: &str) -> Option<Comparison> {
+        compared_as(before, after, &Reading::default())
+    }
+
+    /// The same, read a named way. Only a test about types needs to say which.
+    fn compared_as(before: &str, after: &str, reading: &Reading) -> Option<Comparison> {
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("module.ts");
         fs::write(&path, after).expect("writing the current version");
-        compare(&path, before, &Reading::default())
+        compare(&path, before, reading)
+    }
+
+    /// A reading that takes the file as written, types and all.
+    fn as_written() -> Reading {
+        Reading {
+            ignore_types: false,
+            ..Reading::default()
+        }
     }
 
     /// The text of each statement the comparison calls changed.
@@ -580,15 +593,21 @@ mod tests {
     #[test]
     fn overloads_are_matched_in_the_order_they_are_written() {
         // Three statements share the name `f`, so nothing but their order tells them
-        // apart. Only the one that differs may be reported.
+        // apart. Only the one that differs may be reported. Read as written, because
+        // an overload signature is one of the things a default read erases.
         let before = "export function f(a: string): void;\nexport function f(a: number): void;\nexport function f(a) {}\n";
         let after = "export function f(a: string): void;\nexport function f(a: boolean): void;\nexport function f(a) {}\n";
 
-        let comparison = compared(before, after).expect("comparable");
+        let comparison = compared_as(before, after, &as_written()).expect("comparable");
         assert_eq!(
             changed(after, &comparison),
             vec!["export function f(a: boolean): void;"]
         );
         assert!(!comparison.init_differs);
+
+        // And read the default way there is nothing there to differ: an overload
+        // signature runs nothing, so the two files are the same file.
+        let comparison = compared(before, after).expect("comparable");
+        assert!(comparison.is_empty());
     }
 }

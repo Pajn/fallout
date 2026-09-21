@@ -7,5 +7,5 @@
 [[anchor]]
 path = "src/pages/GadgetPage.tsx"
 affected = false
-ignore_types = true
+needs_types_ignored = true
 from = "file"

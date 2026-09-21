@@ -41,9 +41,9 @@ pub struct Cli {
     #[arg(short, long, value_enum, default_value = "file")]
     pub granularity: Granularity,
 
-    /// Ignore changes made only of types, which cannot alter what a page renders
+    /// Count a change made only of types as a change, which by default it is not
     #[arg(long)]
-    pub ignore_types: bool,
+    pub include_types: bool,
 
     /// Print the chain of imports that produced the verdict
     #[arg(short, long)]
@@ -71,7 +71,7 @@ pub fn run() -> ExitCode {
         root: root.clone(),
         only: cli.only,
         granularity: cli.granularity,
-        ignore_types: cli.ignore_types,
+        include_types: cli.include_types,
     };
 
     match analyse(&options) {

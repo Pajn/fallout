@@ -5,5 +5,5 @@
 [[anchor]]
 path = "src/pages/LabelPage.tsx"
 affected = false
-ignore_types = true
+needs_types_ignored = true
 from = "base"

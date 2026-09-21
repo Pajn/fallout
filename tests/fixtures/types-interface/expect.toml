@@ -4,5 +4,5 @@
 [[anchor]]
 path = "src/pages/WidgetPage.tsx"
 affected = false
-ignore_types = true
+needs_types_ignored = true
 from = "file"

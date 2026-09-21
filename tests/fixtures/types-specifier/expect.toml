@@ -4,5 +4,5 @@
 [[anchor]]
 path = "src/pages/BoardPage.tsx"
 affected = false
-ignore_types = true
+needs_types_ignored = true
 from = "base"
