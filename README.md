@@ -419,7 +419,15 @@ path starts at the anchor and an upstream path ends at it.
 Static `import`, `export ... from`, `export * from`, dynamic `import()`, and `require()`.
 
 Module resolution follows `tsconfig.json` path mappings, discovered automatically from the
-root.
+root, and the `exports` and `imports` fields of the nearest `package.json` — so a package
+naming its own internals, as in `"#app/*": "./app/*.js"`, resolves the way Node resolves it.
+
+A specifier ending in `.js` is tried as `.ts` and `.tsx` before `.js`, and `.jsx`,
+`.cjs` and `.mjs` likewise. TypeScript makes a specifier name the file the compiler
+will *emit* rather than the file beside it, so under `"module": "nodenext"` the file on
+disk is `helper.ts` and every import of it is written `./helper.js`. A plain JavaScript
+file keeps resolving: the extension it was written with is tried last rather than
+dropped.
 
 Non-JavaScript files — images, fonts, JSON — are part of the graph. A changed
 PNG marks a page affected if some module the page reaches imports it. Bundler resource

@@ -1,0 +1,22 @@
+# A package naming its own internals: `#app/lib/reporting` is mapped by the `imports`
+# field of the nearest `package.json` to `./app/lib/reporting.js`, and what is on disk
+# is `.ts`. Both halves have to work — the subpath mapping and then the extension the
+# mapping produced.
+#
+# This is one import spelling, but it is a whole app's worth of edges: a package that
+# refers to itself this way refers to itself this way everywhere, so failing to
+# resolve it makes every internal import of that app invisible at once.
+[[anchor]]
+path = "app/pages/HomePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(app/pages/HomePage.tsx)",
+    "Decl(app/pages/HomePage.tsx, default)",
+    "Export(app/lib/reporting.ts, report)",
+]
+
+[[anchor]]
+path = "app/pages/AboutPage.tsx"
+affected = false

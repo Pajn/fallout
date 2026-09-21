@@ -85,6 +85,34 @@ impl Resolver {
                 ".json".to_string(),
             ],
             tsconfig: Some(TsconfigDiscovery::Auto),
+            // TypeScript makes a module specifier name the file the compiler will
+            // emit, not the file on disk, so `./helper.js` is how a `.ts` file next
+            // door is spelled — and `"#app/*": "./app/*.js"` is how a whole package
+            // spells its own internals. Without this each of those resolves to
+            // nothing, which is an edge lost in silence rather than an error.
+            //
+            // Each list has to end in the extension it came from. The lookup replaces
+            // the normal one rather than adding to it, and refuses the file outright
+            // when nothing in the list is there, so leaving `.js` out would stop a
+            // real `.js` file from resolving at all.
+            extension_alias: vec![
+                (
+                    ".js".to_string(),
+                    vec![".ts".to_string(), ".tsx".to_string(), ".js".to_string()],
+                ),
+                (
+                    ".jsx".to_string(),
+                    vec![".tsx".to_string(), ".jsx".to_string()],
+                ),
+                (
+                    ".cjs".to_string(),
+                    vec![".cts".to_string(), ".cjs".to_string()],
+                ),
+                (
+                    ".mjs".to_string(),
+                    vec![".mts".to_string(), ".mjs".to_string()],
+                ),
+            ],
             ..ResolveOptions::default()
         };
 

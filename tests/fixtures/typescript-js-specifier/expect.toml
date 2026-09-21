@@ -1,0 +1,37 @@
+# The page imports `../lib/helper.js` and there is no such file: what is on disk is
+# `helper.ts`. TypeScript makes a specifier name the file the compiler will emit
+# rather than the file beside it, so this is how the two are written under
+# `"module": "nodenext"`, and the import is ordinary.
+#
+# Without the extension alias it resolves to nothing, and resolving to nothing loses
+# the edge in silence — the page comes back not affected by a change to a file it
+# plainly calls.
+[[anchor]]
+path = "src/pages/HomePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/HomePage.tsx)",
+    "Decl(src/pages/HomePage.tsx, default)",
+    "Export(src/lib/helper.ts, helper)",
+]
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false
+
+# The other half of the same option. `../lib/legacy.js` is a file that really is
+# called `legacy.js`, and it has to keep resolving: the extension alias replaces the
+# normal lookup rather than adding to it, so a list that named only the TypeScript
+# extensions would refuse every plain JavaScript file in the tree.
+[[anchor]]
+path = "src/pages/LegacyPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LegacyPage.tsx)",
+    "Decl(src/pages/LegacyPage.tsx, default)",
+    "Export(src/lib/legacy.js, legacy)",
+]
