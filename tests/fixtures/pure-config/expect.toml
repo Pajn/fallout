@@ -1,0 +1,6 @@
+# A project naming its own factory. The entry is written as the import source and
+# the path taken from the binding that import introduces, so it covers
+# `StyleSheet.create` reached through `import { StyleSheet } from "./sheet"`.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = false

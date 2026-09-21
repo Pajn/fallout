@@ -1,0 +1,6 @@
+# `/* @__PURE__ */` is the author of the call site saying the call computes a value
+# and nothing more. It is the same claim `sideEffects` makes about a whole module,
+# written one call at a time, and every bundler already reads it.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = false

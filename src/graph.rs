@@ -13,6 +13,7 @@ use ahash::{AHashMap, AHashSet};
 use crate::module::{
     DeclId, ExportTarget, ImportTarget, LineTable, ModuleAnalysis, SourceId, is_source_file,
 };
+use crate::pure::PureList;
 use crate::resolve::{Resolver, SideEffects};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -52,6 +53,7 @@ pub struct Analysed {
 
 pub struct Graph {
     resolver: Resolver,
+    pure: PureList,
     paths: RefCell<Vec<PathBuf>>,
     path_ids: RefCell<AHashMap<PathBuf, FileId>>,
     names: RefCell<Vec<String>>,
@@ -60,9 +62,10 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new() -> Self {
+    pub fn new(pure: PureList) -> Self {
         Self {
             resolver: Resolver::new(),
+            pure,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -108,7 +111,7 @@ impl Graph {
         }
 
         let path = self.path(file);
-        let analysed = crate::module::analyse(&path).map(|(analysis, line_table)| {
+        let analysed = crate::module::analyse(&path, &self.pure).map(|(analysis, line_table)| {
             let resolved = analysis
                 .sources()
                 .iter()
@@ -390,7 +393,7 @@ impl Graph {
 
 impl Default for Graph {
     fn default() -> Self {
-        Self::new()
+        Self::new(PureList::default())
     }
 }
 

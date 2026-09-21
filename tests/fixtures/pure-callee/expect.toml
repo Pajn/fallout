@@ -1,0 +1,9 @@
+# `memo` from React only wraps its argument, so a declaration holding the result is
+# not module initialisation. The page imports `VERSION` and nothing else, so an edit
+# to a sibling component must not reach it.
+#
+# Without this, every declaration in a React file is initialisation, because nearly
+# every one of them is a call.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = false

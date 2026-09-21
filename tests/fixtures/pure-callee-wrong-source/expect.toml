@@ -1,0 +1,6 @@
+# The soundness pair to pure-callee. The same call, spelt the same way, but `memo`
+# is the project's own and does something on the way past. An entry is honoured only
+# where the callee is reached from the import it names, so this one still flags.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = true

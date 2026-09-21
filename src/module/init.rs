@@ -8,9 +8,33 @@ use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 
-use super::decls::DeclDraft;
+use ahash::AHashMap;
+
+use super::decls::{DeclDraft, ImportBinding};
 use super::parse::{Ctx, span_of};
-use super::{Decl, DeclId};
+use super::{Decl, DeclId, ImportTarget};
+use crate::pure::PureList;
+
+/// Where a name in this file comes from, for deciding whether a call on it is one
+/// the project has declared pure.
+type Origins<'a> = AHashMap<&'a str, (&'a str, &'a str)>;
+
+/// Each imported binding as `local name -> (module specifier, exported name)`, with
+/// `default` and `*` standing for the two unnamed import forms.
+fn origins<'a>(imports: &'a [ImportBinding], sources: &'a [String]) -> Origins<'a> {
+    let mut map = Origins::default();
+    for binding in imports {
+        let Some(source) = sources.get(binding.reference.source as usize) else {
+            continue;
+        };
+        let exported = match &binding.reference.target {
+            ImportTarget::Named(name) => name.as_str(),
+            ImportTarget::Namespace => "*",
+        };
+        map.insert(binding.local.as_str(), (source.as_str(), exported));
+    }
+    map
+}
 
 /// Declarations module initialisation depends on.
 pub(crate) fn collect(
@@ -18,7 +42,11 @@ pub(crate) fn collect(
     program: &Program<'_>,
     drafts: &[DeclDraft],
     decls: &[Decl],
+    imports: &[ImportBinding],
+    sources: &[String],
+    pure: &PureList,
 ) -> Vec<DeclId> {
+    let origins = origins(imports, sources);
     let mut init: Vec<DeclId> = Vec::new();
 
     for (index, statement) in program.body.iter().enumerate() {
@@ -35,7 +63,7 @@ pub(crate) fn collect(
 
         // An initialiser that may have side effects runs at import time whether or
         // not anyone reads the binding.
-        if statement_has_impure_initialiser(statement) {
+        if statement_has_impure_initialiser(statement, &origins, pure) {
             for (id, draft) in drafts.iter().enumerate() {
                 if draft.statement == index {
                     push_unique(&mut init, id as DeclId);
@@ -89,11 +117,15 @@ fn referenced_decls(ctx: &Ctx<'_>, statement: &Statement<'_>, drafts: &[DeclDraf
 
 /// The conservative rule for this step: a call, a construction, an `await`, a tagged
 /// template, or an assignment to a member is impure. Later steps narrow this.
-fn statement_has_impure_initialiser(statement: &Statement<'_>) -> bool {
+fn statement_has_impure_initialiser(
+    statement: &Statement<'_>,
+    origins: &Origins<'_>,
+    pure: &PureList,
+) -> bool {
     let declaration = match statement {
         Statement::ExportDeclaration(export) => Some(&export.declaration),
         Statement::ExportDefaultDeclaration(export) => {
-            return expression_is_impure(&export.declaration);
+            return export.declaration.check_impurity(origins, pure);
         }
         statement => statement.as_declaration(),
     };
@@ -107,34 +139,30 @@ fn statement_has_impure_initialiser(statement: &Statement<'_>) -> bool {
         .declarations
         .iter()
         .filter_map(|declarator| declarator.init.as_ref())
-        .any(expression_is_impure)
-}
-
-fn expression_is_impure<'a, E: ImpurityCheck<'a>>(expression: &E) -> bool {
-    expression.check_impurity()
+        .any(|init| init.check_impurity(origins, pure))
 }
 
 pub(crate) trait ImpurityCheck<'a> {
-    fn check_impurity(&self) -> bool;
+    fn check_impurity(&self, origins: &Origins<'_>, pure: &PureList) -> bool;
 }
 
 impl<'a> ImpurityCheck<'a> for Expression<'a> {
-    fn check_impurity(&self) -> bool {
-        let mut detector = ImpureDetector { impure: false };
+    fn check_impurity(&self, origins: &Origins<'_>, pure: &PureList) -> bool {
+        let mut detector = ImpureDetector::new(origins, pure);
         detector.visit_expression(self);
         detector.impure
     }
 }
 
 impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
-    fn check_impurity(&self) -> bool {
+    fn check_impurity(&self, origins: &Origins<'_>, pure: &PureList) -> bool {
         match self {
             // `export default function f() {}` binds without running anything.
             ExportDefaultDeclarationKind::FunctionDeclaration(_)
             | ExportDefaultDeclarationKind::ClassDeclaration(_)
             | ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => false,
             expression => {
-                let mut detector = ImpureDetector { impure: false };
+                let mut detector = ImpureDetector::new(origins, pure);
                 if let Some(expression) = expression.as_expression() {
                     detector.visit_expression(expression);
                 }
@@ -144,18 +172,58 @@ impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
     }
 }
 
-struct ImpureDetector {
+struct ImpureDetector<'c, 'o> {
     impure: bool,
+    origins: &'c Origins<'o>,
+    pure: &'c PureList,
 }
 
-impl<'a> Visit<'a> for ImpureDetector {
+impl<'c, 'o> ImpureDetector<'c, 'o> {
+    fn new(origins: &'c Origins<'o>, pure: &'c PureList) -> Self {
+        Self {
+            impure: false,
+            origins,
+            pure,
+        }
+    }
+
+    /// Does this callee only compute a value?
+    ///
+    /// `annotated` is the `/* @__PURE__ */` comment, which is the author of the call
+    /// site speaking. The list is the project speaking about someone else's
+    /// function, and is honoured only where the callee is reached from the import
+    /// the entry names, so a local binding of the same name is not covered.
+    fn callee_is_pure(&self, annotated: bool, callee: &Expression<'_>) -> bool {
+        if annotated {
+            return true;
+        }
+        let Some((root, members)) = callee_path(callee) else {
+            return false;
+        };
+        let Some((source, exported)) = self.origins.get(root) else {
+            return false;
+        };
+
+        let mut path = Vec::with_capacity(members.len() + 1);
+        path.push(*exported);
+        path.extend(members);
+        self.pure.contains(source, &path)
+    }
+}
+
+impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        self.impure = true;
+        if !self.callee_is_pure(expr.pure, &expr.callee) {
+            self.impure = true;
+        }
+        // A pure callee says nothing about its arguments, which still run.
         walk::walk_call_expression(self, expr);
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        self.impure = true;
+        if !self.callee_is_pure(expr.pure, &expr.callee) {
+            self.impure = true;
+        }
         walk::walk_new_expression(self, expr);
     }
 
@@ -165,7 +233,11 @@ impl<'a> Visit<'a> for ImpureDetector {
     }
 
     fn visit_tagged_template_expression(&mut self, expr: &TaggedTemplateExpression<'a>) {
-        self.impure = true;
+        // A tagged template has no annotation field to read, so only the list can
+        // clear it.
+        if !self.callee_is_pure(false, &expr.tag) {
+            self.impure = true;
+        }
         walk::walk_tagged_template_expression(self, expr);
     }
 
@@ -181,6 +253,20 @@ impl<'a> Visit<'a> for ImpureDetector {
     fn visit_function(&mut self, _function: &Function<'a>, _flags: oxc_semantic::ScopeFlags) {}
 
     fn visit_arrow_function_expression(&mut self, _expr: &ArrowFunctionExpression<'a>) {}
+}
+
+/// Splits `A.b.c` into its root name and the members read from it. `None` when the
+/// callee is anything else, such as a call on a call or a computed member.
+fn callee_path<'a>(callee: &'a Expression<'a>) -> Option<(&'a str, Vec<&'a str>)> {
+    match callee {
+        Expression::Identifier(ident) => Some((ident.name.as_str(), Vec::new())),
+        Expression::StaticMemberExpression(member) => {
+            let (root, mut path) = callee_path(&member.object)?;
+            path.push(member.property.name.as_str());
+            Some((root, path))
+        }
+        _ => None,
+    }
 }
 
 fn push_unique(list: &mut Vec<DeclId>, value: DeclId) {

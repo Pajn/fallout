@@ -12,6 +12,7 @@ pub mod diff;
 pub mod graph;
 pub mod marks;
 pub mod module;
+pub mod pure;
 pub mod query;
 pub mod resolve;
 
@@ -74,6 +75,10 @@ impl Verdict {
 pub enum Error {
     NoAnchors,
     MissingAnchors(Vec<String>),
+    /// The project's `fallout.toml` is there but could not be read. Reported rather
+    /// than ignored: a list of pure callees that silently does nothing would show up
+    /// as a verdict nobody can explain.
+    Config(pure::Error),
 }
 
 impl fmt::Display for Error {
@@ -83,6 +88,7 @@ impl fmt::Display for Error {
             Error::MissingAnchors(paths) => {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
             }
+            Error::Config(error) => write!(f, "{error}"),
         }
     }
 }
@@ -124,7 +130,10 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
 
     if options.granularity == Granularity::Symbol {
-        return Ok(analyse_symbols(&anchors, &root, &change_set, options));
+        // Only the declaration-level walk asks what is pure, so only it reads the
+        // project's list.
+        let pure = pure::PureList::load(&root).map_err(Error::Config)?;
+        return Ok(analyse_symbols(&anchors, &root, &change_set, options, pure));
     }
 
     let changed = changes::marked_files(&root, &change_set, &options.changed);
@@ -157,8 +166,9 @@ fn analyse_symbols(
     root: &Path,
     change_set: &diff::ChangeSet,
     options: &Options,
+    pure: pure::PureList,
 ) -> Verdict {
-    let graph = graph::Graph::new();
+    let graph = graph::Graph::new(pure);
     let marked = marks::marked_nodes(&graph, change_set, root, &options.changed);
 
     if marked.is_empty() {

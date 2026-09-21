@@ -11,6 +11,7 @@ use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use super::{Decl, FineModule, ModuleAnalysis, Span, decls, exports, init, refs};
+use crate::pure::PureList;
 
 /// Extensions we parse for further imports. Anything else that resolves — images,
 /// fonts, stylesheets, JSON — is a leaf: it can be reported as affected, but it is
@@ -79,7 +80,7 @@ impl Ctx<'_> {
     }
 }
 
-pub fn analyse_file(path: &Path) -> Option<(ModuleAnalysis, LineTable)> {
+pub fn analyse_file(path: &Path, pure: &PureList) -> Option<(ModuleAnalysis, LineTable)> {
     if !is_source_file(path) {
         return None;
     }
@@ -109,7 +110,7 @@ pub fn analyse_file(path: &Path) -> Option<(ModuleAnalysis, LineTable)> {
         .build(&parsed.program)
         .semantic;
 
-    let analysis = match build_fine(&parsed.program, &semantic, &sources) {
+    let analysis = match build_fine(&parsed.program, &semantic, &sources, pure) {
         Some(module) => ModuleAnalysis::Fine(Box::new(module)),
         None => ModuleAnalysis::Coarse { sources },
     };
@@ -120,6 +121,7 @@ fn build_fine(
     program: &Program<'_>,
     semantic: &Semantic<'_>,
     sources: &[String],
+    pure: &PureList,
 ) -> Option<FineModule> {
     let statements = program
         .body
@@ -148,7 +150,7 @@ fn build_fine(
     let import_spans = refs::link(&ctx, &drafts, &imports, &mut decls);
     let requires = decls::require_calls(program, sources)?;
     let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls);
-    let init_decls = init::collect(&ctx, program, &drafts, &decls);
+    let init_decls = init::collect(&ctx, program, &drafts, &decls, &imports, sources, pure);
 
     // A `require` outside every declaration runs on evaluation, exactly like a bare
     // `import "./x"`, so the two share a list.

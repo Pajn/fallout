@@ -84,6 +84,41 @@ yields the whole export object, so it reaches every export of its target, the sa
 `import * as ns`. A `require` outside every declaration runs on evaluation, like a
 bare import.
 
+### Pure calls
+
+A declaration whose initialiser runs something belongs to module initialisation, so
+importing anything from its file reaches it. In React-shaped code that catches nearly
+every top-level declaration, because nearly every one of them is a call.
+
+Three things take a call back out of initialisation:
+
+- a `/* @__PURE__ */` annotation, the author of the call site saying it only computes
+  a value;
+- React's own factories — `memo`, `forwardRef`, `createContext`, `lazy` — which are
+  built in;
+- entries in the project's `fallout.toml`.
+
+```toml
+# fallout.toml, read from --root
+pure = [
+  "react-native#StyleSheet.create",
+  "app/graphql#graphql",
+]
+
+# Drop the built-in React entries.
+builtin-pure = true
+```
+
+An entry is written as the import source, `#`, and the path taken from the binding
+that import introduces. The first segment is the name the target exports, with
+`default` and `*` for the two unnamed forms, so `React.memo` is `react#default.memo`.
+An entry is honoured only where the callee is reached from the import it names: a
+local function called `memo` is not React's, and keeps its call impure.
+
+An entry is a claim about someone else's function. It says nothing about the
+arguments, which still run, and nothing about the exports of the file it sits in,
+which are reached by name however the declaration was built.
+
 ### `sideEffects`
 
 The `sideEffects` field of the nearest `package.json` is read the way bundlers read
