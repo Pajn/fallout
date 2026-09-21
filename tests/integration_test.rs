@@ -3,19 +3,24 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
-fn build_binary() -> PathBuf {
-    let output = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect("Failed to build binary");
+/// Builds once for the whole file. Tests run in parallel and every one of them
+/// wants the binary, so without this the first build replaces the executable while
+/// another test is part-way through running it, which shows up as an exit code of
+/// -1 and an empty stdout.
+static BUILD: std::sync::Once = std::sync::Once::new();
 
-    if !output.status.success() {
-        panic!(
-            "Build failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+fn build_binary() -> PathBuf {
+    BUILD.call_once(|| {
+        let output = Command::new("cargo")
+            .args(["build", "--release"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .expect("Failed to build binary");
+
+        if !output.status.success() {
+            panic!("Build failed: {}", String::from_utf8_lossy(&output.stderr));
+        }
+    });
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.join("target/release/fallout")
