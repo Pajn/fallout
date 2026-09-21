@@ -1,0 +1,11 @@
+# `module.exports = Widget` puts something in the table without writing down what it
+# holds, so there is no table to read and the module coarsens.
+#
+# That matters most to a `require`, which takes the whole table. The package declares
+# itself free of side effects, so module initialisation carries nothing here and the
+# export table is the only way across: were the file accepted as one with no exports
+# at all, a require of it would reach nothing, which is the one answer this tool may
+# never give.
+[[anchor]]
+path = "src/pages/WidgetPage.tsx"
+affected = true

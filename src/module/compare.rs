@@ -22,7 +22,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::{ContentEq, GetSpan, SourceType};
 
 use super::parse::{analyse_source, is_source_file, span_of};
-use super::{FineModule, ModuleAnalysis, Span, decls};
+use super::{FineModule, ModuleAnalysis, Span, cjs, decls};
 use crate::pure::PureList;
 
 /// How a file's current version differs from its base version.
@@ -271,7 +271,8 @@ struct Keyed<'a> {
 /// `None` when a statement introduces bindings that cannot be enumerated, which is
 /// the same condition that coarsens a module.
 fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
-    let drafts = decls::collect(program)?;
+    let cjs = cjs::table(program);
+    let drafts = decls::collect(program, &cjs)?;
     let mut bare = 0;
     let mut statements = Vec::with_capacity(program.body.len());
 
@@ -319,7 +320,7 @@ fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
             key,
             node,
             span: span_of(node.span()),
-            exports: exports_of(node, names),
+            exports: exports_of(node, index, &cjs, names),
             runs,
         });
     }
@@ -335,7 +336,19 @@ fn exported_names(specifiers: &oxc_allocator::Vec<'_, ExportSpecifier<'_>>) -> V
 }
 
 /// What a statement puts in the export table, given the names it declares.
-fn exports_of(node: &Statement<'_>, declared: Vec<String>) -> Exports {
+fn exports_of(
+    node: &Statement<'_>,
+    index: usize,
+    cjs: &cjs::Table,
+    declared: Vec<String>,
+) -> Exports {
+    // `exports.x = …` puts a name in the table without being an export statement in
+    // the language's sense, so it is asked for separately.
+    let commonjs: Vec<String> = cjs.names_at(index).map(str::to_string).collect();
+    if !commonjs.is_empty() {
+        return Exports::Names(commonjs);
+    }
+
     match node {
         // `export const x = 1`, `export default ...`: what it declares is what it
         // exports, and the default export is named for the slot it fills.

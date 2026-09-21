@@ -127,6 +127,14 @@ fn statement_has_impure_initialiser(
         Statement::ExportDefaultDeclaration(export) => {
             return export.declaration.check_impurity(origins, pure);
         }
+        // `exports.x = …`. Only a statement that declares something reaches here, so
+        // this is a CommonJS export and its right-hand side is the initialiser.
+        Statement::ExpressionStatement(statement) => {
+            let Expression::AssignmentExpression(assignment) = &statement.expression else {
+                return false;
+            };
+            return assignment.right.check_impurity(origins, pure);
+        }
         statement => statement.as_declaration(),
     };
 

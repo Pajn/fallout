@@ -1,0 +1,7 @@
+# `module.exports = { … }` writes the table in one statement, so every name in it is
+# declared by that statement and a change to any of them marks all of them — the same
+# way `export const a = 1, b = 2` does. What it does buy is that the rest of the file
+# stops being part of the bargain: the unrelated local at the top reaches no export.
+[[anchor]]
+path = "src/pages/AlphaPage.tsx"
+affected = false

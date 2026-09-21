@@ -146,11 +146,43 @@ no directory matching at any depth (`"*.css"` covers a stylesheet anywhere). Abs
 alternative is dropping an edge on a guess. Workspace packages reached through
 `node_modules` symlinks are covered along with the app itself.
 
+### CommonJS
+
+A file that writes its exports the CommonJS way still has an export table; it is
+spelled as assignment, and the three shapes that spell it plainly are read as one:
+
+```js
+exports.parse = (text) => { ... }
+module.exports.format = (value) => { ... }
+module.exports = { parse, format }
+```
+
+Each name becomes an export like any other, so a consumer asking for one arrives at
+that name rather than at the file. The declaration behind it is the assignment
+itself, held under the name `exports.parse` so that it cannot be mistaken for a local
+binding the file happens to call `parse`.
+
+A table has to be unambiguous to be read. Assigning `module.exports` as a whole
+alongside individual properties, assigning it twice, or assigning the same name twice
+all coarsen the file, because which assignment survives is a question about the order
+statements run in rather than about the names. So does assigning the whole table
+anything but an object literal — `module.exports = Widget` re-exports whatever
+`Widget` turns out to hold — and so does a spread or a computed key inside one.
+
+None of this holds unless `module` and `exports` are the runtime's. A file that
+declares or imports either name means something else by it, and an assignment to one
+is then a write to somebody else's object rather than an export of its own, so it
+coarsens like anything else the analyser cannot describe.
+
+Coarsening here is by omission rather than by rule: every mention of `module` or
+`exports` the table did not account for is left standing as a pattern the analyser
+cannot describe, and takes the file down the same path as the rest of them.
+
 Anything the analyser cannot describe falls back to one opaque node for the whole
-file, which is the `file` behaviour: a CommonJS export table (`module.exports`,
-`exports.x`), a computed `require()` or `import()` specifier, `eval`, `with`,
-TypeScript namespaces, decorators, and any file that fails to parse. Giving up always
-means "treat this as one unit", never "not affected".
+file, which is the `file` behaviour: an export table too tangled to read, a computed
+`require()` or `import()` specifier, `eval`, `with`, TypeScript namespaces,
+decorators, and any file that fails to parse. Giving up always means "treat this as
+one unit", never "not affected".
 
 Only the downstream search narrows. Upstream stays at file granularity, because a
 change to a sibling component cannot reach a page through references even though the

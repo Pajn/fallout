@@ -1,0 +1,7 @@
+# The export and the local it is assigned from share a name, and they are two
+# different things: the export has to reach the function, not stand in for it. A
+# declaration standing for a CommonJS export is therefore named `exports.helper`,
+# which no binding can be called, so the two never collapse into one.
+[[anchor]]
+path = "src/pages/HelperPage.tsx"
+affected = true

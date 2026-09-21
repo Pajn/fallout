@@ -4,6 +4,7 @@ use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 
+use super::cjs;
 use super::parse::{is_require, span_of, static_specifier};
 use super::{ImportRef, ImportTarget, SourceId, Span};
 
@@ -41,13 +42,26 @@ pub(crate) struct ImportBinding {
 
 /// Every top-level declaration, in source order.
 ///
+/// A CommonJS export is a declaration too: `exports.x = …` binds a value under a
+/// name, which is what `export const x = …` does with different spelling.
+///
 /// Returns `None` when a statement introduces bindings we cannot enumerate, which
 /// coarsens the whole module.
-pub(crate) fn collect(program: &Program<'_>) -> Option<Vec<DeclDraft>> {
+pub(crate) fn collect(program: &Program<'_>, cjs: &cjs::Table) -> Option<Vec<DeclDraft>> {
     let mut drafts = Vec::new();
 
     for (index, statement) in program.body.iter().enumerate() {
         let span = span_of(statement.span());
+
+        for name in cjs.names_at(index) {
+            drafts.push(DeclDraft {
+                name: cjs::decl_name(name),
+                span,
+                statement: index,
+                immutable: false,
+            });
+        }
+
         match statement {
             // `export const x = 1` / `export function x() {}`
             Statement::ExportDeclaration(export) => {

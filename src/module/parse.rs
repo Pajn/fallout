@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 
+use ahash::AHashSet;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
@@ -10,7 +11,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
-use super::{Decl, FineModule, ModuleAnalysis, Span, decls, exports, init, refs};
+use super::{Decl, FineModule, ModuleAnalysis, Span, cjs, decls, exports, init, refs};
 use crate::pure::PureList;
 
 /// Extensions we parse for further imports. Anything else that resolves — images,
@@ -113,7 +114,11 @@ pub fn analyse_source(
         return Some((ModuleAnalysis::Coarse { sources }, line_table));
     }
 
-    if let Some(reason) = coarsening_reason(&parsed.program) {
+    // Read first, so the coarsener knows which mentions of `module` and `exports` an
+    // export table it could read has already spoken for.
+    let cjs = cjs::table(&parsed.program);
+
+    if let Some(reason) = coarsening_reason(&parsed.program, &cjs.accounted) {
         let _ = reason;
         return Some((ModuleAnalysis::Coarse { sources }, line_table));
     }
@@ -124,7 +129,7 @@ pub fn analyse_source(
         .build(&parsed.program)
         .semantic;
 
-    let analysis = match build_fine(&parsed.program, &semantic, &sources, pure) {
+    let analysis = match build_fine(&parsed.program, &semantic, &sources, pure, &cjs) {
         Some(module) => ModuleAnalysis::Fine(Box::new(module)),
         None => ModuleAnalysis::Coarse { sources },
     };
@@ -136,6 +141,7 @@ fn build_fine(
     semantic: &Semantic<'_>,
     sources: &[String],
     pure: &PureList,
+    cjs: &cjs::Table,
 ) -> Option<FineModule> {
     let statements = program
         .body
@@ -147,9 +153,9 @@ fn build_fine(
         statements,
     };
 
-    let drafts = decls::collect(program)?;
+    let drafts = decls::collect(program, cjs)?;
     let imports = decls::collect_imports(program, sources)?;
-    let (exports, export_stars) = exports::collect(program, sources, &drafts)?;
+    let (exports, export_stars) = exports::collect(program, sources, &drafts, cjs)?;
 
     let mut decls: Vec<Decl> = drafts
         .iter()
@@ -210,17 +216,25 @@ pub(crate) fn static_specifier<'a>(expr: &CallExpression<'a>) -> Option<&'a str>
 
 /// Syntax that makes a declaration-level description unsafe. Each of these gets its
 /// own step later; until then the whole file is one node.
-fn coarsening_reason(program: &Program<'_>) -> Option<&'static str> {
-    let mut detector = Coarsener { reason: None };
+fn coarsening_reason<'a>(
+    program: &Program<'a>,
+    accounted: &'a AHashSet<Span>,
+) -> Option<&'static str> {
+    let mut detector = Coarsener {
+        reason: None,
+        accounted,
+    };
     detector.visit_program(program);
     detector.reason
 }
 
-struct Coarsener {
+struct Coarsener<'a> {
     reason: Option<&'static str>,
+    /// Mentions of `module` and `exports` that a readable export table accounts for.
+    accounted: &'a AHashSet<Span>,
 }
 
-impl Coarsener {
+impl Coarsener<'_> {
     fn flag(&mut self, reason: &'static str) {
         if self.reason.is_none() {
             self.reason = Some(reason);
@@ -228,7 +242,7 @@ impl Coarsener {
     }
 }
 
-impl<'a> Visit<'a> for Coarsener {
+impl<'a> Visit<'a> for Coarsener<'_> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if is_require(expr) {
             // A `require("./x")` naming its module in a plain string is an ordinary
@@ -255,13 +269,18 @@ impl<'a> Visit<'a> for Coarsener {
     }
 
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-        // `module.exports` / `exports.x` are an export table we cannot read yet.
+        // A mention of `module.exports` or `exports.x` that the export table did not
+        // account for is a way of writing one we cannot read: a computed key, an
+        // `Object.assign`, a table handed to someone else, a table assigned from
+        // inside a branch.
         if let MemberExpression::StaticMemberExpression(member) = expr {
-            if let Expression::Identifier(object) = &member.object {
-                if object.name == "module" && member.property.name == "exports" {
-                    self.flag("module.exports");
-                } else if object.name == "exports" {
-                    self.flag("exports.*");
+            if !self.accounted.contains(&span_of(member.span)) {
+                if let Expression::Identifier(object) = &member.object {
+                    if object.name == "module" && member.property.name == "exports" {
+                        self.flag("module.exports");
+                    } else if object.name == "exports" {
+                        self.flag("exports.*");
+                    }
                 }
             }
         }

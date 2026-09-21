@@ -1,2 +1,2 @@
 const unrelated = () => 1;
-module.exports.helper = () => 2;
+Object.assign(module.exports, { helper: () => 2 });

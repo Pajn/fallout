@@ -3,6 +3,7 @@
 use oxc_ast::ast::*;
 use oxc_span::GetSpan;
 
+use super::cjs;
 use super::decls::{DeclDraft, source_id};
 use super::parse::span_of;
 use super::{DeclId, Export, ExportTarget, SourceId};
@@ -14,11 +15,27 @@ pub(crate) fn collect(
     program: &Program<'_>,
     sources: &[String],
     drafts: &[DeclDraft],
+    cjs: &cjs::Table,
 ) -> Option<(Vec<Export>, Vec<SourceId>)> {
     let mut exports: Vec<Export> = Vec::new();
     let mut stars: Vec<SourceId> = Vec::new();
 
     for (index, statement) in program.body.iter().enumerate() {
+        let span = span_of(statement.span());
+
+        // `exports.x = …`, which named a declaration of its own in `decls`.
+        for name in cjs.names_at(index) {
+            let local = cjs::decl_name(name);
+            let decl = drafts
+                .iter()
+                .position(|draft| draft.statement == index && draft.name == local)?;
+            exports.push(Export {
+                name: name.to_string(),
+                target: ExportTarget::Local(decl as DeclId),
+                span,
+            });
+        }
+
         match statement {
             // `export const x = 1` / `export function x() {}`
             Statement::ExportDeclaration(export) => {

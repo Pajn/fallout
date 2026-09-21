@@ -1,6 +1,7 @@
-# A CommonJS export table coarsens the whole module, so even a change to an unrelated
-# declaration flags. Giving up always means "treat this as one opaque unit", never
-# "not affected".
+# A CommonJS export table handed to `Object.assign` names nothing we can read, so the
+# whole module coarsens and even a change to an unrelated declaration flags. Giving up
+# always means "treat this as one opaque unit", never "not affected". The tables that
+# *can* be read are in `commonjs-exports` and `commonjs-export-table`.
 [[anchor]]
 path = "src/pages/LegacyPage.tsx"
 affected = true

@@ -1,0 +1,12 @@
+# `exports.x = …` and `module.exports.x = …` bind a value under a name, which is what
+# `export const x = …` does with different spelling. Reading them makes this file a
+# table of declarations like any other: the page importing the export that changed is
+# flagged, the page importing the one beside it is not, and the unrelated local at the
+# top reaches neither.
+[[anchor]]
+path = "src/pages/OtherPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/HelperPage.tsx"
+affected = false
