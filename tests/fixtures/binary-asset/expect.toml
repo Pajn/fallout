@@ -2,7 +2,8 @@
 [[anchor]]
 path = "src/pages/LogoPage.tsx"
 affected = true
-explain = [
+[anchor.explain]
+file = [
     "File(src/pages/LogoPage.tsx)",
     "File(src/components/Logo.tsx)",
     "File(src/assets/logo.png)",

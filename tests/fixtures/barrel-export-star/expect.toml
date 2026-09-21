@@ -3,7 +3,8 @@
 [[anchor]]
 path = "src/pages/IndexPage.tsx"
 affected = true
-explain = [
+[anchor.explain]
+file = [
     "File(src/pages/IndexPage.tsx)",
     "File(src/components/index.ts)",
     "File(src/components/Button.tsx)",

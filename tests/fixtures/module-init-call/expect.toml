@@ -1,0 +1,13 @@
+# The page imports only `VERSION`, but `client`'s initialiser is a call, so it runs
+# whenever the module is imported. Importing for one binding runs the whole module.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/VersionPage.tsx)",
+    "ModuleInit(src/pages/VersionPage.tsx)",
+    "ModuleInit(src/state/client.ts)",
+    "Decl(src/state/client.ts, client)",
+]

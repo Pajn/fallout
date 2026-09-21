@@ -1,0 +1,13 @@
+import { track } from "./analytics";
+const before1 = 1;
+const before2 = 2;
+const before3 = 3;
+const before4 = 4;
+const before5 = 5;
+export const client = track("boot");
+const after1 = 1;
+const after2 = 2;
+const after3 = 3;
+const after4 = 4;
+const after5 = 5;
+export const VERSION = "1.0";

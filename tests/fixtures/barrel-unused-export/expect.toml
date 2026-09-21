@@ -1,0 +1,5 @@
+# The pair to barrel-export-star: a barrel only carries the names you import, so a
+# change to `Card` behind the same `export *` must not reach a page importing `Button`.
+[[anchor]]
+path = "src/pages/IndexPage.tsx"
+affected = false

@@ -32,7 +32,7 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-d, --diff <PATH>` | A unified diff describing the change; `-` reads standard input. |
 | `-r, --root <PATH>` | Root directory to resolve from. Defaults to the current directory. |
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
-| `-g, --granularity <LEVEL>` | How finely to distinguish parts of a file. Currently `file` only. |
+| `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
 | `-e, --explain` | Print the chain of imports that produced the verdict. |
 
 `--diff` and `--changed` may be combined; their file sets are unioned. A diff is read
@@ -49,16 +49,54 @@ By default `fallout` searches both directions and stops at the first hit.
 - `downstream` — the anchor imports the changed file, directly or transitively.
 - `upstream` — the changed file imports the anchor, directly or transitively.
 
+### Granularity
+
+`--granularity file`, the default, treats any change anywhere in a file as a change to
+the whole file. `--granularity symbol` attributes a change to the individual
+declarations, exports and module initialisation it touches, so an edit to a function
+nobody imports stops marking its whole file.
+
+```
+src/utils/helpers.ts
+  export const formatDate = ...   # the page imports this
+  export const formatPrice = ...  # edited
+```
+
+A page importing only `formatDate` is affected at `file` granularity and not at
+`symbol`.
+
+Narrowing never costs a true positive. Two declarations sharing a module-scope binding
+that is not a `const` bound to a primitive literal stay connected, because one can
+reach the other by mutating it. A declaration whose initialiser may run something — a
+call, a `new`, an `await`, a tagged template, an assignment to a member — belongs to
+module initialisation, so importing anything from that file reaches it. A bare
+`import "./theme.css"` is a side effect of loading the module and reaches every
+importer, while `import logo from "./logo.png"` reaches only the declarations using
+`logo`.
+
+Anything the analyser cannot describe falls back to one opaque node for the whole
+file, which is the `file` behaviour: CommonJS, `eval`, `with`, TypeScript namespaces,
+decorators, and any file that fails to parse. Giving up always means "treat this as one
+unit", never "not affected".
+
+Only the downstream search narrows. Upstream stays at file granularity, because a
+change to a sibling component cannot reach a page through references even though the
+two render together.
+
 ### Explaining a verdict
 
 ```
-$ fallout --anchor src/pages/CheckoutPage.tsx --diff pr.diff --explain
-Impact detected on target anchor via: "/repo/src/components/Button.tsx"
-Path (downstream, file granularity):
-  File(src/pages/CheckoutPage.tsx)
-  File(src/components/Card.tsx)
-  File(src/components/Button.tsx)
+$ fallout --anchor src/pages/VersionPage.tsx --diff pr.diff --explain -g symbol
+Impact detected on target anchor via: "/repo/src/state/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/VersionPage.tsx)
+  ModuleInit(src/pages/VersionPage.tsx)
+  ModuleInit(src/state/client.ts)
+  Decl(src/state/client.ts, client)
 ```
+
+Reading that: the page imports only `VERSION` from `client.ts`, but `client`'s
+initialiser is a call, so it runs whenever the module is loaded.
 
 The chain always reads in import order — each file imports the next — so a downstream
 path starts at the anchor and an upstream path ends at it.

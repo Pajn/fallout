@@ -3,7 +3,8 @@
 [[anchor]]
 path = "src/pages/CheckoutPage.tsx"
 affected = true
-explain = [
+[anchor.explain]
+file = [
     "File(src/pages/CheckoutPage.tsx)",
 ]
 

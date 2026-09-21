@@ -1,0 +1,5 @@
+# The pair to used-asset-import: the page reaches `Logo`, never `Spare`, so a change
+# to the PNG only `Spare` uses must not reach it.
+[[anchor]]
+path = "src/pages/LogoPage.tsx"
+affected = false

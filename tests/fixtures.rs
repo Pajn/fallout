@@ -27,10 +27,21 @@ struct Level {
     args: &'static [&'static str],
 }
 
-const LEVELS: &[Level] = &[Level {
-    name: "file",
-    args: &["--granularity", "file"],
-}];
+const LEVELS: &[Level] = &[
+    Level {
+        name: "file",
+        args: &["--granularity", "file"],
+    },
+    Level {
+        name: "symbol",
+        args: &["--granularity", "symbol"],
+    },
+];
+
+/// The finest level, which is the one a `must skip` expectation is held to.
+fn finest() -> Level {
+    *LEVELS.last().expect("at least one level")
+}
 
 #[derive(Debug, Deserialize)]
 struct Expect {
@@ -41,11 +52,14 @@ struct Expect {
 #[derive(Debug, Deserialize)]
 struct AnchorExpect {
     path: String,
+    /// `true` is a must-flag: it is held at *every* level, coarsest included, which
+    /// is the soundness contract. `false` is a must-skip: it is held at the finest
+    /// level only, because a coarser level is allowed to over-report.
     affected: bool,
-    /// Expected `--explain` node path. Checked when present; required in spirit for
-    /// every must-flag case, because a right verdict by a wrong route is a latent bug.
+    /// Expected `--explain` node path, keyed by level name. A right verdict reached
+    /// by a wrong route is a latent bug, so this is checked wherever it is given.
     #[serde(default)]
-    explain: Option<Vec<String>>,
+    explain: BTreeMap<String, Vec<String>>,
 }
 
 struct Outcome {
@@ -187,11 +201,14 @@ fn run(case: &Path, anchor: &str, diff_path: &Path, level: Level) -> Outcome {
         stderr
     );
 
+    // Everything indented under the `Path (...)` header is a node, whatever kind it
+    // is. Matching on node kinds here would silently drop the kinds added later.
     let explain = stdout
         .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with("File(") || line.starts_with("Decl("))
-        .map(str::to_string)
+        .skip_while(|line| !line.starts_with("Path ("))
+        .skip(1)
+        .take_while(|line| line.starts_with("  "))
+        .map(|line| line.trim().to_string())
         .collect();
 
     Outcome {
@@ -219,18 +236,25 @@ fn fixtures_match_their_expectations() {
             for level in LEVELS {
                 let outcome = run(&case, &anchor.path, &diff_path, *level);
 
-                assert_eq!(
-                    outcome.affected,
-                    anchor.affected,
-                    "{} [{}] anchor {}: expected affected={}, got {}",
-                    case.display(),
-                    level.name,
-                    anchor.path,
-                    anchor.affected,
-                    outcome.affected
-                );
+                if anchor.affected {
+                    assert!(
+                        outcome.affected,
+                        "{} [{}] anchor {}: a must-flag case was missed",
+                        case.display(),
+                        level.name,
+                        anchor.path
+                    );
+                } else if level.name == finest().name {
+                    assert!(
+                        !outcome.affected,
+                        "{} [{}] anchor {}: expected a skip at the finest level",
+                        case.display(),
+                        level.name,
+                        anchor.path
+                    );
+                }
 
-                if let Some(expected) = &anchor.explain {
+                if let Some(expected) = anchor.explain.get(level.name) {
                     assert!(
                         anchor.affected,
                         "{} anchor {}: an explain path only makes sense for a must-flag case",
@@ -274,11 +298,9 @@ fn positives_survive_every_level() {
     }
 }
 
-/// Section 7.2, invariant 1: `affected(level n+1)` is a subset of `affected(level n)`.
-/// A refinement may only ever remove verdicts.
-///
-/// Vacuous while `LEVELS` has one entry. It fails loudly the moment a refinement
-/// turns a coarse "not affected" into a fine "affected", which would be unsound.
+/// Section 7.2, invariants 1 and 3: `affected(level n+1)` is a subset of
+/// `affected(level n)`, so a refinement may only ever remove verdicts, and the
+/// file level is an upper bound on every finer one.
 #[test]
 fn refinements_only_narrow() {
     for case in fixture_cases() {
@@ -313,7 +335,9 @@ fn refinements_only_narrow() {
     }
 }
 
-/// A diff and the equivalent `--changed` list must agree at file granularity. This is
+/// A diff and the equivalent `--changed` list must agree at file granularity.
+///
+/// `--changed` carries no line information, so it marks whole files at any level. This is
 /// what keeps the backward-compatible path honest as `--diff` takes over.
 #[test]
 fn diff_and_changed_paths_agree() {
@@ -331,27 +355,30 @@ fn diff_and_changed_paths_agree() {
             .collect();
 
         for anchor in &expect.anchor {
-            let via_diff = run(&case, &anchor.path, &diff_path, LEVELS[0]).affected;
+            for level in LEVELS {
+                let via_diff = run(&case, &anchor.path, &diff_path, *level).affected;
 
-            let after = case.join("after");
-            let mut cmd = Command::new(BINARY);
-            cmd.current_dir(&after)
-                .arg("--anchor")
-                .arg(&anchor.path)
-                .arg("--root")
-                .arg(&after);
-            for path in &changed {
-                cmd.arg("--changed").arg(path);
+                let after = case.join("after");
+                let mut cmd = Command::new(BINARY);
+                cmd.current_dir(&after)
+                    .arg("--anchor")
+                    .arg(&anchor.path)
+                    .arg("--root")
+                    .arg(&after)
+                    .args(level.args);
+                for path in &changed {
+                    cmd.arg("--changed").arg(path);
+                }
+                let via_changed = cmd.output().expect("running fallout").status.code() == Some(0);
+
+                assert!(
+                    via_changed || !via_diff,
+                    "{} [{}] anchor {}: --diff flags but the coarser --changed does not",
+                    case.display(),
+                    level.name,
+                    anchor.path
+                );
             }
-            let via_changed = cmd.output().expect("running fallout").status.code() == Some(0);
-
-            assert_eq!(
-                via_diff,
-                via_changed,
-                "{} anchor {}: --diff and --changed disagree",
-                case.display(),
-                anchor.path
-            );
         }
     }
 }

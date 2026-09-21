@@ -1,0 +1,5 @@
+# The pair to shared-mutable-state: `const LIMIT = 5` is a primitive literal, so it
+# is not a channel between the two functions and the edit to `describe` stays put.
+[[anchor]]
+path = "src/pages/LimitPage.tsx"
+affected = false

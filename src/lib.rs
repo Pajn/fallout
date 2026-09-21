@@ -9,6 +9,8 @@
 pub mod changes;
 pub mod cli;
 pub mod diff;
+pub mod graph;
+pub mod marks;
 pub mod module;
 pub mod query;
 pub mod resolve;
@@ -17,6 +19,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::query::{Direction, Hit};
+
 use crate::resolve::Resolver;
 
 /// How finely the analysis distinguishes parts of a file.
@@ -25,12 +28,17 @@ pub enum Granularity {
     /// Any change anywhere in a file marks the whole file.
     #[default]
     File,
+    /// Changes are attributed to individual declarations, exports and module
+    /// initialisation. Any module the analyser cannot describe falls back to one
+    /// opaque node, which is the `File` behaviour.
+    Symbol,
 }
 
 impl Granularity {
     pub fn as_str(self) -> &'static str {
         match self {
             Granularity::File => "file",
+            Granularity::Symbol => "symbol",
         }
     }
 }
@@ -114,6 +122,11 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     }
 
     let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
+
+    if options.granularity == Granularity::Symbol {
+        return Ok(analyse_symbols(&anchors, &root, &change_set, options));
+    }
+
     let changed = changes::marked_files(&root, &change_set, &options.changed);
 
     if changed.is_empty() {
@@ -135,4 +148,42 @@ pub fn analyse(options: &Options) -> Result<Verdict, Error> {
     }
 
     Ok(Verdict::NotAffected)
+}
+
+/// Declaration granularity. Only the downstream search narrows; upstream keeps its
+/// file-level answer, so a symbol run is never *less* sensitive than a file run.
+fn analyse_symbols(
+    anchors: &[PathBuf],
+    root: &Path,
+    change_set: &diff::ChangeSet,
+    options: &Options,
+) -> Verdict {
+    let graph = graph::Graph::new();
+    let marked = marks::marked_nodes(&graph, change_set, root, &options.changed);
+
+    if marked.is_empty() {
+        return Verdict::NotAffected;
+    }
+
+    if options.only != Some(Direction::Upstream) {
+        if let Some(nodes) = query::downstream_symbols(anchors, &marked, &graph) {
+            let path = nodes.iter().map(|node| graph.path(node.file())).collect();
+            let rendered = nodes.iter().map(|node| graph.render(*node, root)).collect();
+            return Verdict::Affected(Hit {
+                direction: Direction::Downstream,
+                rendered: Some(rendered),
+                path,
+            });
+        }
+    }
+
+    if options.only != Some(Direction::Downstream) {
+        let changed = changes::marked_files(root, change_set, &options.changed);
+        let resolver = Resolver::new();
+        if let Some(hit) = query::upstream(anchors, &changed, &resolver) {
+            return Verdict::Affected(hit);
+        }
+    }
+
+    Verdict::NotAffected
 }

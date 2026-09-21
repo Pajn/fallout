@@ -108,18 +108,24 @@ fn print_explanation(hit: &Hit, root: &Path, granularity: Granularity) {
         hit.direction.as_str(),
         granularity.as_str()
     );
-    for file in &hit.path {
-        println!("  File({})", display_path(file, root));
+
+    // A symbol run carries the nodes it actually walked; a file run has only paths.
+    match &hit.rendered {
+        Some(nodes) => {
+            for node in nodes {
+                println!("  {}", node);
+            }
+        }
+        None => {
+            for file in &hit.path {
+                println!("  File({})", display_path(file, root));
+            }
+        }
     }
 }
 
 /// Relative to the root where possible, always with forward slashes, so that an
 /// explanation reads the same everywhere.
 fn display_path(path: &Path, root: &Path) -> String {
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    relative
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+    crate::graph::display_path(path, root)
 }

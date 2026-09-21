@@ -51,6 +51,10 @@ impl ChangeSet {
 
 /// Parses a unified diff.
 ///
+/// Ranges come from the hunk *body*, not its header: a header range includes the
+/// surrounding context lines, and marking three untouched lines either side of every
+/// edit would attribute changes to neighbouring declarations.
+///
 /// Unrecognised lines are ignored: a diff carries commit messages, index lines and
 /// mode changes that say nothing about which lines moved.
 pub fn parse(text: &str) -> ChangeSet {
@@ -58,8 +62,21 @@ pub fn parse(text: &str) -> ChangeSet {
     // The file currently being read, kept aside until the next header so that late
     // markers (a binary notice, a `+++ /dev/null`) can still change its verdict.
     let mut current: Option<ChangedFile> = None;
+    let mut hunk: Option<Hunk> = None;
 
     for line in text.lines() {
+        // A hunk header states how many lines of each side follow, so the body ends
+        // deterministically rather than by guessing which line looks like a header.
+        if let Some(active) = hunk.as_mut() {
+            if active.consume(line, &mut current) {
+                if active.finished() {
+                    hunk = None;
+                }
+                continue;
+            }
+            hunk = None;
+        }
+
         if let Some(rest) = line.strip_prefix("diff --git ") {
             flush(&mut files, current.take());
             current = Some(ChangedFile {
@@ -95,18 +112,90 @@ pub fn parse(text: &str) -> ChangeSet {
                 }
             }
         } else if line.starts_with("@@") {
-            if let Some(file) = current.as_mut() {
-                if let (FileChange::Modified { ranges }, Some(range)) =
-                    (&mut file.change, parse_hunk_header(line))
-                {
-                    ranges.push(range);
-                }
-            }
+            hunk = parse_hunk_header(line);
         }
     }
     flush(&mut files, current.take());
 
     ChangeSet { files }
+}
+
+/// Tracks position within a hunk body.
+struct Hunk {
+    /// Next line number in the after version.
+    after_line: u32,
+    old_remaining: u32,
+    new_remaining: u32,
+}
+
+impl Hunk {
+    fn finished(&self) -> bool {
+        self.old_remaining == 0 && self.new_remaining == 0
+    }
+
+    /// Consumes one body line, returning whether it belonged to the hunk.
+    fn consume(&mut self, line: &str, current: &mut Option<ChangedFile>) -> bool {
+        // "\ No newline at end of file" annotates the previous line and consumes
+        // nothing from either side.
+        if line.starts_with('\\') {
+            return true;
+        }
+
+        match line.chars().next() {
+            // An empty line is a context line whose trailing space was stripped.
+            None | Some(' ') => {
+                self.old_remaining = self.old_remaining.saturating_sub(1);
+                self.new_remaining = self.new_remaining.saturating_sub(1);
+                self.after_line += 1;
+                true
+            }
+            Some('+') => {
+                self.new_remaining = self.new_remaining.saturating_sub(1);
+                push_range(
+                    current,
+                    LineRange {
+                        start: self.after_line,
+                        len: 1,
+                    },
+                );
+                self.after_line += 1;
+                true
+            }
+            Some('-') => {
+                self.old_remaining = self.old_remaining.saturating_sub(1);
+                // The line is gone, so it has no extent in the after version. Record
+                // where it used to be.
+                push_range(
+                    current,
+                    LineRange {
+                        start: self.after_line,
+                        len: 0,
+                    },
+                );
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Adds a range, merging it into the previous one when they are adjacent.
+fn push_range(current: &mut Option<ChangedFile>, range: LineRange) {
+    let Some(file) = current.as_mut() else { return };
+    let FileChange::Modified { ranges } = &mut file.change else {
+        return;
+    };
+
+    if let Some(last) = ranges.last_mut() {
+        if last.len > 0 && range.len > 0 && last.start + last.len == range.start {
+            last.len += range.len;
+            return;
+        }
+        if *last == range {
+            return;
+        }
+    }
+    ranges.push(range);
 }
 
 fn flush(files: &mut Vec<ChangedFile>, file: Option<ChangedFile>) {
@@ -122,20 +211,30 @@ fn flush(files: &mut Vec<ChangedFile>, file: Option<ChangedFile>) {
     files.push(file);
 }
 
-/// `@@ -12,3 +14,6 @@ optional context` -> the after-side range, `14..20`.
-///
-/// A missing count means one line; a count of zero is a pure deletion, kept as a
-/// zero-width position.
-fn parse_hunk_header(line: &str) -> Option<LineRange> {
-    let after = line.split('+').nth(1)?;
-    let after = after.split_whitespace().next()?;
-    let mut parts = after.splitn(2, ',');
+/// `@@ -12,3 +14,6 @@ optional context` -> a cursor at after-line 14, expecting 3
+/// old-side and 6 new-side lines. A missing count means one line.
+fn parse_hunk_header(line: &str) -> Option<Hunk> {
+    let (old_start, old_count) = hunk_side(line, '-')?;
+    let (new_start, new_count) = hunk_side(line, '+')?;
+    let _ = old_start;
+    Some(Hunk {
+        // A hunk that adds at the very start of a file is numbered from 0.
+        after_line: new_start.max(1),
+        old_remaining: old_count,
+        new_remaining: new_count,
+    })
+}
+
+fn hunk_side(line: &str, marker: char) -> Option<(u32, u32)> {
+    let field = line.split(marker).nth(1)?;
+    let field = field.split_whitespace().next()?;
+    let mut parts = field.splitn(2, ',');
     let start: u32 = parts.next()?.parse().ok()?;
-    let len: u32 = match parts.next() {
+    let count: u32 = match parts.next() {
         Some(count) => count.parse().ok()?,
         None => 1,
     };
-    Some(LineRange { start, len })
+    Some((start, count))
 }
 
 /// The after path from a `diff --git a/x b/x` header.
@@ -213,61 +312,39 @@ mod tests {
     }
 
     #[test]
-    fn parses_a_single_hunk() {
+    fn attributes_only_the_changed_line_not_its_context() {
         let set = parse(
             "diff --git a/src/a.ts b/src/a.ts\n\
              index 1111111..2222222 100644\n\
              --- a/src/a.ts\n\
              +++ b/src/a.ts\n\
-             @@ -1,3 +1,4 @@\n\
-             \x20context\n\
-             -gone\n\
-             +added\n",
+             @@ -1,3 +1,3 @@\n\
+             \x20first\n\
+             -second\n\
+             +SECOND\n\
+             \x20third\n",
         );
 
         assert_eq!(set.files.len(), 1);
         assert_eq!(set.files[0].path, PathBuf::from("src/a.ts"));
-        assert_eq!(set.files[0].change, modified(&[(1, 4)]));
+        // Line 2 changed. Lines 1 and 3 are context and must not be marked.
+        assert_eq!(set.files[0].change, modified(&[(2, 0), (2, 1)]));
     }
 
     #[test]
-    fn parses_several_hunks_in_one_file() {
+    fn merges_a_run_of_added_lines() {
         let set = parse(
             "diff --git a/src/a.ts b/src/a.ts\n\
              --- a/src/a.ts\n\
              +++ b/src/a.ts\n\
-             @@ -1,3 +1,3 @@\n\
-             @@ -20,4 +20,6 @@ fn context()\n",
+             @@ -1,1 +1,4 @@\n\
+             \x20first\n\
+             +added one\n\
+             +added two\n\
+             +added three\n",
         );
 
-        assert_eq!(set.files[0].change, modified(&[(1, 3), (20, 6)]));
-    }
-
-    #[test]
-    fn parses_several_files() {
-        let set = parse(
-            "diff --git a/src/a.ts b/src/a.ts\n\
-             --- a/src/a.ts\n\
-             +++ b/src/a.ts\n\
-             @@ -1 +1 @@\n\
-             diff --git a/src/b.ts b/src/b.ts\n\
-             --- a/src/b.ts\n\
-             +++ b/src/b.ts\n\
-             @@ -5,2 +5,2 @@\n",
-        );
-
-        assert_eq!(set.files.len(), 2);
-        assert_eq!(set.files[0].path, PathBuf::from("src/a.ts"));
-        assert_eq!(set.files[1].path, PathBuf::from("src/b.ts"));
-        assert_eq!(set.files[1].change, modified(&[(5, 2)]));
-    }
-
-    #[test]
-    fn a_missing_count_means_one_line() {
-        assert_eq!(
-            parse_hunk_header("@@ -1 +7 @@"),
-            Some(LineRange { start: 7, len: 1 })
-        );
+        assert_eq!(set.files[0].change, modified(&[(2, 3)]));
     }
 
     #[test]
@@ -276,26 +353,87 @@ mod tests {
             "diff --git a/src/a.ts b/src/a.ts\n\
              --- a/src/a.ts\n\
              +++ b/src/a.ts\n\
-             @@ -4,3 +3,0 @@\n\
-             -gone\n",
+             @@ -1,3 +1,2 @@\n\
+             \x20first\n\
+             -gone\n\
+             \x20third\n",
         );
 
-        assert_eq!(set.files[0].change, modified(&[(3, 0)]));
+        assert_eq!(set.files[0].change, modified(&[(2, 0)]));
     }
 
     #[test]
-    fn an_addition_at_end_of_file_keeps_its_range() {
+    fn parses_several_hunks_in_one_file() {
         let set = parse(
             "diff --git a/src/a.ts b/src/a.ts\n\
              --- a/src/a.ts\n\
              +++ b/src/a.ts\n\
-             @@ -3,0 +4,2 @@\n\
-             +one\n\
-             +two\n\
+             @@ -1,2 +1,2 @@\n\
+             -one\n\
+             +ONE\n\
+             \x20two\n\
+             @@ -20,2 +20,2 @@ fn context()\n\
+             \x20twenty\n\
+             -twentyone\n\
+             +TWENTYONE\n",
+        );
+
+        assert_eq!(
+            set.files[0].change,
+            modified(&[(1, 0), (1, 1), (21, 0), (21, 1)])
+        );
+    }
+
+    #[test]
+    fn parses_several_files() {
+        let set = parse(
+            "diff --git a/src/a.ts b/src/a.ts\n\
+             --- a/src/a.ts\n\
+             +++ b/src/a.ts\n\
+             @@ -1,1 +1,1 @@\n\
+             -one\n\
+             +ONE\n\
+             diff --git a/src/b.ts b/src/b.ts\n\
+             --- a/src/b.ts\n\
+             +++ b/src/b.ts\n\
+             @@ -5,1 +5,1 @@\n\
+             -five\n\
+             +FIVE\n",
+        );
+
+        assert_eq!(set.files.len(), 2);
+        assert_eq!(set.files[0].path, PathBuf::from("src/a.ts"));
+        assert_eq!(set.files[1].path, PathBuf::from("src/b.ts"));
+        assert_eq!(set.files[1].change, modified(&[(5, 0), (5, 1)]));
+    }
+
+    #[test]
+    fn a_missing_count_means_one_line() {
+        let set = parse(
+            "diff --git a/src/a.ts b/src/a.ts\n\
+             --- a/src/a.ts\n\
+             +++ b/src/a.ts\n\
+             @@ -7 +7 @@\n\
+             -seven\n\
+             +SEVEN\n",
+        );
+
+        assert_eq!(set.files[0].change, modified(&[(7, 0), (7, 1)]));
+    }
+
+    #[test]
+    fn an_addition_at_end_of_file_without_a_newline() {
+        let set = parse(
+            "diff --git a/src/a.ts b/src/a.ts\n\
+             --- a/src/a.ts\n\
+             +++ b/src/a.ts\n\
+             @@ -3,1 +3,2 @@\n\
+             \x20third\n\
+             +fourth\n\
              \\ No newline at end of file\n",
         );
 
-        assert_eq!(set.files[0].change, modified(&[(4, 2)]));
+        assert_eq!(set.files[0].change, modified(&[(4, 1)]));
     }
 
     #[test]
@@ -305,7 +443,9 @@ mod tests {
              new file mode 100644\n\
              --- /dev/null\n\
              +++ b/src/new.ts\n\
-             @@ -0,0 +1,2 @@\n",
+             @@ -0,0 +1,2 @@\n\
+             +one\n\
+             +two\n",
         );
 
         assert_eq!(set.files[0].path, PathBuf::from("src/new.ts"));
@@ -319,11 +459,32 @@ mod tests {
              deleted file mode 100644\n\
              --- a/src/gone.ts\n\
              +++ /dev/null\n\
-             @@ -1,2 +0,0 @@\n",
+             @@ -1,2 +0,0 @@\n\
+             -one\n\
+             -two\n",
         );
 
         assert_eq!(set.files[0].path, PathBuf::from("src/gone.ts"));
         assert_eq!(set.files[0].change, FileChange::Deleted);
+    }
+
+    #[test]
+    fn a_deleted_line_starting_with_dashes_is_body_not_a_header() {
+        // The hunk's stated counts are what end the body, so content that looks like
+        // a header cannot truncate it.
+        let set = parse(
+            "diff --git a/src/a.ts b/src/a.ts\n\
+             --- a/src/a.ts\n\
+             +++ b/src/a.ts\n\
+             @@ -1,2 +1,2 @@\n\
+             --- not a header\n\
+             +++ also not a header\n\
+             \x20context\n",
+        );
+
+        assert_eq!(set.files.len(), 1);
+        assert_eq!(set.files[0].path, PathBuf::from("src/a.ts"));
+        assert_eq!(set.files[0].change, modified(&[(1, 0), (1, 1)]));
     }
 
     #[test]
@@ -361,11 +522,13 @@ mod tests {
              rename to src/new.ts\n\
              --- a/src/old.ts\n\
              +++ b/src/new.ts\n\
-             @@ -2,3 +2,4 @@\n",
+             @@ -2,1 +2,1 @@\n\
+             -old\n\
+             +new\n",
         );
 
         assert_eq!(set.files[0].path, PathBuf::from("src/new.ts"));
-        assert_eq!(set.files[0].change, modified(&[(2, 4)]));
+        assert_eq!(set.files[0].change, modified(&[(2, 0), (2, 1)]));
     }
 
     #[test]
@@ -374,7 +537,9 @@ mod tests {
             "diff --git a/src/my component.tsx b/src/my component.tsx\n\
              --- a/src/my component.tsx\n\
              +++ b/src/my component.tsx\n\
-             @@ -1 +1 @@\n",
+             @@ -1,1 +1,1 @@\n\
+             -a\n\
+             +b\n",
         );
 
         assert_eq!(set.files[0].path, PathBuf::from("src/my component.tsx"));
@@ -386,11 +551,13 @@ mod tests {
             "diff --git \"a/src/caf\\303\\251.ts\" \"b/src/caf\\303\\251.ts\"\n\
              --- \"a/src/caf\\303\\251.ts\"\n\
              +++ \"b/src/caf\\303\\251.ts\"\n\
-             @@ -1 +1 @@\n",
+             @@ -1,1 +1,1 @@\n\
+             -a\n\
+             +b\n",
         );
 
         assert_eq!(set.files.len(), 1);
-        assert_eq!(set.files[0].change, modified(&[(1, 1)]));
+        assert_eq!(set.files[0].change, modified(&[(1, 0), (1, 1)]));
     }
 
     #[test]
@@ -398,11 +565,13 @@ mod tests {
         let set = parse(
             "--- src/a.ts\t2026-01-01 10:00:00.000000000 +0000\n\
              +++ src/a.ts\t2026-01-02 10:00:00.000000000 +0000\n\
-             @@ -1,3 +1,4 @@\n",
+             @@ -1,1 +1,1 @@\n\
+             -a\n\
+             +b\n",
         );
 
         assert_eq!(set.files[0].path, PathBuf::from("src/a.ts"));
-        assert_eq!(set.files[0].change, modified(&[(1, 4)]));
+        assert_eq!(set.files[0].change, modified(&[(1, 0), (1, 1)]));
     }
 
     #[test]

@@ -1,0 +1,5 @@
+# CommonJS coarsens the whole module, so even a change to an unrelated declaration
+# flags. Giving up always means "treat this as one opaque unit", never "not affected".
+[[anchor]]
+path = "src/pages/LegacyPage.tsx"
+affected = true

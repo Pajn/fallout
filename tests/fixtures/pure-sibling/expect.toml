@@ -1,0 +1,9 @@
+# An edit to an unimported sibling in the same file must not reach the page. At file
+# granularity it does, which is exactly the over-reporting symbol granularity removes.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

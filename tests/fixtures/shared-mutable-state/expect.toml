@@ -1,0 +1,14 @@
+# The page only imports `get`, but `inc` and `get` both reach the module-scope `let`,
+# so a change to one can reach the other. This must flag at every level.
+[[anchor]]
+path = "src/pages/CounterPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CounterPage.tsx)",
+    "Decl(src/pages/CounterPage.tsx, CounterPage)",
+    "Export(src/state/counter.ts, get)",
+    "Decl(src/state/counter.ts, get)",
+    "Decl(src/state/counter.ts, inc)",
+]

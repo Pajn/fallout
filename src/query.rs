@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use ahash::{AHashMap, AHashSet};
 use clap::ValueEnum;
 
+use crate::graph::{Graph, Node};
 use crate::module::imported_specifiers;
 use crate::resolve::Resolver;
 
@@ -31,6 +32,9 @@ impl Direction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hit {
     pub direction: Direction,
+    /// Node labels, set when the search ran over the node graph rather than over
+    /// whole files. Rendered eagerly because the graph owns the name interner.
+    pub rendered: Option<Vec<String>>,
     /// The chain in import order: each file imports the next.
     ///
     /// Downstream that reads anchor first, changed file last; upstream the reverse,
@@ -67,6 +71,7 @@ pub fn downstream(
         if changed.contains(&current) {
             return Some(Hit {
                 direction: Direction::Downstream,
+                rendered: None,
                 path: trace(&came_from, &current),
             });
         }
@@ -106,6 +111,7 @@ pub fn upstream(
             if anchor_set.contains(&current) {
                 return Some(Hit {
                     direction: Direction::Upstream,
+                    rendered: None,
                     path: trace(&came_from, &current),
                 });
             }
@@ -143,6 +149,61 @@ fn trace(came_from: &AHashMap<PathBuf, Option<PathBuf>>, target: &Path) -> Vec<P
         cursor = previous.clone();
     }
 
+    path.reverse();
+    path
+}
+
+/// Walks forward from the anchors over the node graph, looking for a marked node.
+///
+/// Only the downstream direction narrows. Upstream narrowing has a definitional
+/// problem — a change to a sibling component cannot reach a page through references,
+/// yet they render together — so upstream stays at file granularity until that
+/// question is settled.
+pub fn downstream_symbols(
+    anchors: &[PathBuf],
+    marked: &AHashSet<Node>,
+    graph: &Graph,
+) -> Option<Vec<Node>> {
+    let mut came_from: AHashMap<Node, Option<Node>> = AHashMap::default();
+    let mut queue = VecDeque::new();
+
+    for anchor in anchors {
+        let node = Node::File(graph.file_id(anchor));
+        if came_from.insert(node, None).is_none() {
+            queue.push_back(node);
+        }
+    }
+
+    while let Some(current) = queue.pop_front() {
+        if is_marked(marked, current) {
+            return Some(trace_nodes(&came_from, current));
+        }
+
+        for next in graph.edges(current) {
+            if !came_from.contains_key(&next) {
+                came_from.insert(next, Some(current));
+                queue.push_back(next);
+            }
+        }
+    }
+
+    None
+}
+
+/// `File(f)` is the umbrella node: marking it says "something in f changed, and we
+/// cannot say what". Every node of `f` is therefore marked with it, or a search that
+/// reaches only a declaration would miss a whole-file change.
+fn is_marked(marked: &AHashSet<Node>, node: Node) -> bool {
+    marked.contains(&node) || marked.contains(&Node::File(node.file()))
+}
+
+fn trace_nodes(came_from: &AHashMap<Node, Option<Node>>, target: Node) -> Vec<Node> {
+    let mut path = vec![target];
+    let mut cursor = target;
+    while let Some(Some(previous)) = came_from.get(&cursor) {
+        path.push(*previous);
+        cursor = *previous;
+    }
     path.reverse();
     path
 }

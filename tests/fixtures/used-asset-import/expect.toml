@@ -1,0 +1,13 @@
+# A binding import of an asset reaches only the declarations that use the asset.
+[[anchor]]
+path = "src/pages/LogoPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LogoPage.tsx)",
+    "Decl(src/pages/LogoPage.tsx, LogoPage)",
+    "Export(src/components/Logo.tsx, Logo)",
+    "Decl(src/components/Logo.tsx, Logo)",
+    "File(src/assets/logo.png)",
+]

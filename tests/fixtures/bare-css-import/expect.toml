@@ -1,0 +1,9 @@
+# A bare import is a side effect of loading the module, so it reaches everyone who
+# imports that module, not just users of a binding.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/AboutPage.tsx"
+affected = false

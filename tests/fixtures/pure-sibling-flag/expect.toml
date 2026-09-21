@@ -1,0 +1,15 @@
+# The other half of the pair: the imported function itself changed.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true
+
+[anchor.explain]
+file = [
+    "File(src/pages/DatePage.tsx)",
+    "File(src/utils/helpers.ts)",
+]
+symbol = [
+    "File(src/pages/DatePage.tsx)",
+    "Decl(src/pages/DatePage.tsx, DatePage)",
+    "Export(src/utils/helpers.ts, formatDate)",
+]
