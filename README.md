@@ -84,6 +84,13 @@ yields the whole export object, so it reaches every export of its target, the sa
 `import * as ns`. A `require` outside every declaration runs on evaluation, like a
 bare import.
 
+A module object read for a single name depends on that name alone. `ns.fetchUser`
+from an `import * as ns` targets that one export rather than the whole table, and so
+do `<ns.Thing />`, `const m = await import("./g"); m.x`, `(await import("./g")).x`,
+`import("./g").then(m => m.x)`, and `const { x } = await import("./g")`. Handing the
+module object anywhere else — passing it on, reading `ns[key]` — keeps the whole
+table, and a binding that does both keeps the whole table.
+
 ### Pure calls
 
 A declaration whose initialiser runs something belongs to module initialisation, so

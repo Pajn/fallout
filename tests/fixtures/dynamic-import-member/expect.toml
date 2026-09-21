@@ -1,0 +1,5 @@
+# The pair to dynamic-import-used. The awaited module object is read for one name,
+# so the export the page never reaches stays put.
+[[anchor]]
+path = "src/pages/LazyPage.tsx"
+affected = false

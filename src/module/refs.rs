@@ -2,11 +2,13 @@
 
 use ahash::AHashMap;
 use oxc_ast::AstKind;
-use oxc_ast::ast::UnaryOperator;
+use oxc_ast::ast::{
+    BindingPattern, CallExpression, Expression, JSXMemberExpressionObject, UnaryOperator,
+};
 use oxc_semantic::{AstNodes, NodeId, SymbolId};
-use oxc_span::GetSpan;
+use oxc_span::{GetSpan, Span as OxcSpan};
 
-use super::decls::{DeclDraft, ImportBinding, RequireCall};
+use super::decls::{DeclDraft, ImportBinding, RequireCall, source_id};
 use super::parse::{Ctx, span_of};
 use super::{Decl, DeclId, ImportRef, ImportTarget, SourceId, Span};
 
@@ -70,7 +72,8 @@ pub(crate) fn link(
                     }
                 }
                 if let Some(binding) = target_import {
-                    push_import(&mut decls[user as usize].imports, binding.reference.clone());
+                    let reference = narrowed(ctx.semantic.nodes(), node_id, &binding.reference);
+                    push_import(&mut decls[user as usize].imports, reference);
                     push_unique(import_users.entry(binding.span).or_default(), user);
                 }
                 push_unique(users_of.entry(symbol_id).or_default(), user);
@@ -131,6 +134,57 @@ fn apply_shared_state(
                 }
             }
         }
+    }
+}
+
+/// A namespace read for one of its exports depends on that export alone.
+///
+/// `import * as ns from "./g"` gives the whole export table of `g`, and most uses
+/// of it immediately pick one name back out. Every other shape — passing `ns`
+/// somewhere, a computed `ns[key]` — keeps the whole table, and a reference that
+/// does both contributes both, so the wide edge is never lost by accident.
+fn narrowed(nodes: &AstNodes<'_>, node_id: NodeId, reference: &ImportRef) -> ImportRef {
+    if reference.target != ImportTarget::Namespace {
+        return reference.clone();
+    }
+    match member_read(nodes, node_id) {
+        Some(name) => ImportRef {
+            source: reference.source,
+            target: ImportTarget::Named(name),
+        },
+        None => reference.clone(),
+    }
+}
+
+/// Walks out through any parentheses, returning the outermost node standing for the
+/// same value and its span. `(await import("./g")).x` puts one between the import
+/// and the member read, and without this the read is not recognised.
+fn unwrapped(nodes: &AstNodes<'_>, node_id: NodeId) -> (NodeId, OxcSpan) {
+    let mut current = node_id;
+    let mut span = nodes.get_node(node_id).kind().span();
+    while let AstKind::ParenthesizedExpression(paren) = nodes.parent_kind(current) {
+        span = paren.span;
+        current = nodes.parent_id(current);
+    }
+    (current, span)
+}
+
+/// The property read straight off this reference: `ns.x`, and `<ns.X />`.
+fn member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
+    let (node_id, span) = unwrapped(nodes, node_id);
+    match nodes.parent_kind(node_id) {
+        AstKind::StaticMemberExpression(member) if member.object.span() == span => {
+            Some(member.property.name.to_string())
+        }
+        // `<ns.Thing />`. Only the innermost object is the binding; `<a.b.c />`
+        // reads `b` off `a`, and what happens after that is `b`'s business.
+        AstKind::JSXMemberExpression(member)
+            if matches!(&member.object, JSXMemberExpressionObject::IdentifierReference(ident)
+                if ident.span == span) =>
+        {
+            Some(member.property.name.to_string())
+        }
+        _ => None,
     }
 }
 
@@ -224,6 +278,151 @@ pub(crate) fn attach_requires(
     }
 
     init_sources
+}
+
+/// Attributes every `import("./x")` to the declarations of the statement it is
+/// written in, and returns the targets of the ones that belong to no declaration.
+///
+/// A dynamic import yields the target's whole export table, exactly as `import * as`
+/// does, so the same narrowing applies: where the module object is immediately read
+/// for one name, only that export is a dependency.
+///
+/// `None` if a specifier is missing from `sources`, which coarsens the module rather
+/// than leaving the dependency unrecorded.
+pub(crate) fn attach_dynamic_imports(
+    ctx: &Ctx<'_>,
+    drafts: &[DeclDraft],
+    sources: &[String],
+    decls: &mut [Decl],
+) -> Option<Vec<SourceId>> {
+    let statement_decls = statement_decls(drafts);
+    let mut init_sources = Vec::new();
+
+    for (node_id, node) in ctx.semantic.nodes().iter_enumerated() {
+        let AstKind::ImportExpression(expression) = node.kind() else {
+            continue;
+        };
+        // The Coarsener has already rejected a computed specifier, so anything
+        // reaching here names its module in a plain string.
+        let Expression::StringLiteral(literal) = &expression.source else {
+            continue;
+        };
+        let source = source_id(sources, literal.value.as_str())?;
+
+        let users = ctx
+            .statement_at(expression.span.start)
+            .and_then(|statement| statement_decls.get(&statement));
+
+        let Some(users) = users else {
+            if !init_sources.contains(&source) {
+                init_sources.push(source);
+            }
+            continue;
+        };
+
+        for target in dynamic_targets(ctx, node_id) {
+            for &user in users {
+                push_import(
+                    &mut decls[user as usize].imports,
+                    ImportRef {
+                        source,
+                        target: target.clone(),
+                    },
+                );
+            }
+        }
+    }
+
+    Some(init_sources)
+}
+
+/// What a dynamic import's module object is read for, at the two places the object
+/// becomes reachable: after an `await`, and as the argument of `.then`.
+fn dynamic_targets(ctx: &Ctx<'_>, node_id: NodeId) -> Vec<ImportTarget> {
+    let nodes = ctx.semantic.nodes();
+    let (node_id, span) = unwrapped(nodes, node_id);
+
+    match nodes.parent_kind(node_id) {
+        AstKind::AwaitExpression(_) => {
+            let (awaited, _) = unwrapped(nodes, nodes.parent_id(node_id));
+            match nodes.parent_kind(awaited) {
+                AstKind::VariableDeclarator(declarator) => bound_targets(ctx, &declarator.id),
+                // `(await import("./g")).x`
+                AstKind::StaticMemberExpression(member) => {
+                    vec![ImportTarget::Named(member.property.name.to_string())]
+                }
+                _ => vec![ImportTarget::Namespace],
+            }
+        }
+        // `import("./g").then(m => m.x)`
+        AstKind::StaticMemberExpression(member)
+            if member.property.name == "then" && member.object.span() == span =>
+        {
+            let member_id = nodes.parent_id(node_id);
+            match nodes.parent_kind(member_id) {
+                AstKind::CallExpression(call) => callback_targets(ctx, call),
+                _ => vec![ImportTarget::Namespace],
+            }
+        }
+        _ => vec![ImportTarget::Namespace],
+    }
+}
+
+/// The module object handed to `.then(...)`, read through the callback's parameter.
+fn callback_targets(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> Vec<ImportTarget> {
+    let Some(argument) = call.arguments.first().and_then(|a| a.as_expression()) else {
+        return vec![ImportTarget::Namespace];
+    };
+    let params = match argument {
+        Expression::ArrowFunctionExpression(arrow) => &arrow.params,
+        Expression::FunctionExpression(function) => &function.params,
+        _ => return vec![ImportTarget::Namespace],
+    };
+    match params.items.first() {
+        // A callback that ignores the module depends on none of its exports.
+        None => Vec::new(),
+        Some(first) => bound_targets(ctx, &first.pattern),
+    }
+}
+
+/// What the pattern a module object is bound to reads out of it.
+fn bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<ImportTarget> {
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => {
+            let Some(symbol_id) = identifier.symbol_id.get() else {
+                return vec![ImportTarget::Namespace];
+            };
+            let scoping = ctx.semantic.scoping();
+            let mut targets = Vec::new();
+            for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
+                let node_id = scoping.get_reference(*reference_id).node_id();
+                match member_read(ctx.semantic.nodes(), node_id) {
+                    Some(name) => targets.push(ImportTarget::Named(name)),
+                    // Used as a whole somewhere, so the whole table is a dependency.
+                    None => return vec![ImportTarget::Namespace],
+                }
+            }
+            targets
+        }
+        // `const { a, b } = await import("./g")` names its exports outright.
+        BindingPattern::ObjectPattern(object) => {
+            if object.rest.is_some() {
+                return vec![ImportTarget::Namespace];
+            }
+            let mut targets = Vec::new();
+            for property in &object.properties {
+                let Some(name) = (!property.computed)
+                    .then(|| property.key.static_name())
+                    .flatten()
+                else {
+                    return vec![ImportTarget::Namespace];
+                };
+                targets.push(ImportTarget::Named(name.to_string()));
+            }
+            targets
+        }
+        _ => vec![ImportTarget::Namespace],
+    }
 }
 
 /// Which declarations does each top-level statement introduce?

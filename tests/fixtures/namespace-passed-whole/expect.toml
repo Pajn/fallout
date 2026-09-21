@@ -1,0 +1,6 @@
+# The pair to namespace-member. The same page also hands the namespace over whole,
+# so whatever receives it can reach any export. A reference that narrows and a
+# reference that does not both contribute, and the wider one wins.
+[[anchor]]
+path = "src/pages/UserPage.tsx"
+affected = true

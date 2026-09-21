@@ -150,12 +150,13 @@ fn build_fine(
     let import_spans = refs::link(&ctx, &drafts, &imports, &mut decls);
     let requires = decls::require_calls(program, sources)?;
     let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls);
+    let init_dynamic = refs::attach_dynamic_imports(&ctx, &drafts, sources, &mut decls)?;
     let init_decls = init::collect(&ctx, program, &drafts, &decls, &imports, sources, pure);
 
     // A `require` outside every declaration runs on evaluation, exactly like a bare
     // `import "./x"`, so the two share a list.
     let mut bare_sources = decls::bare_sources(program, sources);
-    for source in init_requires {
+    for source in init_requires.into_iter().chain(init_dynamic) {
         if !bare_sources.contains(&source) {
             bare_sources.push(source);
         }

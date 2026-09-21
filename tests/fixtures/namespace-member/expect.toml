@@ -1,0 +1,6 @@
+# A namespace import hands over the whole export table, and almost every use of one
+# picks a single name back out of it. The page reads `api.fetchUser` and nothing
+# else, so an edit to a sibling export must not reach it.
+[[anchor]]
+path = "src/pages/UserPage.tsx"
+affected = false

@@ -1,0 +1,9 @@
+# A dynamic import is a dependency like any other. The page reaches `render` through
+# the module object it awaits, so an edit to `render` must flag.
+#
+# Before this was wired, `import()` contributed no declaration edge at all and this
+# case was reported as unaffected at symbol granularity while the file-level answer
+# got it right.
+[[anchor]]
+path = "src/pages/LazyPage.tsx"
+affected = true
