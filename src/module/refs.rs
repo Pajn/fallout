@@ -4,9 +4,9 @@ use ahash::AHashMap;
 use oxc_semantic::SymbolId;
 use oxc_span::GetSpan;
 
-use super::decls::{DeclDraft, ImportBinding};
+use super::decls::{DeclDraft, ImportBinding, RequireCall};
 use super::parse::{Ctx, span_of};
-use super::{Decl, DeclId, ImportRef, Span};
+use super::{Decl, DeclId, ImportRef, ImportTarget, SourceId, Span};
 
 /// Fills in each declaration's references, and returns the import statement spans
 /// paired with the declarations that use the bindings those statements introduce.
@@ -19,14 +19,7 @@ pub(crate) fn link(
     let scoping = ctx.semantic.scoping();
     let root = scoping.root_scope_id();
 
-    // Which declarations does each top-level statement introduce?
-    let mut statement_decls: AHashMap<usize, Vec<DeclId>> = AHashMap::default();
-    for (id, draft) in drafts.iter().enumerate() {
-        statement_decls
-            .entry(draft.statement)
-            .or_default()
-            .push(id as DeclId);
-    }
+    let statement_decls = statement_decls(drafts);
 
     let decl_by_name: AHashMap<&str, DeclId> = drafts
         .iter()
@@ -124,6 +117,57 @@ fn apply_shared_state(
             }
         }
     }
+}
+
+/// Attributes every `require("./x")` to the declarations of the statement it is
+/// written in, and returns the targets of the calls that belong to no declaration.
+///
+/// CommonJS yields the whole export object, so the dependency is on all of it:
+/// [`ImportTarget::Namespace`], the same target an `import * as ns` gets. A call in a
+/// statement that declares nothing runs when the module is evaluated, so its target
+/// joins the bare sources instead.
+pub(crate) fn attach_requires(
+    ctx: &Ctx<'_>,
+    drafts: &[DeclDraft],
+    requires: &[RequireCall],
+    decls: &mut [Decl],
+) -> Vec<SourceId> {
+    let statement_decls = statement_decls(drafts);
+    let mut init_sources = Vec::new();
+
+    for call in requires {
+        let users = ctx
+            .statement_at(call.span.start)
+            .and_then(|statement| statement_decls.get(&statement));
+
+        let Some(users) = users else {
+            if !init_sources.contains(&call.source) {
+                init_sources.push(call.source);
+            }
+            continue;
+        };
+
+        for &user in users {
+            push_import(
+                &mut decls[user as usize].imports,
+                ImportRef {
+                    source: call.source,
+                    target: ImportTarget::Namespace,
+                },
+            );
+        }
+    }
+
+    init_sources
+}
+
+/// Which declarations does each top-level statement introduce?
+fn statement_decls(drafts: &[DeclDraft]) -> AHashMap<usize, Vec<DeclId>> {
+    let mut map: AHashMap<usize, Vec<DeclId>> = AHashMap::default();
+    for (id, draft) in drafts.iter().enumerate() {
+        map.entry(draft.statement).or_default().push(id as DeclId);
+    }
+    map
 }
 
 fn push_unique(list: &mut Vec<DeclId>, value: DeclId) {

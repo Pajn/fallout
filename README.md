@@ -74,10 +74,16 @@ module initialisation, so importing anything from that file reaches it. A bare
 importer, while `import logo from "./logo.png"` reaches only the declarations using
 `logo`.
 
+A `require("./x")` is an ordinary dependency of the declaration that contains it. It
+yields the whole export object, so it reaches every export of its target, the same as
+`import * as ns`. A `require` outside every declaration runs on evaluation, like a
+bare import.
+
 Anything the analyser cannot describe falls back to one opaque node for the whole
-file, which is the `file` behaviour: CommonJS, `eval`, `with`, TypeScript namespaces,
-decorators, and any file that fails to parse. Giving up always means "treat this as one
-unit", never "not affected".
+file, which is the `file` behaviour: a CommonJS export table (`module.exports`,
+`exports.x`), a computed `require()` or `import()` specifier, `eval`, `with`,
+TypeScript namespaces, decorators, and any file that fails to parse. Giving up always
+means "treat this as one unit", never "not affected".
 
 Only the downstream search narrows. Upstream stays at file granularity, because a
 change to a sibling component cannot reach a page through references even though the

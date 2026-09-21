@@ -146,8 +146,18 @@ fn build_fine(
         .collect();
 
     let import_spans = refs::link(&ctx, &drafts, &imports, &mut decls);
+    let requires = decls::require_calls(program, sources)?;
+    let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls);
     let init_decls = init::collect(&ctx, program, &drafts, &decls);
-    let bare_sources = decls::bare_sources(program, sources);
+
+    // A `require` outside every declaration runs on evaluation, exactly like a bare
+    // `import "./x"`, so the two share a list.
+    let mut bare_sources = decls::bare_sources(program, sources);
+    for source in init_requires {
+        if !bare_sources.contains(&source) {
+            bare_sources.push(source);
+        }
+    }
 
     Some(FineModule {
         decls,
@@ -164,6 +174,20 @@ pub(crate) fn span_of(span: oxc_span::Span) -> Span {
     Span {
         start: span.start,
         end: span.end,
+    }
+}
+
+/// Is this a call to `require`? A local binding of that name is not ruled out: the
+/// worst a wrong guess does is add an edge, and an extra edge only widens the answer.
+pub(crate) fn is_require(expr: &CallExpression<'_>) -> bool {
+    matches!(&expr.callee, Expression::Identifier(ident) if ident.name == "require")
+}
+
+/// The module a call names, when its first argument spells one as a plain string.
+pub(crate) fn static_specifier<'a>(expr: &CallExpression<'a>) -> Option<&'a str> {
+    match expr.arguments.first()?.as_expression()? {
+        Expression::StringLiteral(lit) => Some(lit.value.as_str()),
+        _ => None,
     }
 }
 
@@ -189,16 +213,28 @@ impl Coarsener {
 
 impl<'a> Visit<'a> for Coarsener {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if let Expression::Identifier(ident) = &expr.callee {
-            match ident.name.as_str() {
-                // CommonJS has no export table we can read yet.
-                "require" => self.flag("require"),
-                // `eval` can reach any binding in scope by name.
-                "eval" => self.flag("eval"),
-                _ => {}
+        if is_require(expr) {
+            // A `require("./x")` naming its module in a plain string is an ordinary
+            // dependency, recorded against the declaration that contains it. Only an
+            // unreadable specifier leaves the target unknown.
+            if static_specifier(expr).is_none() {
+                self.flag("dynamic require");
+            }
+        } else if let Expression::Identifier(ident) = &expr.callee {
+            // `eval` can reach any binding in scope by name.
+            if ident.name == "eval" {
+                self.flag("eval");
             }
         }
         walk::walk_call_expression(self, expr);
+    }
+
+    fn visit_import_expression(&mut self, expr: &ImportExpression<'a>) {
+        // Same rule as `require`: a computed specifier is an edge we cannot record.
+        if !matches!(&expr.source, Expression::StringLiteral(_)) {
+            self.flag("dynamic import");
+        }
+        walk::walk_import_expression(self, expr);
     }
 
     fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
@@ -297,13 +333,9 @@ impl<'a> Visit<'a> for SpecifierExtractor<'a> {
     }
 
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if let Expression::Identifier(ident) = &expr.callee {
-            if ident.name == "require" {
-                if let Some(arg) = expr.arguments.first() {
-                    if let Expression::StringLiteral(lit) = arg.to_expression() {
-                        self.specifiers.push(lit.value.as_str());
-                    }
-                }
+        if is_require(expr) {
+            if let Some(specifier) = static_specifier(expr) {
+                self.specifiers.push(specifier);
             }
         }
         walk::walk_call_expression(self, expr);

@@ -1,0 +1,6 @@
+# `require("./x.png")` is how React Native names an asset. It is an ordinary
+# dependency of the declaration that holds it, not a reason to give up on the file:
+# a change to a sibling the page never reaches must stay unaffected.
+[[anchor]]
+path = "src/pages/BannerPage.tsx"
+affected = false

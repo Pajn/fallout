@@ -1,0 +1,6 @@
+# A computed specifier names a module we cannot read, so the dependency cannot be
+# recorded and the file coarsens. An unrelated declaration still flags, which is the
+# safe direction.
+[[anchor]]
+path = "src/pages/PluginPage.tsx"
+affected = true

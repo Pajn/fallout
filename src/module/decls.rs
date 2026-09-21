@@ -1,9 +1,10 @@
 //! Top-level statements to declarations, and the import bindings they can reference.
 
 use oxc_ast::ast::*;
+use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 
-use super::parse::span_of;
+use super::parse::{is_require, span_of, static_specifier};
 use super::{ImportRef, ImportTarget, SourceId, Span};
 
 /// A declaration before its reference edges are known.
@@ -18,6 +19,16 @@ pub(crate) struct DeclDraft {
     /// `const` bound to a primitive literal, and nothing else. Only such a binding is
     /// provably not a channel between two declarations that both reference it.
     pub immutable: bool,
+}
+
+/// A `require("./x")` call: the module it names, and where the call is written.
+///
+/// CommonJS hands back the whole export object, so the call depends on every export
+/// of its target. It is attributed to the declaration whose statement contains it.
+#[derive(Debug, Clone)]
+pub(crate) struct RequireCall {
+    pub source: SourceId,
+    pub span: Span,
 }
 
 /// A binding introduced by an import statement.
@@ -179,6 +190,45 @@ pub(crate) fn collect_imports(
     }
 
     Some(bindings)
+}
+
+/// Every `require("./x")` in the file, wherever it is written.
+///
+/// Returns `None` if a specifier is missing from `sources`, which coarsens the
+/// module rather than leaving the dependency unrecorded.
+pub(crate) fn require_calls(program: &Program<'_>, sources: &[String]) -> Option<Vec<RequireCall>> {
+    let mut collector = RequireCollector {
+        sources,
+        calls: Vec::new(),
+        unresolved: false,
+    };
+    collector.visit_program(program);
+    (!collector.unresolved).then_some(collector.calls)
+}
+
+struct RequireCollector<'s> {
+    sources: &'s [String],
+    calls: Vec<RequireCall>,
+    unresolved: bool,
+}
+
+impl<'a> Visit<'a> for RequireCollector<'_> {
+    fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
+        if is_require(expr) {
+            // The Coarsener has already rejected a call whose specifier is computed,
+            // so any `require` reaching here names its module in a plain string.
+            if let Some(specifier) = static_specifier(expr) {
+                match source_id(self.sources, specifier) {
+                    Some(source) => self.calls.push(RequireCall {
+                        source,
+                        span: span_of(expr.span()),
+                    }),
+                    None => self.unresolved = true,
+                }
+            }
+        }
+        walk::walk_call_expression(self, expr);
+    }
 }
 
 /// Bare imports: `import "./theme.css"`. Importing the module runs their effects, so
