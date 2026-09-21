@@ -27,6 +27,16 @@ fn run_is_affected(
     anchors: &[&str],
     changed: &[&str],
 ) -> (i32, String, String) {
+    run_is_affected_with(binary, root, anchors, changed, &[])
+}
+
+fn run_is_affected_with(
+    binary: &PathBuf,
+    root: &PathBuf,
+    anchors: &[&str],
+    changed: &[&str],
+    extra_args: &[&str],
+) -> (i32, String, String) {
     let mut cmd = Command::new(binary);
     cmd.current_dir(root);
 
@@ -39,6 +49,10 @@ fn run_is_affected(
     }
 
     cmd.arg("--root").arg(root);
+
+    for arg in extra_args {
+        cmd.arg(arg);
+    }
 
     let output = cmd.output().expect("Failed to execute is_affected");
 
@@ -587,4 +601,119 @@ onmessage = () => formatDate(logo);"#,
 
     assert_eq!(code3, 0, "Expected exit code 0 (asset imported by a worker), got {}. stdout: {}", code3, stdout3);
     assert!(stdout3.contains("src/assets/logo.png"));
+}
+
+#[test]
+fn test_only_downstream_ignores_upstream_usages() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+
+    let binary = build_binary();
+
+    // CheckoutPage imports Button (via Card), so this is a downstream hit.
+    let (code, stdout, _stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--only", "downstream"],
+    );
+
+    assert_eq!(code, 0, "Expected exit code 0 (downstream hit), got {}. stdout: {}", code, stdout);
+    assert!(stdout.contains("src/components/Button.tsx"));
+
+    // Reversed, the only path is upstream. Without the flag this is a hit...
+    let (both, stdout_both, _stderr) = run_is_affected(
+        &binary,
+        &root,
+        &["src/components/Button.tsx"],
+        &["src/pages/CheckoutPage.tsx"],
+    );
+
+    assert_eq!(both, 0, "Expected exit code 0 searching both directions, got {}. stdout: {}", both, stdout_both);
+
+    // ...and with it, the upstream path is not searched at all.
+    let (code2, stdout2, _stderr2) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/components/Button.tsx"],
+        &["src/pages/CheckoutPage.tsx"],
+        &["--only", "downstream"],
+    );
+
+    assert_eq!(code2, 1, "Expected exit code 1 (upstream path skipped), got {}. stdout: {}", code2, stdout2);
+    assert!(stdout2.contains("No reachability impact detected"));
+}
+
+#[test]
+fn test_only_upstream_ignores_downstream_usages() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+
+    let binary = build_binary();
+
+    // CheckoutPage imports Button, so this is reachable downstream but not upstream.
+    let (code, stdout, _stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--only", "upstream"],
+    );
+
+    assert_eq!(code, 1, "Expected exit code 1 (downstream path skipped), got {}. stdout: {}", code, stdout);
+    assert!(stdout.contains("No reachability impact detected"));
+
+    let (code2, stdout2, _stderr2) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/components/Button.tsx"],
+        &["src/pages/CheckoutPage.tsx"],
+        &["--only", "upstream"],
+    );
+
+    assert_eq!(code2, 0, "Expected exit code 0 (upstream hit), got {}. stdout: {}", code2, stdout2);
+    assert!(stdout2.contains("src/pages/CheckoutPage.tsx"));
+}
+
+#[test]
+fn test_only_short_flag_matches_long_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+
+    let binary = build_binary();
+
+    let (code, stdout, _stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["-o", "downstream"],
+    );
+
+    assert_eq!(code, 0, "Expected exit code 0 (short flag), got {}. stdout: {}", code, stdout);
+    assert!(stdout.contains("src/components/Button.tsx"));
+}
+
+#[test]
+fn test_only_rejects_unknown_direction() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+
+    let binary = build_binary();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--only", "sideways"],
+    );
+
+    assert_ne!(code, 0, "Expected non-zero exit code for an unknown direction, got {}. stdout: {}", code, stdout);
+    assert!(stderr.contains("sideways"), "Expected the error to name the bad value, got stderr: {}", stderr);
 }

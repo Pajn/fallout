@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, RwLock};
 
 use ahash::{AHashMap, AHashSet};
-use clap::Parser as ClapParser;
+use clap::{Parser as ClapParser, ValueEnum};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
@@ -18,6 +18,15 @@ use oxc_span::SourceType;
 /// fonts, stylesheets, JSON — is a leaf: it can be reported as affected, but it is
 /// never opened looking for dependencies of its own.
 const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
+/// Which way to walk the import graph between the anchor and a changed file.
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum Direction {
+    /// The anchor imports the changed file, directly or transitively
+    Downstream,
+    /// The changed file imports the anchor, directly or transitively
+    Upstream,
+}
 
 #[derive(ClapParser)]
 struct Cli {
@@ -32,6 +41,10 @@ struct Cli {
     /// Root directory to scan for source files (default: anchor's parent or current dir)
     #[arg(short, long)]
     root: Option<PathBuf>,
+
+    /// Search only one direction (default: downstream, then upstream)
+    #[arg(short, long, value_enum)]
+    only: Option<Direction>,
 }
 
 fn main() -> ExitCode {
@@ -98,40 +111,44 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let (downstream_hit, changed_file) = check_downstream(
-        &anchor_files,
-        &changed_files,
-        &resolver,
-        &resolve_cache,
-        root,
-    );
-    if downstream_hit {
-        if let Some(cf) = changed_file {
-            println!("Impact detected on target anchor via: {:?}", cf);
-        } else {
-            println!("Impact detected on target anchor (downstream)");
+    if cli.only != Some(Direction::Upstream) {
+        let (downstream_hit, changed_file) = check_downstream(
+            &anchor_files,
+            &changed_files,
+            &resolver,
+            &resolve_cache,
+            root,
+        );
+        if downstream_hit {
+            report_impact(changed_file, "downstream");
+            return ExitCode::SUCCESS;
         }
-        return ExitCode::SUCCESS;
     }
 
-    let (upstream_hit, changed_file) = check_upstream(
-        &anchor_files,
-        &changed_files,
-        &resolver,
-        &resolve_cache,
-        root,
-    );
-    if upstream_hit {
-        if let Some(cf) = changed_file {
-            println!("Impact detected on target anchor via: {:?}", cf);
-        } else {
-            println!("Impact detected on target anchor (upstream)");
+    if cli.only != Some(Direction::Downstream) {
+        let (upstream_hit, changed_file) = check_upstream(
+            &anchor_files,
+            &changed_files,
+            &resolver,
+            &resolve_cache,
+            root,
+        );
+        if upstream_hit {
+            report_impact(changed_file, "upstream");
+            return ExitCode::SUCCESS;
         }
-        return ExitCode::SUCCESS;
     }
 
     println!("No reachability impact detected");
     ExitCode::FAILURE
+}
+
+fn report_impact(changed_file: Option<PathBuf>, direction: &str) {
+    if let Some(cf) = changed_file {
+        println!("Impact detected on target anchor via: {:?}", cf);
+    } else {
+        println!("Impact detected on target anchor ({})", direction);
+    }
 }
 
 fn check_downstream(
