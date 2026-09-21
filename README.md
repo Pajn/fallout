@@ -66,8 +66,13 @@ A page importing only `formatDate` is affected at `file` granularity and not at
 `symbol`.
 
 Narrowing never costs a true positive. Two declarations sharing a module-scope binding
-that is not a `const` bound to a primitive literal stay connected, because one can
-reach the other by mutating it. A declaration whose initialiser may run something — a
+that is not a `const` bound to a primitive literal stay connected when one of them
+could change what the binding holds, because that is how an edit to one travels to the
+other without either naming it. Calling it, constructing with it, rendering it as
+`<S />`, asking `typeof`, and reading a property in place cannot change it, so
+declarations that only do those stay apart. Everything else — passing it to a
+function, returning it, writing through it, spreading it, or naming a member of it as
+an element, which is how a React context is written — counts as a write. A declaration whose initialiser may run something — a
 call, a `new`, an `await`, a tagged template, an assignment to a member — belongs to
 module initialisation, so importing anything from that file reaches it. A bare
 `import "./theme.css"` is a side effect of loading the module and reaches every

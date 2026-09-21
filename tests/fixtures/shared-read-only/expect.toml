@@ -1,0 +1,9 @@
+# Both components render the same module-scope binding, and rendering it cannot
+# change what it holds. Neither can reach the other through it, so an edit to the
+# component the page never imports stays where it is.
+#
+# This is the shape React code is written in: one styled component, one memo, one
+# context, used by every sibling in the file.
+[[anchor]]
+path = "src/pages/DetailsPage.tsx"
+affected = false

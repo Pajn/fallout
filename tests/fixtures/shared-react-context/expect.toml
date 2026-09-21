@@ -1,0 +1,10 @@
+# The page imports only `useTheme`, and the edit is to `ThemeProvider`. Nothing in
+# the syntax connects them: one renders an element, the other calls a hook. They
+# meet in the module-scope context binding, which the provider writes and the
+# consumer reads, so the edit must reach the page.
+#
+# Found in a real React codebase while narrowing the shared-state rule, which is
+# the reason `<S.Provider>` counts as a write.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true

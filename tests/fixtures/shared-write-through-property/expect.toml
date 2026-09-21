@@ -1,0 +1,5 @@
+# The soundness pair to shared-read-only. A method call on a shared binding is the
+# ordinary way to mutate one, so the page that only reads it must still flag.
+[[anchor]]
+path = "src/pages/LookupPage.tsx"
+affected = true
