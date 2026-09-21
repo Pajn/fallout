@@ -1,0 +1,14 @@
+# `export * as theme from "./theme"` exports one name holding everything
+# `./theme` exports. Read as a plain `export *` it would put `ink` in this
+# table instead of `theme`, and a consumer asking for `theme` would find a name
+# the table does not have — which reached nothing at all rather than reaching
+# everything, the one direction this tool may never be wrong in.
+[[anchor]]
+path = "src/pages/ThemePage.tsx"
+affected = true
+
+# The other name on the same barrel. Nothing it holds changed, and the two
+# namespaces are separate exports rather than one merged table.
+[[anchor]]
+path = "src/pages/AudioPage.tsx"
+affected = false

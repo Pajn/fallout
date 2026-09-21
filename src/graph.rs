@@ -270,6 +270,12 @@ impl Graph {
                     None => Vec::new(),
                 }
             }
+            Some(ExportTarget::ReexportAll { source }) => {
+                match self.target_of(&analysed, *source) {
+                    Some(target) => self.all_exports(target),
+                    None => Vec::new(),
+                }
+            }
             // Not in the table directly: it may arrive through `export *`.
             None => {
                 let mut seen = AHashSet::default();

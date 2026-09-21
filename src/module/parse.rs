@@ -221,7 +221,7 @@ fn build_fine(
 
     let drafts = decls::collect(program, cjs)?;
     let imports = decls::collect_imports(program, sources)?;
-    let (exports, export_stars) = exports::collect(program, sources, &drafts, cjs)?;
+    let (exports, export_stars) = exports::collect(program, sources, &drafts, &imports, cjs)?;
 
     let mut decls: Vec<Decl> = drafts
         .iter()

@@ -1,0 +1,15 @@
+# The same barrel written in two statements: import the namespace, then name it
+# in an `export` list. It says what `export { theme } from "./theme"` says, and
+# is read the same way. Before that, a name in an export list that no local
+# declaration owned gave up on the whole module, so the barrel became one
+# opaque node and every consumer of it reached every file behind it.
+#
+# This is the shape a store's reducer index has.
+[[anchor]]
+path = "src/pages/ThemePage.tsx"
+affected = true
+
+# The page on the other name. It is the one the coarsening used to catch.
+[[anchor]]
+path = "src/pages/AudioPage.tsx"
+affected = false

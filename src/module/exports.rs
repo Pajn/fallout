@@ -4,9 +4,9 @@ use oxc_ast::ast::*;
 use oxc_span::GetSpan;
 
 use super::cjs;
-use super::decls::{DeclDraft, source_id};
+use super::decls::{DeclDraft, ImportBinding, source_id};
 use super::parse::span_of;
-use super::{DeclId, Export, ExportTarget, SourceId};
+use super::{DeclId, Export, ExportTarget, ImportTarget, SourceId};
 
 /// Builds the export table, plus the `export * from` sources to be resolved lazily.
 ///
@@ -15,6 +15,7 @@ pub(crate) fn collect(
     program: &Program<'_>,
     sources: &[String],
     drafts: &[DeclDraft],
+    imports: &[ImportBinding],
     cjs: &cjs::Table,
 ) -> Option<(Vec<Export>, Vec<SourceId>)> {
     let mut exports: Vec<Export> = Vec::new();
@@ -48,17 +49,27 @@ pub(crate) fn collect(
                     });
                 }
             }
-            // `export { a, b as c }` naming existing local declarations.
+            // `export { a, b as c }`, naming a local declaration or a binding an
+            // import introduced.
             Statement::ExportNamedDeclaration(export) => {
                 let span = span_of(export.span());
                 for specifier in &export.specifiers {
                     let local = specifier.local.name();
-                    let decl = drafts
+                    let target = match drafts
                         .iter()
-                        .position(|d| d.name.as_str() == local.as_str())?;
+                        .position(|d| d.name.as_str() == local.as_str())
+                    {
+                        Some(decl) => ExportTarget::Local(decl as DeclId),
+                        // Nothing here declares the name, so an import brought it in
+                        // and this is a re-export written in two statements. It says
+                        // exactly what `export { a } from "./g"` says, and is read
+                        // the same way rather than giving up on the whole module —
+                        // which is the shape every barrel of namespaces has.
+                        None => reexported(imports, local.as_str())?,
+                    };
                     exports.push(Export {
                         name: specifier.exported.name().as_str().to_string(),
-                        target: ExportTarget::Local(decl as DeclId),
+                        target,
                         span,
                     });
                 }
@@ -87,12 +98,26 @@ pub(crate) fn collect(
                     span,
                 });
             }
-            // `export * from "./g"`, and `export * as ns from "./g"`, which is
-            // coarser than it needs to be but never finer.
             Statement::ExportAllDeclaration(export) => {
                 let source = source_id(sources, export.source.value.as_str())?;
-                if !stars.contains(&source) {
-                    stars.push(source);
+                match &export.exported {
+                    // `export * as ns from "./g"` exports the single name `ns`,
+                    // which holds everything `g` exports. Read as a star it would
+                    // put `g`'s names in this table instead of its own, and `ns`
+                    // would be a name nothing here has — which is how a consumer
+                    // asking for it ended up reaching nothing at all.
+                    Some(exported) => exports.push(Export {
+                        name: exported.name().as_str().to_string(),
+                        target: ExportTarget::ReexportAll { source },
+                        span: span_of(export.span()),
+                    }),
+                    // `export * from "./g"` has no name of its own: `g`'s table is
+                    // copied into this one, resolved lazily.
+                    None => {
+                        if !stars.contains(&source) {
+                            stars.push(source);
+                        }
+                    }
                 }
             }
             _ => {}
@@ -100,6 +125,20 @@ pub(crate) fn collect(
     }
 
     Some((exports, stars))
+}
+
+/// The export target for a name an import introduced, or `None` if no import did —
+/// which coarsens, since nothing here can say what the name stands for.
+fn reexported(imports: &[ImportBinding], local: &str) -> Option<ExportTarget> {
+    let binding = imports.iter().find(|binding| binding.local == local)?;
+    let source = binding.reference.source;
+    Some(match &binding.reference.target {
+        ImportTarget::Named(name) => ExportTarget::Reexport {
+            source,
+            name: name.clone(),
+        },
+        ImportTarget::Namespace => ExportTarget::ReexportAll { source },
+    })
 }
 
 fn decls_from_statement(drafts: &[DeclDraft], index: usize) -> Vec<DeclId> {

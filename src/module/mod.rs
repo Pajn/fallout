@@ -80,6 +80,12 @@ pub enum ExportTarget {
     Local(DeclId),
     /// `export { a as b } from "./g"` — the name is `a`, as spelled in `g`.
     Reexport { source: SourceId, name: String },
+    /// `export * as ns from "./g"`: one name, holding everything `g` exports.
+    ///
+    /// Not the same as `export * from "./g"`, which has no name of its own and
+    /// copies `g`'s table into this one. This exports a single binding, and reaching
+    /// it reaches all of `g`'s exports.
+    ReexportAll { source: SourceId },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
