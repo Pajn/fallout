@@ -25,8 +25,7 @@ to build from source:
 cargo install fallout
 ```
 
-The command is `fallout` either way. Releases are cut from a tag; see
-[RELEASING.md](RELEASING.md).
+The command is `fallout` either way.
 
 ## Usage
 
