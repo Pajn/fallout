@@ -18,6 +18,10 @@ env:
   CARGO_TERM_COLOR: always
   # The version of the generator, pinned so a release is reproducible.
   CARGO_NPM_VERSION: "0.1.4"
+  # tree-sitter-scss hands its C compiler a GCC-style warning flag
+  # unconditionally, and cl.exe rejects it. clang-cl reads that flag and the
+  # MSVC ones alike, so the Windows target is compiled with it.
+  CC_x86_64_pc_windows_msvc: clang-cl
 
 jobs:
   build:

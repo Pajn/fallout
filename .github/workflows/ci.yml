@@ -12,6 +12,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # As in the release: tree-sitter-scss passes cl.exe a flag it rejects.
+  CC_x86_64_pc_windows_msvc: clang-cl
 
 concurrency:
   group: ci-${{ github.ref }}
