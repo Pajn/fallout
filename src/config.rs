@@ -461,7 +461,7 @@ mod tests {
         assert_eq!(names(chain.style_aliases()), vec!["sass".to_string()]);
         let target = &targets(chain.style_aliases())[0];
         assert!(
-            target.ends_with("apps/web/app/sass") && target.starts_with('/'),
+            Path::new(target).ends_with("apps/web/app/sass") && Path::new(target).is_absolute(),
             "relative to its own file, not to the root: {target}"
         );
     }
@@ -492,8 +492,8 @@ mod tests {
                 .style_aliases(),
         );
         assert_eq!(one.len(), 1, "one app, one answer: {one:?}");
-        assert!(one[0].ends_with("apps/one/styles"), "{one:?}");
-        assert!(two[0].ends_with("apps/two/scss"), "{two:?}");
+        assert!(Path::new(&one[0]).ends_with("apps/one/styles"), "{one:?}");
+        assert!(Path::new(&two[0]).ends_with("apps/two/scss"), "{two:?}");
     }
 
     #[test]
@@ -508,8 +508,11 @@ mod tests {
                 .style_aliases(),
         );
         assert_eq!(found.len(), 2, "accumulated, not overridden: {found:?}");
-        assert!(found[0].ends_with("apps/one/styles"), "nearest first");
-        assert!(found[1].ends_with("shared/sass"));
+        assert!(
+            Path::new(&found[0]).ends_with("apps/one/styles"),
+            "nearest first"
+        );
+        assert!(Path::new(&found[1]).ends_with("shared/sass"));
     }
 
     #[test]
@@ -517,7 +520,7 @@ mod tests {
         let (dir, configs) = tree(&[("apps/web", "[aliases]\n\"#app/*\" = \"app/*\"\n")]);
         let chain = configs.chain(&dir.path().join("apps/web/page.tsx"));
         assert_eq!(names(chain.aliases()), vec!["#app/*".to_string()]);
-        assert!(targets(chain.aliases())[0].ends_with("apps/web/app/*"));
+        assert!(Path::new(&targets(chain.aliases())[0]).ends_with("apps/web/app/*"));
     }
 
     #[test]

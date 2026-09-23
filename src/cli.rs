@@ -139,16 +139,9 @@ fn print_unresolved(outcome: &Outcome, root: &Path) {
     for (specifier, from) in &outcome.unresolved {
         println!("  {specifier}");
         for file in from {
-            println!("    {}", shown(file, root));
+            println!("    {}", display_path(file, root));
         }
     }
-}
-
-fn shown(path: &Path, root: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
 }
 
 fn read_diff(path: &Path) -> Result<String, String> {
