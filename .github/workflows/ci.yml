@@ -44,7 +44,8 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - run: cargo test --locked --target ${{ matrix.target }}
+      # Every test binary runs even after one fails, for the same reason.
+      - run: cargo test --no-fail-fast --locked --target ${{ matrix.target }}
 
   lint:
     runs-on: ubuntu-24.04
