@@ -241,18 +241,30 @@ fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
 /// Attributes every `require("./x")` to the declarations of the statement it is
 /// written in, and returns the targets of the calls that belong to no declaration.
 ///
-/// CommonJS yields the whole export object, so the dependency is on all of it:
-/// [`ImportTarget::Namespace`], the same target an `import * as ns` gets. A call in a
-/// statement that declares nothing runs when the module is evaluated, so its target
-/// joins the bare sources instead.
+/// Static property reads and destructuring select individual exports. Escaping or
+/// mutable module objects retain the whole namespace. A call in a statement that
+/// declares nothing runs on evaluation, so its target joins the bare sources.
 pub(crate) fn attach_requires(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
     requires: &[RequireCall],
     decls: &mut [Decl],
 ) -> Vec<SourceId> {
+    if requires.is_empty() {
+        return Vec::new();
+    }
     let statement_decls = statement_decls(drafts);
     let mut init_sources = Vec::new();
+
+    let call_nodes: AHashMap<Span, NodeId> = ctx
+        .semantic
+        .nodes()
+        .iter_enumerated()
+        .filter_map(|(id, node)| {
+            matches!(node.kind(), AstKind::CallExpression(_))
+                .then_some((span_of(node.kind().span()), id))
+        })
+        .collect();
 
     for call in requires {
         let users = ctx
@@ -266,18 +278,129 @@ pub(crate) fn attach_requires(
             continue;
         };
 
-        for &user in users {
-            push_import(
-                &mut decls[user as usize].imports,
-                ImportRef {
-                    source: call.source,
-                    target: ImportTarget::Namespace,
-                },
-            );
+        let targets = call_nodes
+            .get(&call.span)
+            .map(|&node_id| require_targets(ctx, node_id))
+            .unwrap_or_else(|| vec![ImportTarget::Namespace]);
+        for target in targets {
+            for &user in users {
+                push_import(
+                    &mut decls[user as usize].imports,
+                    ImportRef {
+                        source: call.source,
+                        target: target.clone(),
+                    },
+                );
+            }
         }
     }
 
     init_sources
+}
+
+/// Narrow only the runtime require: a local function with that name can return
+/// something unrelated to the named module, so the old wide dependency remains.
+fn require_targets(ctx: &Ctx<'_>, node_id: NodeId) -> Vec<ImportTarget> {
+    let nodes = ctx.semantic.nodes();
+    let AstKind::CallExpression(call) = nodes.get_node(node_id).kind() else {
+        return vec![ImportTarget::Namespace];
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return vec![ImportTarget::Namespace];
+    };
+    if callee.reference_id.get().is_none_or(|id| {
+        ctx.semantic
+            .scoping()
+            .get_reference(id)
+            .symbol_id()
+            .is_some()
+    }) {
+        return vec![ImportTarget::Namespace];
+    }
+    let (node_id, span) = unwrapped(nodes, node_id);
+    let targets = match nodes.parent_kind(node_id) {
+        AstKind::VariableDeclarator(declarator)
+            if declarator
+                .init
+                .as_ref()
+                .is_some_and(|init| init.span() == span) =>
+        {
+            // Exporting the object itself is an escape even if its local uses
+            // all select members. Destructuring exports only selected values.
+            let declaration = nodes.parent_id(nodes.parent_id(node_id));
+            if matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
+                && matches!(
+                    nodes.parent_kind(declaration),
+                    AstKind::ExportDeclaration(_)
+                )
+            {
+                return vec![ImportTarget::Namespace];
+            }
+            require_bound_targets(ctx, &declarator.id)
+        }
+        _ => require_member_read(nodes, node_id)
+            .map(|name| vec![ImportTarget::Named(name)])
+            .unwrap_or_else(|| vec![ImportTarget::Namespace]),
+    };
+    // Even an unused binding or empty pattern evaluates the module. Keeping the
+    // namespace carries this edge under inline_requires, including empty modules.
+    if targets.is_empty() {
+        vec![ImportTarget::Namespace]
+    } else {
+        targets
+    }
+}
+
+fn require_bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<ImportTarget> {
+    let BindingPattern::BindingIdentifier(identifier) = pattern else {
+        return bound_targets(ctx, pattern);
+    };
+    let Some(symbol_id) = identifier.symbol_id.get() else {
+        return vec![ImportTarget::Namespace];
+    };
+    let scoping = ctx.semantic.scoping();
+    let mut targets = Vec::new();
+    for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
+        let reference = scoping.get_reference(*reference_id);
+        if reference.is_write() {
+            return vec![ImportTarget::Namespace];
+        }
+        let Some(name) = require_member_read(ctx.semantic.nodes(), reference.node_id()) else {
+            return vec![ImportTarget::Namespace];
+        };
+        targets.push(ImportTarget::Named(name));
+    }
+    targets
+}
+
+/// Writing through an object or deleting a member can change the export table.
+/// Walk the full member chain so `ns.x.y = value` also keeps the broad edge.
+fn require_member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
+    let name = member_read(nodes, node_id)?;
+    let (mut current, _) = unwrapped(nodes, node_id);
+    loop {
+        match nodes.parent_kind(current) {
+            AstKind::StaticMemberExpression(_)
+            | AstKind::ComputedMemberExpression(_)
+            | AstKind::ParenthesizedExpression(_)
+            | AstKind::ChainExpression(_) => {
+                current = nodes.parent_id(current);
+            }
+            AstKind::AssignmentExpression(_)
+            | AstKind::UpdateExpression(_)
+            | AstKind::AssignmentTargetPropertyIdentifier(_)
+            | AstKind::AssignmentTargetPropertyProperty(_)
+            | AstKind::ArrayAssignmentTarget(_)
+            | AstKind::AssignmentTargetRest(_)
+            | AstKind::AssignmentTargetWithDefault(_)
+            | AstKind::ForInStatement(_)
+            | AstKind::ForOfStatement(_) => return None,
+            AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => {
+                return None;
+            }
+            _ => return Some(name),
+        }
+    }
 }
 
 /// Attributes every `import("./x")` to the declarations of the statement it is
@@ -454,6 +577,96 @@ mod tests {
     use oxc_span::{GetSpan, SourceType};
 
     use super::{Use, classify};
+
+    fn require_targets_of(source: &str) -> Vec<super::ImportTarget> {
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "{source}: {:?}",
+            parsed.diagnostics
+        );
+        let built = SemanticBuilder::new()
+            .with_build_nodes(true)
+            .build(&parsed.program);
+        let ctx = super::Ctx {
+            semantic: &built.semantic,
+            statements: Vec::new(),
+        };
+        let node_id = ctx
+            .semantic
+            .nodes()
+            .iter_enumerated()
+            .find_map(|(id, node)| {
+                if let oxc_ast::AstKind::CallExpression(call) = node.kind()
+                    && super::super::parse::is_require(call)
+                {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .expect("require call");
+        super::require_targets(&ctx, node_id)
+    }
+
+    #[test]
+    fn require_selects_static_members_and_patterns() {
+        for source in [
+            "const value = require('./g').x;",
+            "const value = (require('./g')).x();",
+            "const { x: renamed = fallback } = require('./g');",
+            "const { x: { nested } } = require('./g');",
+            "const m = require('./g'); export const read = () => m.x();",
+            "function read() { const m = require('./g'); return m.x; }",
+            "export function read() { const m = require('./g'); return m.x; }",
+        ] {
+            assert_eq!(
+                require_targets_of(source),
+                [super::ImportTarget::Named("x".into())],
+                "{source}"
+            );
+        }
+        assert_eq!(
+            require_targets_of("const { x, y } = require('./g');"),
+            [
+                super::ImportTarget::Named("x".into()),
+                super::ImportTarget::Named("y".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn require_keeps_unsafe_and_evaluation_only_objects_wide() {
+        for source in [
+            "const m = require('./g'); consume(m);",
+            "const m = require('./g'); const alias = m; alias.x;",
+            "const m = require('./g'); m[key];",
+            "const { [key]: x } = require('./g');",
+            "const { x, ...rest } = require('./g');",
+            "let m = require('./g'); m = other; m.x;",
+            "const m = require('./g'); m.x = other;",
+            "const m = require('./g'); m.x.y = other;",
+            "const m = require('./g'); delete m.x;",
+            "const m = require('./g'); m.x++;",
+            "const m = require('./g'); [m.x] = other;",
+            "const m = require('./g'); ({ value: m.x } = other);",
+            "const m = require('./g'); for (m.x of values) {}",
+            "const m = require('./g'); for (m.x in values) {}",
+            "export const m = require('./g'); m.x;",
+            "const m = require('./g'); export { m }; m.x;",
+            "function f(require) { return require('./g').x; }",
+            "const m = require('./g');",
+            "const {} = require('./g');",
+            "const value = require('./g')[key];",
+        ] {
+            assert_eq!(
+                require_targets_of(source),
+                [super::ImportTarget::Namespace],
+                "{source}"
+            );
+        }
+    }
 
     /// How every reference to `S` in `body` is read, in source order.
     fn uses_of_s(body: &str) -> Vec<Use> {

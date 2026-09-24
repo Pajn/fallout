@@ -26,6 +26,7 @@
 
 use ahash::AHashSet;
 use oxc_ast::ast::*;
+use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
 
 use super::Span;
@@ -200,10 +201,29 @@ fn read(program: &Program<'_>) -> Result<Table, &'static str> {
         }
     }
 
+    // A CommonJS method is called with the export object as `this`. Reading a
+    // sibling through that receiver bypasses lexical symbol edges, so a table in
+    // a file using `this` cannot safely be split into independent exports yet.
+    if !table.entries.is_empty() {
+        let mut receiver = ReceiverUse(false);
+        receiver.visit_program(program);
+        if receiver.0 {
+            return Err("this may refer to the export table");
+        }
+    }
+
     table
         .accounted
         .extend(promises.into_iter().flat_map(|promise| promise.spans));
     Ok(table)
+}
+
+struct ReceiverUse(bool);
+
+impl<'a> Visit<'a> for ReceiverUse {
+    fn visit_this_expression(&mut self, _: &ThisExpression) {
+        self.0 = true;
+    }
 }
 
 /// Whether the file binds any of the names this reader takes to be the runtime's, at
