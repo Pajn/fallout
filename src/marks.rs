@@ -16,7 +16,7 @@ use ahash::AHashSet;
 use crate::base::Base;
 use crate::diff::{ChangeSet, FileChange, LineRange};
 use crate::graph::{FileId, Graph, Node};
-use crate::module::{DeclId, FineModule, LineTable, ModuleAnalysis, Span};
+use crate::module::{DeclId, Export, ExportTarget, FineModule, LineTable, ModuleAnalysis, Span};
 
 /// Every node a change set marks, at declaration granularity.
 ///
@@ -191,6 +191,7 @@ fn attribute(
             out.insert(Node::Export(file, graph.name_id(&export.name)));
             hit_statement = true;
         }
+        mark_members(graph, file, module, export, start, end, out);
     }
 
     // A range touching an import statement marks every declaration referencing
@@ -206,6 +207,48 @@ fn attribute(
     }
 
     hit_statement
+}
+
+/// Marks the members of an exported object that a byte range touches.
+///
+/// An edit inside one property is an edit to that member alone. Anything else the
+/// range touches — the declaration around the literal, or a separate statement
+/// that exports it — is part of every member, because every member is read
+/// through it. The separators between properties belong to none of them.
+fn mark_members(
+    graph: &Graph,
+    file: FileId,
+    module: &FineModule,
+    export: &Export,
+    start: u32,
+    end: u32,
+    out: &mut AHashSet<Node>,
+) {
+    let ExportTarget::Local(decl) = export.target else {
+        return;
+    };
+    let Some(decl) = module.decls.get(decl as usize) else {
+        return;
+    };
+    if decl.members.is_empty() {
+        return;
+    }
+    let forwarded = export.span != decl.span && export.span.intersects(start, end);
+    let framing = decl.span.intersects(start, end) && !within(decl.interior, decl.span, start, end);
+    let name = graph.name_id(&export.name);
+    for member in &decl.members {
+        if forwarded || framing || member.span.intersects(start, end) {
+            out.insert(Node::Member(file, name, graph.name_id(&member.name)));
+        }
+    }
+}
+
+/// Whether the part of a range that falls inside `outer` lies wholly inside `inner`.
+fn within(inner: Span, outer: Span, start: u32, end: u32) -> bool {
+    if start == end {
+        return inner.contains(start);
+    }
+    start.max(outer.start) >= inner.start && end.min(outer.end) <= inner.end
 }
 
 fn module_spans(module: &FineModule) -> Vec<(Span, DeclId)> {

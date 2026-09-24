@@ -137,22 +137,40 @@ fn apply_shared_state(
     }
 }
 
-/// A namespace read for one of its exports depends on that export alone.
+/// A namespace read for one of its exports depends on that export alone, and an
+/// export read for one of its properties depends on that property alone.
 ///
 /// `import * as ns from "./g"` gives the whole export table of `g`, and most uses
 /// of it immediately pick one name back out. Every other shape — passing `ns`
 /// somewhere, a computed `ns[key]` — keeps the whole table, and a reference that
 /// does both contributes both, so the wide edge is never lost by accident.
-fn narrowed(nodes: &AstNodes<'_>, node_id: NodeId, reference: &ImportRef) -> ImportRef {
-    if reference.target != ImportTarget::Namespace {
-        return reference.clone();
-    }
-    match member_read(nodes, node_id) {
-        Some(name) => ImportRef {
-            source: reference.source,
-            target: ImportTarget::Named(name),
+///
+/// A property is taken off an export only where nothing is written through it:
+/// `utils.x = other` changes the object every other reader of `utils` sees.
+pub(crate) fn narrowed(nodes: &AstNodes<'_>, node_id: NodeId, reference: &ImportRef) -> ImportRef {
+    let target = match &reference.target {
+        ImportTarget::Namespace => match member_read(nodes, node_id) {
+            // `ns.utils.formatDate` reads one property of one export.
+            Some(export) => {
+                match unwritten_member_read(nodes, nodes.parent_id(unwrapped(nodes, node_id).0)) {
+                    Some(member) => ImportTarget::Member { export, member },
+                    None => ImportTarget::Named(export),
+                }
+            }
+            None => return reference.clone(),
         },
-        None => reference.clone(),
+        ImportTarget::Named(export) => match unwritten_member_read(nodes, node_id) {
+            Some(member) => ImportTarget::Member {
+                export: export.clone(),
+                member,
+            },
+            None => return reference.clone(),
+        },
+        ImportTarget::Member { .. } => return reference.clone(),
+    };
+    ImportRef {
+        source: reference.source,
+        target,
     }
 }
 
@@ -338,7 +356,7 @@ fn require_targets(ctx: &Ctx<'_>, node_id: NodeId) -> Vec<ImportTarget> {
             }
             require_bound_targets(ctx, &declarator.id)
         }
-        _ => require_member_read(nodes, node_id)
+        _ => unwritten_member_read(nodes, node_id)
             .map(|name| vec![ImportTarget::Named(name)])
             .unwrap_or_else(|| vec![ImportTarget::Namespace]),
     };
@@ -365,7 +383,7 @@ fn require_bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<Imp
         if reference.is_write() {
             return vec![ImportTarget::Namespace];
         }
-        let Some(name) = require_member_read(ctx.semantic.nodes(), reference.node_id()) else {
+        let Some(name) = unwritten_member_read(ctx.semantic.nodes(), reference.node_id()) else {
             return vec![ImportTarget::Namespace];
         };
         targets.push(ImportTarget::Named(name));
@@ -376,7 +394,7 @@ fn require_bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<Imp
 /// Writing through an object or deleting a member can change the export table.
 /// Walk the full member chain, through type-only wrappers, so `ns.x.y = value` and
 /// `ns.x! = value` also keep the broad edge.
-fn require_member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
+pub(crate) fn unwritten_member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
     let name = member_read(nodes, node_id)?;
     let (mut current, _) = unwrapped(nodes, node_id);
     loop {
@@ -613,6 +631,90 @@ mod tests {
             })
             .expect("require call");
         super::require_targets(&ctx, node_id)
+    }
+
+    /// What `page` imports, as targets.
+    fn page_imports(source: &str) -> Vec<super::ImportTarget> {
+        use crate::module::{ModuleAnalysis, Reading, parse::analyse_source};
+        let (ModuleAnalysis::Fine(module), _) = analyse_source(
+            std::path::Path::new("page.tsx"),
+            source,
+            &Reading::default(),
+        )
+        .unwrap() else {
+            panic!("expected fine module: {source}")
+        };
+        let page = module.decl_named("page").expect("page");
+        module.decls[page as usize]
+            .imports
+            .iter()
+            .map(|import| import.target.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_property_read_off_an_export_names_the_property() {
+        let member = |export: &str, member: &str| super::ImportTarget::Member {
+            export: export.into(),
+            member: member.into(),
+        };
+        for (source, expected) in [
+            (
+                "import { utils } from './u'; export const page = () => utils.format();",
+                member("utils", "format"),
+            ),
+            (
+                "import { utils } from './u'; export const page = () => <utils.Button />;",
+                member("utils", "Button"),
+            ),
+            (
+                "import * as ns from './u'; export const page = () => ns.utils.format();",
+                member("utils", "format"),
+            ),
+            (
+                "import * as ns from './u'; export const page = () => (ns).utils.format();",
+                member("utils", "format"),
+            ),
+            (
+                "import utils from './u'; export const page = () => utils.format;",
+                member("default", "format"),
+            ),
+        ] {
+            assert_eq!(page_imports(source), [expected], "{source}");
+        }
+    }
+
+    #[test]
+    fn an_export_used_or_written_whole_is_not_narrowed_to_a_property() {
+        let named = |name: &str| super::ImportTarget::Named(name.into());
+        for (source, expected) in [
+            (
+                "import { utils } from './u'; export const page = () => use(utils);",
+                named("utils"),
+            ),
+            (
+                "import { utils } from './u'; export const page = () => utils[key];",
+                named("utils"),
+            ),
+            (
+                "import { utils } from './u'; export const page = () => { utils.format = other; };",
+                named("utils"),
+            ),
+            (
+                "import { utils } from './u'; export const page = () => { delete utils.format; };",
+                named("utils"),
+            ),
+            (
+                "import * as ns from './u'; export const page = () => { ns.utils.format = other; };",
+                named("utils"),
+            ),
+            (
+                "import * as ns from './u'; export const page = () => use(ns.utils);",
+                named("utils"),
+            ),
+        ] {
+            assert_eq!(page_imports(source), [expected], "{source}");
+        }
     }
 
     #[test]

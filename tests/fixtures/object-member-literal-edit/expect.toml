@@ -1,0 +1,21 @@
+# The edit is inside the literal, to one property's value. That property is the
+# only member it touches, both as a line range and against a base revision.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/PricePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PricePage.tsx)",
+    "Decl(src/pages/PricePage.tsx, PricePage)",
+    "Member(src/lib/utils.ts, utils.formatPrice)",
+]
+base = [
+    "File(src/pages/PricePage.tsx)",
+    "Decl(src/pages/PricePage.tsx, PricePage)",
+    "Member(src/lib/utils.ts, utils.formatPrice)",
+]

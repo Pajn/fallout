@@ -10,6 +10,7 @@ pub mod decls;
 pub mod exports;
 pub mod init;
 mod local_pure;
+mod members;
 pub mod parse;
 pub mod refs;
 pub mod style;
@@ -35,9 +36,28 @@ pub struct Decl {
     pub refs: Vec<DeclId>,
     /// Imported bindings this one references.
     pub imports: Vec<ImportRef>,
+    /// The properties of the plain object literal this declaration binds, where
+    /// each can be read on its own. Empty for anything else, and for an object
+    /// whose members could be reached or changed some other way.
+    pub members: Vec<Member>,
+    /// The inside of that object literal, between its braces. An edit here that
+    /// touches no member touches only the separators between them.
+    pub interior: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// One property of an object literal declaration, and what reading it depends on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Member {
+    pub name: String,
+    /// Span of the whole property, key and value.
+    pub span: Span,
+    /// Declarations in this file the property's value references.
+    pub refs: Vec<DeclId>,
+    /// Imported bindings the property's value references.
+    pub imports: Vec<ImportRef>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
     pub start: u32,
     pub end: u32,
@@ -62,6 +82,10 @@ impl Span {
 pub enum ImportTarget {
     /// One named export. `default` for a default import.
     Named(String),
+    /// One property of a named export: `utils.formatDate` read off `import { utils }`,
+    /// or off `ns.utils`. The target reaches only that property when the export is a
+    /// plain object literal, and the whole export otherwise.
+    Member { export: String, member: String },
     /// Every export: `import * as ns`, and dynamic `import()` / `require()`.
     ///
     /// A binding import of a non-source file resolves through `Named`, which lands on

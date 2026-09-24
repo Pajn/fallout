@@ -30,7 +30,7 @@ fn origins<'a>(imports: &'a [ImportBinding], sources: &'a [String]) -> Origins<'
             continue;
         };
         let exported = match &binding.reference.target {
-            ImportTarget::Named(name) => name.as_str(),
+            ImportTarget::Named(name) | ImportTarget::Member { export: name, .. } => name.as_str(),
             ImportTarget::Namespace => "*",
         };
         map.insert(binding.local.as_str(), (source.as_str(), exported));

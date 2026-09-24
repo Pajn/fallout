@@ -1,0 +1,18 @@
+# An exported object literal is read like a namespace. The date page reads
+# `utils.formatDate` and nothing else, so an edit to the helper behind a sibling
+# property must not reach it. The price page reads that property.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/PricePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PricePage.tsx)",
+    "Decl(src/pages/PricePage.tsx, PricePage)",
+    "Member(src/lib/utils.ts, utils.formatPrice)",
+    "Decl(src/lib/utils.ts, formatPrice)",
+]

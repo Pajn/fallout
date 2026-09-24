@@ -110,6 +110,23 @@ do `<ns.Thing />`, `const m = await import("./g"); m.x`, `(await import("./g")).
 module object anywhere else — passing it on, reading `ns[key]` — keeps the whole
 table, and a binding that does both keeps the whole table.
 
+An exported object literal is read the same way. Given
+`export const utils = { formatDate, formatPrice }`, a page calling
+`utils.formatDate()` depends on `formatDate` and not on `formatPrice`, whether it
+imports `utils` by name or reads `ns.utils.formatDate` off a namespace. An edit inside
+one property's value marks that property alone, with or without a base revision. This
+holds for a `const` bound directly to the literal, optionally through `as const` or
+`satisfies`, and only while nothing can change what a property holds. In the file
+that declares it, the object must be used only by reading a property or by
+`export { }`. A property must be a plain value or method under a fixed key. A spread,
+a computed key, a getter or setter, `__proto__`, a duplicate key, `this` or `super` in
+a value, a `require` or `import()` inside it, and a local function that reads `this`
+all keep the object whole. So does a write through it, passing it on, reading
+`utils[key]`, destructuring it, or re-exporting it as a default. A consumer that
+writes through a property, or uses the object as a whole, depends on every property.
+A function imported from elsewhere and placed in the object is assumed not to reach
+its siblings through `this`, which is the same assumption bundlers make.
+
 ### Pure calls
 
 A declaration whose initialiser runs something belongs to module initialisation, so
@@ -364,7 +381,10 @@ it sits, which makes the remaining cases exact:
 - A statement that only moved marks module initialisation, because the order the
   module computes things in is the only thing that changed about it.
 - A statement that really differs marks what it declares, exports or imports, with no
-  guessing at the statements around it.
+  guessing at the statements around it. For an object literal that differs only in
+  its properties' values, that means only the properties that changed. Any other
+  change to it, including a property added, removed or reordered, marks every
+  property.
 - An export the base had and this version does not marks that *name*. A removal is
   invisible from inside the file — everything left behind reads as it did — so the
   name has to carry the mark itself, and it reaches the consumers that still ask for

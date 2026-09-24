@@ -1,0 +1,15 @@
+# `install` writes through the object, so what `utils.formatDate` holds is not
+# the value the literal gives it. The object stays one node, and the date page
+# reaches the edit to a sibling property's helper.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/DatePage.tsx)",
+    "Decl(src/pages/DatePage.tsx, DatePage)",
+    "Export(src/lib/utils.ts, utils)",
+    "Decl(src/lib/utils.ts, utils)",
+    "Decl(src/lib/utils.ts, formatPrice)",
+]
