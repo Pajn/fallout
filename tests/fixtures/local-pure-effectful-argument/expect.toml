@@ -1,0 +1,7 @@
+[[anchor]]
+path = "selected.js"
+affected = true
+
+[[anchor]]
+path = "sibling.js"
+affected = true

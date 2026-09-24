@@ -1,0 +1,17 @@
+[[anchor]]
+path = "selected.js"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(selected.js)",
+    "Decl(selected.js, page)",
+    "Export(helpers.js, selected)",
+    "Decl(helpers.js, selected)",
+    "Decl(helpers.js, make)",
+    "Decl(helpers.js, leaf)",
+]
+
+[[anchor]]
+path = "sibling.js"
+affected = false
