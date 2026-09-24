@@ -86,7 +86,20 @@ other without either naming it. Calling it, constructing with it, rendering it a
 `<S />`, asking `typeof`, and reading a property in place cannot change it, so
 declarations that only do those stay apart. Everything else — passing it to a
 function, returning it, writing through it, spreading it, or naming a member of it as
-an element, which is how a React context is written — counts as a write. A declaration whose initialiser may run something — a
+an element, which is how a React context is written — counts as a write.
+
+A binding initialised with a plain object literal, which nothing reassigns and which
+has no getter, setter or prototype-setting `__proto__: value`, is shared property by
+property instead. A write to `state.theme` reaches the declarations that use
+`state.theme`, and not one that only reads `state.volume`. A write is found however
+deep the chain goes, so `state.items.push(x)` writes `items`. A `const` alias of the
+object or of one property is followed to its own uses, and a write through it counts
+as a write in the declaration where it is written. Anything that cannot be pinned to
+one property uses the whole object and meets every property: calling a method on it,
+passing it anywhere, a computed key, `__proto__`, an exported or reassignable alias,
+destructuring it, and aliases nested more than four deep.
+
+A declaration whose initialiser may run something — a
 call, a `new`, an `await`, a tagged template, an assignment to a member — belongs to
 module initialisation, so importing anything from that file reaches it. A bare
 `import "./theme.css"` is a side effect of loading the module and reaches every

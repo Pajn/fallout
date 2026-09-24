@@ -298,7 +298,9 @@ fn assigns_properties(expression: &Expression<'_>) -> bool {
 }
 
 /// The object literal an initialiser is, through parentheses and `as const`.
-fn object_literal<'s, 'a>(expression: &'s Expression<'a>) -> Option<&'s ObjectExpression<'a>> {
+pub(crate) fn object_literal<'s, 'a>(
+    expression: &'s Expression<'a>,
+) -> Option<&'s ObjectExpression<'a>> {
     match expression {
         Expression::ObjectExpression(object) => Some(object),
         Expression::ParenthesizedExpression(inner) => object_literal(&inner.expression),

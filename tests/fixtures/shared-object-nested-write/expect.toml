@@ -1,0 +1,15 @@
+# `enqueue` changes the array under `state.items` by calling a method on it, two
+# levels below the binding, and `size` reads the same property. The write is to
+# that property's value however deep the chain, so the edit reaches the page.
+[[anchor]]
+path = "src/pages/QueuePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/QueuePage.tsx)",
+    "Decl(src/pages/QueuePage.tsx, QueuePage)",
+    "Export(src/state/queue.ts, size)",
+    "Decl(src/state/queue.ts, size)",
+    "Decl(src/state/queue.ts, enqueue)",
+]

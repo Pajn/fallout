@@ -11,6 +11,7 @@ use oxc_span::{GetSpan, Span as OxcSpan};
 use super::decls::{DeclDraft, ImportBinding, RequireCall, source_id};
 use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
+use super::shared::{self, Access};
 use super::{Decl, DeclId, ImportRef, ImportTarget, SourceId, Span};
 
 /// The edges the shared-state rule added, by the declaration each was added to.
@@ -48,10 +49,9 @@ pub(crate) fn link(
         .map(|binding| (binding.local.as_str(), binding))
         .collect();
 
-    // Declarations referencing each module-scope binding, for the shared-state rule,
-    // and the subset whose reference could change what the binding holds.
-    let mut users_of: AHashMap<SymbolId, Vec<DeclId>> = AHashMap::default();
-    let mut mutators_of: AHashMap<SymbolId, Vec<DeclId>> = AHashMap::default();
+    // How each declaration touches each module-scope binding of this file, for the
+    // shared-state rule.
+    let mut accesses_of: AHashMap<SymbolId, Vec<(DeclId, Access)>> = AHashMap::default();
     // Declarations referencing each import statement's bindings, for hunk attribution.
     let mut import_users: AHashMap<Span, Vec<DeclId>> = AHashMap::default();
 
@@ -62,6 +62,19 @@ pub(crate) fn link(
         let name = scoping.symbol_name(symbol_id);
         let target_decl = decl_by_name.get(name).copied();
         let target_import = import_by_name.get(name).copied();
+        let object = objects.get(&symbol_id);
+        // Only a binding declared here can carry state between two declarations
+        // here. Of an object read only for its members, calling a member that
+        // cannot reach the object through `this` is a read of that member; what is
+        // done to a member's value still counts.
+        let shared = target_decl.is_some_and(|decl| !drafts[decl as usize].immutable);
+        let mode = if let Some(object) = object {
+            shared::Mode::Members(&object.callable)
+        } else if shared && shared::independent_properties(ctx, symbol_id) {
+            shared::Mode::Properties
+        } else {
+            shared::Mode::Whole
+        };
 
         for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
             let node_id = scoping.get_reference(*reference_id).node_id();
@@ -77,7 +90,6 @@ pub(crate) fn link(
                 continue;
             };
 
-            let object = objects.get(&symbol_id);
             let member = object.and_then(|_| unwritten_member_read(ctx.semantic.nodes(), node_id));
             for &user in users {
                 if let Some(target) = target_decl {
@@ -99,15 +111,32 @@ pub(crate) fn link(
                     push_import(&mut decls[user as usize].imports, reference);
                     push_unique(import_users.entry(binding.span).or_default(), user);
                 }
-                push_unique(users_of.entry(symbol_id).or_default(), user);
-                if writes_object(ctx.semantic.nodes(), node_id, object) {
-                    push_unique(mutators_of.entry(symbol_id).or_default(), user);
+            }
+
+            if !shared {
+                continue;
+            }
+            // An access an alias carried elsewhere belongs to the declaration it is
+            // written in, which is where the write happens.
+            for (offset, access) in shared::accesses(ctx, node_id, mode) {
+                let Some(users) = ctx
+                    .statement_at(offset)
+                    .and_then(|statement| statement_decls.get(&statement))
+                else {
+                    continue;
+                };
+                let entry = accesses_of.entry(symbol_id).or_default();
+                for &user in users {
+                    let access = (user, access.clone());
+                    if !entry.contains(&access) {
+                        entry.push(access);
+                    }
                 }
             }
         }
     }
 
-    let shared = apply_shared_state(drafts, &decl_by_name, &users_of, &mutators_of, ctx, decls);
+    let shared = apply_shared_state(&accesses_of, decls);
 
     let mut spans: Vec<(Span, Vec<DeclId>)> = import_users.into_iter().collect();
     spans.sort_by_key(|(span, _)| *span);
@@ -170,41 +199,23 @@ fn member_call(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
 /// Only the writers pull. Two declarations that merely read the same binding cannot
 /// affect each other through it, which is what keeps sibling components apart in
 /// code where every one of them calls the same helper.
+///
+/// Only a binding declared in this file holds a module-scope value that two
+/// declarations here could pass between them. An imported binding is the exporting
+/// module's business, and is already an edge to that module. Of an object whose
+/// properties are independent, a write reaches only the uses of the property it
+/// writes, and the uses of the object as a whole; see [`shared`].
 fn apply_shared_state(
-    drafts: &[DeclDraft],
-    decl_by_name: &AHashMap<&str, DeclId>,
-    users_of: &AHashMap<SymbolId, Vec<DeclId>>,
-    mutators_of: &AHashMap<SymbolId, Vec<DeclId>>,
-    ctx: &Ctx<'_>,
+    accesses_of: &AHashMap<SymbolId, Vec<(DeclId, Access)>>,
     decls: &mut [Decl],
 ) -> SharedEdges {
-    let scoping = ctx.semantic.scoping();
     let mut added = SharedEdges::default();
-
-    for (symbol_id, users) in users_of {
-        if users.len() < 2 {
-            continue;
-        }
-        let Some(mutators) = mutators_of.get(symbol_id) else {
-            continue;
-        };
-
-        // Only a binding declared in this file holds a module-scope value that two
-        // declarations here could pass between them. An imported binding is the
-        // exporting module's business, and is already an edge to that module.
-        let name = scoping.symbol_name(*symbol_id);
-        let Some(&declared) = decl_by_name.get(name) else {
-            continue;
-        };
-        if drafts[declared as usize].immutable {
-            continue;
-        }
-
-        for &user in users {
-            for &mutator in mutators {
-                if user != mutator {
-                    push_unique(&mut decls[user as usize].refs, mutator);
-                    push_unique(added.entry(user).or_default(), mutator);
+    for accesses in accesses_of.values() {
+        for (user, used) in accesses {
+            for (writer, written) in accesses {
+                if user != writer && used.sees(written) {
+                    push_unique(&mut decls[*user as usize].refs, *writer);
+                    push_unique(added.entry(*user).or_default(), *writer);
                 }
             }
         }

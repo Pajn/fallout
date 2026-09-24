@@ -13,6 +13,7 @@ mod local_pure;
 mod members;
 pub mod parse;
 pub mod refs;
+mod shared;
 pub mod style;
 pub mod types;
 
