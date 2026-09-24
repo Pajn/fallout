@@ -1,0 +1,35 @@
+[[anchor]]
+path = "direct.js"
+affected = false
+
+[[anchor]]
+path = "bound.js"
+affected = false
+
+[[anchor]]
+path = "destructured.js"
+affected = false
+
+[[anchor]]
+path = "used.js"
+affected = true
+
+[[anchor]]
+path = "escape.js"
+affected = true
+
+[[anchor]]
+path = "dynamic.js"
+affected = true
+
+[[anchor]]
+path = "reassigned.js"
+affected = true
+
+[[anchor]]
+path = "rest.js"
+affected = true
+
+[[anchor]]
+path = "exported.js"
+affected = true

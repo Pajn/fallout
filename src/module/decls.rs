@@ -24,8 +24,8 @@ pub(crate) struct DeclDraft {
 
 /// A `require("./x")` call: the module it names, and where the call is written.
 ///
-/// CommonJS hands back the whole export object, so the call depends on every export
-/// of its target. It is attributed to the declaration whose statement contains it.
+/// It is attributed to the declaration whose statement contains it; references
+/// narrow the dependency when the call result selects known exports.
 #[derive(Debug, Clone)]
 pub(crate) struct RequireCall {
     pub source: SourceId,

@@ -1,9 +1,5 @@
-# The soundness half of require-asset. A `require` hands back the whole export
-# object, so the declaration holding it depends on every export of the target: a
-# change to one the page really does reach must flag.
-#
-# The same edge flags a change to `spare`, which the page never calls. Widening to
-# all exports is the price of not knowing which property the call site reads.
+# A binding used only for math.compute selects that export, and changes to it
+# must still flag its consumers.
 #
 # The path runs through module initialisation because a `require` is a call, so the
 # declaration holding its result is computed when the module is evaluated.

@@ -1,0 +1,15 @@
+[[anchor]]
+path = "direct.js"
+affected = true
+
+[[anchor]]
+path = "empty.js"
+affected = true
+
+[[anchor]]
+path = "unused.js"
+affected = true
+
+[[anchor]]
+path = "bare.js"
+affected = true

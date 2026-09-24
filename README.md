@@ -94,9 +94,14 @@ importer, while `import logo from "./logo.png"` reaches only the declarations us
 `logo`.
 
 A `require("./x")` is an ordinary dependency of the declaration that contains it. It
-yields the whole export object, so it reaches every export of its target, the same as
-`import * as ns`. A `require` outside every declaration runs on evaluation, like a
-bare import.
+yields the whole export object, but static member reads such as
+`require("./x").name`, destructuring such as `const { name } = require("./x")`, and
+bindings used only for known members select those exports. Escapes, computed keys,
+reassignment, writes through the object, and shadowed `require` calls keep every
+export. Unused module bindings and empty patterns also retain the whole dependency
+so evaluation is preserved, including with `inline-requires`. A `require` outside
+every declaration runs on evaluation, like a bare import. CommonJS producers using
+`this` stay coarse because a method's receiver may expose sibling exports.
 
 A module object read for a single name depends on that name alone. `ns.fetchUser`
 from an `import * as ns` targets that one export rather than the whole table, and so
