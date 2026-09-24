@@ -104,12 +104,13 @@ pub fn run() -> ExitCode {
 fn report(outcome: &Outcome, explain: bool, root: &Path, granularity: Granularity) -> ExitCode {
     match &outcome.verdict {
         Verdict::Affected(hit) => {
+            let root = canonical_root(root);
             println!(
                 "Impact detected on target anchor via: {:?}",
-                hit.changed_file()
+                display_path(hit.changed_file(), &root)
             );
             if explain {
-                print_explanation(hit, &canonical_root(root), granularity);
+                print_explanation(hit, &root, granularity);
             }
             ExitCode::SUCCESS
         }

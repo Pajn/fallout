@@ -412,7 +412,7 @@ written reports, the default reports that or less, and never more.
 
 ```
 $ fallout --anchor src/pages/VersionPage.tsx --diff pr.diff --explain -g symbol
-Impact detected on target anchor via: "/repo/src/state/client.ts"
+Impact detected on target anchor via: "src/state/client.ts"
 Path (downstream, symbol granularity):
   File(src/pages/VersionPage.tsx)
   ModuleInit(src/pages/VersionPage.tsx)
