@@ -8,5 +8,5 @@ affected = true
 symbol = [
     "File(src/pages/DatePage.tsx)",
     "Decl(src/pages/DatePage.tsx, DatePage)",
-    "Member(src/lib/utils.ts, helpers.formatDate)",
+    "Member(src/lib/utils.ts, local.formatDate)",
 ]

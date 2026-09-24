@@ -1,0 +1,5 @@
+# A default export of an object literal has no name its own file could reach it
+# by, so it is read by property like a named one.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false

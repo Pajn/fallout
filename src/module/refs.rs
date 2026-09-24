@@ -14,10 +14,16 @@ use super::{Decl, DeclId, ImportRef, ImportTarget, SourceId, Span};
 
 /// Fills in each declaration's references, and returns the import statement spans
 /// paired with the declarations that use the bindings those statements introduce.
+///
+/// A read of one property of an object in `objects` is a reference to that
+/// property rather than to the declaration. Such an object is only ever read for
+/// its properties, and none of them can reach it through `this`, so a call on one
+/// of them does not count as a write to it either.
 pub(crate) fn link(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
     imports: &[ImportBinding],
+    objects: &AHashMap<SymbolId, DeclId>,
     decls: &mut [Decl],
 ) -> Vec<(Span, Vec<DeclId>)> {
     let scoping = ctx.semantic.scoping();
@@ -64,11 +70,21 @@ pub(crate) fn link(
                 continue;
             };
 
+            let object = objects.get(&symbol_id).copied();
+            let member = object.and_then(|_| unwritten_member_read(ctx.semantic.nodes(), node_id));
             for &user in users {
                 if let Some(target) = target_decl {
                     // A declaration referring to itself is not an edge.
                     if user != target {
-                        push_unique(&mut decls[user as usize].refs, target);
+                        match &member {
+                            Some(member) => {
+                                let read = (target, member.clone());
+                                if !decls[user as usize].member_refs.contains(&read) {
+                                    decls[user as usize].member_refs.push(read);
+                                }
+                            }
+                            None => push_unique(&mut decls[user as usize].refs, target),
+                        }
                     }
                 }
                 if let Some(binding) = target_import {
@@ -77,7 +93,7 @@ pub(crate) fn link(
                     push_unique(import_users.entry(binding.span).or_default(), user);
                 }
                 push_unique(users_of.entry(symbol_id).or_default(), user);
-                if classify(ctx.semantic.nodes(), node_id) == Use::Mutate {
+                if object.is_none() && classify(ctx.semantic.nodes(), node_id) == Use::Mutate {
                     push_unique(mutators_of.entry(symbol_id).or_default(), user);
                 }
             }
@@ -150,13 +166,7 @@ fn apply_shared_state(
 pub(crate) fn narrowed(nodes: &AstNodes<'_>, node_id: NodeId, reference: &ImportRef) -> ImportRef {
     let target = match &reference.target {
         ImportTarget::Namespace => match member_read(nodes, node_id) {
-            // `ns.utils.formatDate` reads one property of one export.
-            Some(export) => {
-                match unwritten_member_read(nodes, nodes.parent_id(unwrapped(nodes, node_id).0)) {
-                    Some(member) => ImportTarget::Member { export, member },
-                    None => ImportTarget::Named(export),
-                }
-            }
+            Some(export) => export_read(nodes, node_id, export),
             None => return reference.clone(),
         },
         ImportTarget::Named(export) => match unwritten_member_read(nodes, node_id) {
@@ -172,6 +182,65 @@ pub(crate) fn narrowed(nodes: &AstNodes<'_>, node_id: NodeId, reference: &Import
         source: reference.source,
         target,
     }
+}
+
+/// `export`, read off the module object at `object`, narrowed to one property of it
+/// where the read goes on to pick one: `ns.utils.formatDate` reads `formatDate` of
+/// `utils`. A write through the property keeps the whole export.
+fn export_read(nodes: &AstNodes<'_>, object: NodeId, export: String) -> ImportTarget {
+    let read = nodes.parent_id(unwrapped(nodes, object).0);
+    match unwritten_member_read(nodes, read) {
+        Some(member) => ImportTarget::Member { export, member },
+        None => ImportTarget::Named(export),
+    }
+}
+
+/// What a binding destructured out of a module object reads of `export`: one
+/// property at a time where every use is a read of one and the binding stays in
+/// this file, and the whole export otherwise.
+fn binding_reads(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>, export: String) -> Vec<ImportTarget> {
+    let whole = || vec![ImportTarget::Named(export.clone())];
+    let BindingPattern::BindingIdentifier(identifier) = pattern else {
+        return whole();
+    };
+    let Some(symbol_id) = identifier.symbol_id.get() else {
+        return whole();
+    };
+    let scoping = ctx.semantic.scoping();
+    let nodes = ctx.semantic.nodes();
+    // `export const { utils } = require("./u")` hands the whole value on.
+    let declared = scoping.symbol_declaration(symbol_id);
+    let declarator = std::iter::once(declared)
+        .chain(nodes.ancestor_ids(declared))
+        .find(|&id| matches!(nodes.kind(id), AstKind::VariableDeclarator(_)));
+    if let Some(declarator) = declarator {
+        let declaration = nodes.parent_id(declarator);
+        if matches!(
+            nodes.parent_kind(declaration),
+            AstKind::ExportDeclaration(_)
+        ) {
+            return whole();
+        }
+    }
+    let mut targets = Vec::new();
+    for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
+        let reference = scoping.get_reference(*reference_id);
+        if reference.is_write() {
+            return whole();
+        }
+        let Some(member) = unwritten_member_read(nodes, reference.node_id()) else {
+            return whole();
+        };
+        let target = ImportTarget::Member {
+            export: export.clone(),
+            member,
+        };
+        if !targets.contains(&target) {
+            targets.push(target);
+        }
+    }
+    // An unused binding still names the export it was taken from.
+    if targets.is_empty() { whole() } else { targets }
 }
 
 /// Walks out through any parentheses, returning the outermost node standing for the
@@ -208,7 +277,7 @@ fn member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
 
 /// How a declaration touches a binding.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Use {
+pub(crate) enum Use {
     /// Cannot change what the binding holds.
     Read,
     /// Could, or we cannot tell.
@@ -220,7 +289,7 @@ enum Use {
 /// The listed shapes leave the binding as they found it. Everything else — passing
 /// it somewhere, returning it, assigning through it, spreading it — hands the value
 /// to code this declaration does not contain, so it counts as a write.
-fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
+pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
     let span = nodes.get_node(node_id).kind().span();
     match nodes.parent_kind(node_id) {
         // `typeof s` reads nothing that can be written back.
@@ -357,7 +426,7 @@ fn require_targets(ctx: &Ctx<'_>, node_id: NodeId) -> Vec<ImportTarget> {
             require_bound_targets(ctx, &declarator.id)
         }
         _ => unwritten_member_read(nodes, node_id)
-            .map(|name| vec![ImportTarget::Named(name)])
+            .map(|name| vec![export_read(nodes, node_id, name)])
             .unwrap_or_else(|| vec![ImportTarget::Namespace]),
     };
     // Even an unused binding or empty pattern evaluates the module. Keeping the
@@ -386,7 +455,10 @@ fn require_bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<Imp
         let Some(name) = unwritten_member_read(ctx.semantic.nodes(), reference.node_id()) else {
             return vec![ImportTarget::Namespace];
         };
-        targets.push(ImportTarget::Named(name));
+        let target = export_read(ctx.semantic.nodes(), reference.node_id(), name);
+        if !targets.contains(&target) {
+            targets.push(target);
+        }
     }
     targets
 }
@@ -495,7 +567,11 @@ fn dynamic_targets(ctx: &Ctx<'_>, node_id: NodeId) -> Vec<ImportTarget> {
                 AstKind::VariableDeclarator(declarator) => bound_targets(ctx, &declarator.id),
                 // `(await import("./g")).x`
                 AstKind::StaticMemberExpression(member) => {
-                    vec![ImportTarget::Named(member.property.name.to_string())]
+                    vec![export_read(
+                        nodes,
+                        awaited,
+                        member.property.name.to_string(),
+                    )]
                 }
                 _ => vec![ImportTarget::Namespace],
             }
@@ -543,7 +619,7 @@ fn bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<ImportTarge
             for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
                 let node_id = scoping.get_reference(*reference_id).node_id();
                 match member_read(ctx.semantic.nodes(), node_id) {
-                    Some(name) => targets.push(ImportTarget::Named(name)),
+                    Some(name) => targets.push(export_read(ctx.semantic.nodes(), node_id, name)),
                     // Used as a whole somewhere, so the whole table is a dependency.
                     None => return vec![ImportTarget::Namespace],
                 }
@@ -563,7 +639,11 @@ fn bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<ImportTarge
                 else {
                     return vec![ImportTarget::Namespace];
                 };
-                targets.push(ImportTarget::Named(name.to_string()));
+                for target in binding_reads(ctx, &property.value, name.to_string()) {
+                    if !targets.contains(&target) {
+                        targets.push(target);
+                    }
+                }
             }
             targets
         }
@@ -681,6 +761,56 @@ mod tests {
             ),
         ] {
             assert_eq!(page_imports(source), [expected], "{source}");
+        }
+    }
+
+    #[test]
+    fn a_property_read_through_require_or_import_names_the_property() {
+        let member = || super::ImportTarget::Member {
+            export: "utils".into(),
+            member: "format".into(),
+        };
+        for source in [
+            "export const page = () => require('./u').utils.format();",
+            "const u = require('./u'); export const page = () => u.utils.format();",
+            "const { utils } = require('./u'); export const page = () => utils.format();",
+            "const { utils: renamed } = require('./u'); export const page = () => renamed.format();",
+            "export const page = async () => (await import('./u')).utils.format();",
+            "export const page = async () => { const u = await import('./u'); return u.utils.format(); };",
+            "export const page = async () => { const { utils } = await import('./u'); return utils.format(); };",
+            "export const page = () => import('./u').then((u) => u.utils.format());",
+        ] {
+            let module = crate::module::parse::analyse_source(
+                std::path::Path::new("page.tsx"),
+                source,
+                &crate::module::Reading::default(),
+            )
+            .unwrap()
+            .0;
+            let module = module.as_fine().expect("fine");
+            let imports: Vec<_> = module
+                .decls
+                .iter()
+                .flat_map(|decl| decl.imports.iter().map(|i| i.target.clone()))
+                .collect();
+            assert_eq!(imports, [member()], "{source}");
+        }
+    }
+
+    #[test]
+    fn a_destructured_export_that_escapes_is_taken_whole() {
+        for source in [
+            "export const { utils } = require('./u'); utils.format();",
+            "const { utils } = require('./u'); export { utils }; utils.format();",
+            "const { utils } = require('./u'); use(utils);",
+            "let { utils } = require('./u'); utils = other; utils.format();",
+            "const { utils } = require('./u'); utils.format = other;",
+        ] {
+            assert_eq!(
+                require_targets_of(source),
+                [super::ImportTarget::Named("utils".into())],
+                "{source}"
+            );
         }
     }
 

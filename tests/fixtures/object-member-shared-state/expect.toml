@@ -1,0 +1,13 @@
+# `bump` writes the `count` that `read` returns, so reading one property still
+# reaches an edit to the other.
+[[anchor]]
+path = "src/pages/CountPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CountPage.tsx)",
+    "Decl(src/pages/CountPage.tsx, CountPage)",
+    "Member(src/lib/counter.ts, counter.read)",
+    "Member(src/lib/counter.ts, counter.bump)",
+]

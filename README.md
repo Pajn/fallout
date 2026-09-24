@@ -110,22 +110,30 @@ do `<ns.Thing />`, `const m = await import("./g"); m.x`, `(await import("./g")).
 module object anywhere else — passing it on, reading `ns[key]` — keeps the whole
 table, and a binding that does both keeps the whole table.
 
-An exported object literal is read the same way. Given
+An object literal is read the same way. Given
 `export const utils = { formatDate, formatPrice }`, a page calling
-`utils.formatDate()` depends on `formatDate` and not on `formatPrice`, whether it
-imports `utils` by name or reads `ns.utils.formatDate` off a namespace. An edit inside
-one property's value marks that property alone, with or without a base revision. This
-holds for a `const` bound directly to the literal, optionally through `as const` or
-`satisfies`, and only while nothing can change what a property holds. In the file
-that declares it, the object must be used only by reading a property or by
-`export { }`. A property must be a plain value or method under a fixed key. A spread,
-a computed key, a getter or setter, `__proto__`, a duplicate key, `this` or `super` in
-a value, a `require` or `import()` inside it, and a local function that reads `this`
-all keep the object whole. So does a write through it, passing it on, reading
-`utils[key]`, destructuring it, or re-exporting it as a default. A consumer that
-writes through a property, or uses the object as a whole, depends on every property.
-A function imported from elsewhere and placed in the object is assumed not to reach
-its siblings through `this`, which is the same assumption bundlers make.
+`utils.formatDate()` depends on `formatDate` and not on `formatPrice`. That holds
+however the property is reached: off `import { utils }`, off `ns.utils` from a
+namespace, off `require("./u").utils` or a module object bound from `require` or
+`import()`, off a binding destructured from one, or from another declaration in the
+same file. The object can be a `const` bound directly to the literal (optionally
+through `as const` or `satisfies`), an `export default { … }`, or a CommonJS
+`exports.utils = { … }`. An edit inside one property's value marks that property
+alone, with or without a base revision.
+
+This only applies while nothing can change what a property holds. In the file that
+declares it, the object must be used only by reading a property or by `export { }`.
+A property must be a plain value or method under a fixed key. A spread, a computed
+key, a getter or setter, `__proto__`, a duplicate key, `this` or `super` in a value, a
+`require` or `import()` inside it, and a local function that reads `this` all keep the
+object whole. So does a write through it, passing it on, reading `utils[key]`,
+destructuring it, or re-exporting it as a default. A consumer that writes through a
+property, uses the object as a whole, or re-exports a binding destructured from it
+depends on every property. Two properties that share a binding of their file, where
+one of them could write it, still reach each other. Calling a property does not count
+as a write to the object, since nothing in it can reach the object through `this`. A
+function imported from elsewhere and placed in the object is assumed not to either,
+which is the same assumption bundlers make.
 
 ### Pure calls
 

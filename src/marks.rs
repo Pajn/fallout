@@ -16,7 +16,9 @@ use ahash::AHashSet;
 use crate::base::Base;
 use crate::diff::{ChangeSet, FileChange, LineRange};
 use crate::graph::{FileId, Graph, Node};
-use crate::module::{DeclId, Export, ExportTarget, FineModule, LineTable, ModuleAnalysis, Span};
+use crate::module::{
+    Decl, DeclId, Export, ExportTarget, FineModule, LineTable, ModuleAnalysis, Span,
+};
 
 /// Every node a change set marks, at declaration granularity.
 ///
@@ -177,11 +179,13 @@ fn attribute(
 ) -> bool {
     let mut hit_statement = false;
 
-    // A range intersecting a statement marks every declaration it declares.
+    // A range intersecting a statement marks every declaration it declares, and
+    // the members of an object declaration it touches.
     for (id, decl) in module.decls.iter().enumerate() {
         if decl.span.intersects(start, end) {
             out.insert(Node::Decl(file, id as DeclId));
             hit_statement = true;
+            mark_members(graph, file, id as DeclId, decl, start, end, out);
         }
     }
 
@@ -191,7 +195,7 @@ fn attribute(
             out.insert(Node::Export(file, graph.name_id(&export.name)));
             hit_statement = true;
         }
-        mark_members(graph, file, module, export, start, end, out);
+        mark_forwarded(graph, file, module, export, start, end, out);
     }
 
     // A range touching an import statement marks every declaration referencing
@@ -209,13 +213,33 @@ fn attribute(
     hit_statement
 }
 
-/// Marks the members of an exported object that a byte range touches.
+/// Marks the members of an object declaration that a byte range touches.
 ///
-/// An edit inside one property is an edit to that member alone. Anything else the
-/// range touches — the declaration around the literal, or a separate statement
-/// that exports it — is part of every member, because every member is read
-/// through it. The separators between properties belong to none of them.
+/// An edit inside one property is an edit to that member alone. Anything else in
+/// the statement the range touches — the declaration around the literal — is part
+/// of every member, because every member is read through it. The separators
+/// between properties belong to none of them.
 fn mark_members(
+    graph: &Graph,
+    file: FileId,
+    id: DeclId,
+    decl: &Decl,
+    start: u32,
+    end: u32,
+    out: &mut AHashSet<Node>,
+) {
+    let framing = !within(decl.interior, decl.span, start, end);
+    for member in &decl.members {
+        if framing || member.span.intersects(start, end) {
+            out.insert(Node::Member(file, id, graph.name_id(&member.name)));
+        }
+    }
+}
+
+/// Marks every member of an object that a separate export statement names, when
+/// the range touches that statement: which object a name stands for is part of
+/// every member read through the name.
+fn mark_forwarded(
     graph: &Graph,
     file: FileId,
     module: &FineModule,
@@ -224,22 +248,17 @@ fn mark_members(
     end: u32,
     out: &mut AHashSet<Node>,
 ) {
-    let ExportTarget::Local(decl) = export.target else {
+    let ExportTarget::Local(id) = export.target else {
         return;
     };
-    let Some(decl) = module.decls.get(decl as usize) else {
+    let Some(decl) = module.decls.get(id as usize) else {
         return;
     };
-    if decl.members.is_empty() {
+    if export.span == decl.span || !export.span.intersects(start, end) {
         return;
     }
-    let forwarded = export.span != decl.span && export.span.intersects(start, end);
-    let framing = decl.span.intersects(start, end) && !within(decl.interior, decl.span, start, end);
-    let name = graph.name_id(&export.name);
     for member in &decl.members {
-        if forwarded || framing || member.span.intersects(start, end) {
-            out.insert(Node::Member(file, name, graph.name_id(&member.name)));
-        }
+        out.insert(Node::Member(file, id, graph.name_id(&member.name)));
     }
 }
 

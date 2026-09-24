@@ -149,7 +149,9 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
     let mut init_differs = false;
     let mut furthest = 0;
 
-    for statement in &new_statements {
+    let old_cjs = cjs::table(&old.program);
+    let new_cjs = cjs::table(&new.program);
+    for (new_index, statement) in new_statements.iter().enumerate() {
         let counterpart = unmatched
             .get_mut(&statement.key)
             .and_then(VecDeque::pop_front);
@@ -168,7 +170,15 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         furthest = furthest.max(index);
 
         if old_statements[index].node.content_ne(statement.node) {
-            match changed_members(old_statements[index].node, statement.node, &before, &after) {
+            let old_object =
+                members::object_literal_of(old_statements[index].node, index, &old_cjs);
+            let new_object = members::object_literal_of(statement.node, new_index, &new_cjs);
+            match changed_members(
+                old_object,
+                new_object,
+                (old_statements[index].node, statement.node),
+                (&before, &after),
+            ) {
                 Some(spans) => changed.extend(spans),
                 None => changed.push(statement.span),
             }
@@ -273,13 +283,13 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
 /// order, a property added or removed, a comment beside the literal — is `None`,
 /// and the statement is changed as a whole.
 fn changed_members(
-    old: &Statement<'_>,
-    new: &Statement<'_>,
-    before: &str,
-    after: &str,
+    old_object: Option<(Option<&BindingIdentifier<'_>>, &ObjectExpression<'_>)>,
+    new_object: Option<(Option<&BindingIdentifier<'_>>, &ObjectExpression<'_>)>,
+    (old, new): (&Statement<'_>, &Statement<'_>),
+    (before, after): (&str, &str),
 ) -> Option<Vec<Span>> {
-    let (_, old_object) = members::declared_object(old)?;
-    let (_, new_object) = members::declared_object(new)?;
+    let (_, old_object) = old_object?;
+    let (_, new_object) = new_object?;
     let framing = |text: &str, statement: oxc_span::Span, object: oxc_span::Span| {
         (
             text.get(statement.start as usize..object.start as usize)

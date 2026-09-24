@@ -34,6 +34,9 @@ pub struct Decl {
     pub span: Span,
     /// Declarations in this same file that this one references.
     pub refs: Vec<DeclId>,
+    /// Properties of object declarations in this same file that this one reads,
+    /// where it reads them one at a time: `utils.formatDate` is `(utils, formatDate)`.
+    pub member_refs: Vec<(DeclId, String)>,
     /// Imported bindings this one references.
     pub imports: Vec<ImportRef>,
     /// The properties of the plain object literal this declaration binds, where
@@ -46,6 +49,9 @@ pub struct Decl {
 }
 
 /// One property of an object literal declaration, and what reading it depends on.
+///
+/// Every declaration of the statement shares the same members, since
+/// `exports.a = exports.b = { ... }` names one object twice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
     pub name: String,
@@ -53,6 +59,9 @@ pub struct Member {
     pub span: Span,
     /// Declarations in this file the property's value references.
     pub refs: Vec<DeclId>,
+    /// Properties of object declarations in this file the value reads, including
+    /// a sibling that writes a binding this one reads.
+    pub member_refs: Vec<(DeclId, String)>,
     /// Imported bindings the property's value references.
     pub imports: Vec<ImportRef>,
 }
