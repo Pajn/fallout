@@ -252,7 +252,10 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
 
 impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.local.call(expr) {
+        if !self.callee_is_pure(expr.pure, &expr.callee)
+            && !self.local.call(expr)
+            && !self.local.freezes(expr)
+        {
             self.impure = true;
         }
         // A pure callee says nothing about its arguments, which still run.

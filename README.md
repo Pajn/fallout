@@ -161,31 +161,41 @@ A declaration whose initialiser runs something belongs to module initialisation,
 importing anything from its file reaches it. In React-shaped code that catches nearly
 every top-level declaration, because nearly every one of them is a call.
 
-Four things take a call back out of initialisation:
+Five things take a call back out of initialisation:
 
 - a `/* @__PURE__ */` annotation, the author of the call site saying it only computes
   a value;
 - React's own factories — `memo`, `forwardRef`, `createContext`, `lazy` — which are
   built in;
+- `Object.freeze` of an object or array literal written in place, which is how enums
+  and constant tables are usually written, provided `Object` is the global;
 - entries in the project's `fallout.toml`;
-- a proof for a small local function declaration.
+- a proof for a small local helper.
 
 Local inference covers top-level function declarations whose binding is never
-reassigned or redeclared, with simple parameters and a single return. It accepts
-literals, parameter reads, plain array
-and object construction, conditionals, logical operators, strict equality, and
-calls to other proven helpers. For example, `function make(value) { return
-{ value }; }` makes `const item = make("item")` independent of unrelated exports.
-Consumers of `item` still depend on `make` and any helpers it calls.
+reassigned or redeclared, and `const` bindings of arrows and function expressions,
+with simple parameters. A body is a run of `const` locals, `if` statements that
+return, and a final return. It accepts
+literals (including negative numbers and templates with no interpolation), reads of
+parameters and locals, reads of top-level `const` primitives and of functions,
+plain array and object construction, conditionals, logical operators, strict
+equality, `Object.freeze` of a literal, and calls to other proven helpers. For
+example, `const make = (value) => ({ value })` makes `const item = make("item")`
+independent of unrelated exports. Consumers of `item` still depend on `make` and any
+helpers it calls.
 
-The proof also checks argument evaluation. Literal arguments and calls to proven
-helpers qualify; arbitrary variable arguments remain conservative. Captured value
-reads, property reads (which may invoke getters), coercing arithmetic, writes,
-unknown calls, recursion, defaults, destructuring, spread, async and generator
-functions, default-exported declarations, and function expressions and arrows keep
-the existing broad behaviour. No annotation or configuration is needed for an
-inferred helper. Use `--base` to detect an effect removed from a helper: line-only
-analysis sees its current body, not the previous side effect.
+The proof also checks argument evaluation. Literals, top-level `const` primitives
+and calls to proven helpers qualify; other variable arguments remain conservative. It
+also checks order. A `const` does not exist until its declaration runs, and calling
+or reading one earlier throws. So a call written before a `const` helper, or before a
+`const` a helper reads, stays in initialisation. Function declarations are hoisted
+and can be called from anywhere. Reads of other captured values, property reads
+(which may invoke getters), coercing arithmetic, interpolated templates, writes,
+loops, unknown calls, recursion, defaults, destructuring, spread, `this`, `arguments`,
+async and generator functions, and default-exported declarations keep the existing
+broad behaviour. No annotation or configuration is needed for an inferred helper. Use
+`--base` to detect an effect removed from a helper: line-only analysis sees its
+current body, not the previous side effect.
 
 ```toml
 # fallout.toml
