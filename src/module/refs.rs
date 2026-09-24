@@ -5,7 +5,7 @@ use oxc_ast::AstKind;
 use oxc_ast::ast::{
     BindingPattern, CallExpression, Expression, JSXMemberExpressionObject, UnaryOperator,
 };
-use oxc_semantic::{AstNodes, NodeId, SymbolId};
+use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
 
 use super::decls::{DeclDraft, ImportBinding, RequireCall, source_id};
@@ -486,13 +486,7 @@ fn require_targets(ctx: &Ctx<'_>, node_id: NodeId) -> Vec<ImportTarget> {
     let Expression::Identifier(callee) = &call.callee else {
         return vec![ImportTarget::Namespace];
     };
-    if callee.reference_id.get().is_none_or(|id| {
-        ctx.semantic
-            .scoping()
-            .get_reference(id)
-            .symbol_id()
-            .is_some()
-    }) {
+    if !callee.is_global_reference(ctx.semantic.scoping()) {
         return vec![ImportTarget::Namespace];
     }
     let (node_id, span) = unwrapped(nodes, node_id);

@@ -15,7 +15,7 @@ use ahash::AHashMap;
 use oxc_ast::ast::*;
 use oxc_semantic::SymbolId;
 
-use super::parse::Ctx;
+use super::parse::{Ctx, frozen};
 
 /// A position in the file from which a proof holds. Zero for one that holds
 /// everywhere.
@@ -382,31 +382,12 @@ fn frozen_literal<'e, 'a>(
     ctx: &Ctx<'_>,
     call: &'e CallExpression<'a>,
 ) -> Option<&'e Expression<'a>> {
-    let Expression::StaticMemberExpression(callee) = &call.callee else {
-        return None;
-    };
-    let Expression::Identifier(object) = &callee.object else {
-        return None;
-    };
-    let global = object.name == "Object"
-        && callee.property.name == "freeze"
-        && object.reference_id.get().is_some_and(|id| {
-            ctx.semantic
-                .scoping()
-                .get_reference(id)
-                .symbol_id()
-                .is_none()
-        });
-    let [argument] = call.arguments.as_slice() else {
-        return None;
-    };
-    let argument = argument.as_expression()?;
-    (global
-        && matches!(
+    frozen(call, Some(ctx.semantic.scoping())).filter(|argument| {
+        matches!(
             argument.get_inner_expression(),
             Expression::ObjectExpression(_) | Expression::ArrayExpression(_)
-        ))
-    .then_some(argument)
+        )
+    })
 }
 
 #[cfg(test)]

@@ -88,17 +88,17 @@ declarations that only do those stay apart. Everything else — passing it to a
 function, returning it, writing through it, spreading it, or naming a member of it as
 an element, which is how a React context is written — counts as a write.
 
-A binding initialised with a plain object literal, which nothing reassigns and which
-has no getter, setter or prototype-setting `__proto__: value`, is shared property by
-property instead. A write to `state.theme` reaches the declarations that use
-`state.theme`, and not one that only reads `state.volume`. A write is found however
-deep the chain goes, so `state.items.push(x)` writes `items`. A `const` alias of the
-object or of one property is followed to its own uses, and a write through it counts
-as a write in the declaration where it is written. Anything that cannot be pinned to
-one property uses the whole object and meets every property: calling a method on it,
-passing it anywhere, a computed key, `__proto__`, an exported or reassignable alias,
-destructuring it, and aliases nested more than four deep. A write through one of those
-aliases still counts in the declaration where it is written.
+A binding initialised with a plain object literal, frozen or not, which nothing
+reassigns and which has no getter, setter or prototype-setting `__proto__: value`, is
+shared property by property instead. A write to `state.theme` reaches the declarations
+that use `state.theme`, and not one that only reads `state.volume`. A write is found
+however deep the chain goes, so `state.items.push(x)` writes `items`. A `const` alias
+of the object or of one property is followed to its own uses, and a write through it
+counts as a write in the declaration where it is written. Anything that cannot be
+pinned to one property uses the whole object and meets every property: calling a
+method on it, passing it anywhere, a computed key, `__proto__`, an exported or
+reassignable alias, destructuring it, and aliases nested more than four deep. A write
+through one of those aliases still counts in the declaration where it is written.
 
 A declaration whose initialiser may run something — a
 call, a `new`, an `await`, a tagged template, an assignment to a member — belongs to
@@ -131,8 +131,8 @@ however the property is reached: off `import { utils }`, off `ns.utils` from a
 namespace, off `require("./u").utils` or a module object bound from `require` or
 `import()`, off a binding destructured from one, or from another declaration in the
 same file. The object can be a `const` bound directly to the literal (optionally
-through `as const` or `satisfies`), an `export default { … }`, or a CommonJS
-`exports.utils = { … }`. An edit inside one property's value marks that property
+through `as const`, `satisfies` or `Object.freeze`), an `export default { … }`, or a
+CommonJS `exports.utils = { … }`. An edit inside one property's value marks that property
 alone, with or without a base revision.
 
 This only applies while nothing can change what a property holds. In the file that

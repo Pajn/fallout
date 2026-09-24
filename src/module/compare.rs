@@ -171,8 +171,8 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
 
         if old_statements[index].node.content_ne(statement.node) {
             let old_object =
-                members::object_literal_of(old_statements[index].node, index, &old_cjs);
-            let new_object = members::object_literal_of(statement.node, new_index, &new_cjs);
+                members::object_literal_of(old_statements[index].node, index, &old_cjs, None);
+            let new_object = members::object_literal_of(statement.node, new_index, &new_cjs, None);
             match changed_members(
                 old_object,
                 new_object,
@@ -678,6 +678,25 @@ mod tests {
         );
         assert!(comparison.init_differs);
         assert!(!comparison.whole_file);
+    }
+
+    #[test]
+    fn an_object_that_differs_only_in_a_value_reports_that_property() {
+        for (before, after, expected) in [
+            (
+                "export const utils = { a: 1, b: 2 };\n",
+                "export const utils = { a: 1, b: 3 };\n",
+                "b: 3",
+            ),
+            (
+                "export const Colors = Object.freeze({ red: '#f00', blue: '#00f' });\n",
+                "export const Colors = Object.freeze({ red: '#f00', blue: '#00e' });\n",
+                "blue: '#00e'",
+            ),
+        ] {
+            let comparison = compared(before, after).expect("comparable");
+            assert_eq!(changed(after, &comparison), [expected], "{after}");
+        }
     }
 
     #[test]
