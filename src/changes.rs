@@ -35,7 +35,7 @@ pub fn marked_files(
         if file.change == FileChange::Deleted {
             continue;
         }
-        let Ok(path) = root.join(&file.path).canonicalize() else {
+        let Ok(path) = dunce::canonicalize(root.join(&file.path)) else {
             continue;
         };
         if only_types_changed(&path, &file.change, reading) {
@@ -45,7 +45,7 @@ pub fn marked_files(
     }
 
     for path in explicit {
-        if let Ok(path) = path.canonicalize() {
+        if let Ok(path) = dunce::canonicalize(path) {
             marked.insert(path);
         }
     }
@@ -107,7 +107,7 @@ mod tests {
 
         let marked = marked_files(root, &diff, &[], None, &Reading::default());
         assert_eq!(marked.len(), 1);
-        assert!(marked.contains(&root.join("kept.ts").canonicalize().unwrap()));
+        assert!(marked.contains(&dunce::canonicalize(root.join("kept.ts")).unwrap()));
     }
 
     #[test]

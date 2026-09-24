@@ -39,7 +39,7 @@ pub fn marked_nodes(
         if file.change == FileChange::Deleted {
             continue;
         }
-        let Ok(path) = root.join(&file.path).canonicalize() else {
+        let Ok(path) = dunce::canonicalize(root.join(&file.path)) else {
             continue;
         };
         let id = graph.file_id(&path);
@@ -61,7 +61,7 @@ pub fn marked_nodes(
     }
 
     for path in explicit {
-        let Ok(path) = path.canonicalize() else {
+        let Ok(path) = dunce::canonicalize(path) else {
             continue;
         };
         let id = graph.file_id(&path);

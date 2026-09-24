@@ -119,7 +119,7 @@ impl std::error::Error for Error {}
 /// Resolves `root` to an absolute path, falling back to it unchanged when it does not
 /// exist. Shared with the CLI so that displayed paths and analysed paths agree.
 pub fn canonical_root(root: &Path) -> PathBuf {
-    root.canonicalize().unwrap_or_else(|_| root.to_path_buf())
+    dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
 }
 
 pub fn analyse(options: &Options) -> Result<Outcome, Error> {
@@ -146,7 +146,7 @@ fn analysed(options: &Options, unresolved: &std::sync::Arc<Unresolved>) -> Resul
         } else {
             anchor.clone()
         };
-        let path = path.canonicalize().unwrap_or(path);
+        let path = dunce::canonicalize(&path).unwrap_or(path);
         if path.exists() {
             anchors.push(path);
         } else {
