@@ -1,6 +1,6 @@
 # Builds a binary for every target the crate declares and publishes them to npm
-# as one launcher package plus one package per platform, and publishes the
-# crate to crates.io.
+# as one launcher package plus one package per platform, publishes the crate to
+# crates.io, and then records the release on GitHub with its changelog.
 #
 # Both registries authenticate this workflow by OIDC rather than by a token,
 # and the trusted publisher each holds is pinned to this repository *and to this
@@ -186,3 +186,56 @@ jobs:
         if: steps.published.outputs.exists == 'false'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  # Last, so a release on GitHub always names a version both registries have.
+  github:
+    needs: [npm, crates]
+    runs-on: ubuntu-24.04
+    permissions:
+      # Creating a release writes to the repository; nothing else here does.
+      contents: write
+
+    steps:
+      # The whole history and every tag, to find where the previous release was
+      # cut and to list what landed since.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The changelog is the commit subjects since the previous tag. Changes land
+      # on main directly rather than through pull requests, so GitHub's own
+      # generated notes, which list merged pull requests, would be empty. The
+      # commit that sets the version is left out: the release is that commit.
+      - name: Write the changelog
+        run: |
+          previous=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          range=${previous:+$previous..}$GITHUB_REF_NAME
+          {
+            if [ -n "$previous" ]; then
+              echo "## Changes since $previous"
+            else
+              echo "## Changes"
+            fi
+            echo
+            git log --no-merges --format='- %s (%h)' \
+              --invert-grep --grep='^Release [0-9]' "$range"
+            if [ -n "$previous" ]; then
+              echo
+              echo "**Full diff:** https://github.com/${GITHUB_REPOSITORY}/compare/${previous}...${GITHUB_REF_NAME}"
+            fi
+          } > changelog.md
+          cat changelog.md
+
+      # A re-run after the release exists refreshes its notes rather than
+      # failing, as the publish jobs finish a partial release rather than
+      # colliding with it.
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file changelog.md
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag \
+              --title "fallout ${GITHUB_REF_NAME#v}" --notes-file changelog.md
+          fi
