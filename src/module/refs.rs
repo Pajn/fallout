@@ -374,7 +374,8 @@ fn require_bound_targets(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>) -> Vec<Imp
 }
 
 /// Writing through an object or deleting a member can change the export table.
-/// Walk the full member chain so `ns.x.y = value` also keeps the broad edge.
+/// Walk the full member chain, through type-only wrappers, so `ns.x.y = value` and
+/// `ns.x! = value` also keep the broad edge.
 fn require_member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
     let name = member_read(nodes, node_id)?;
     let (mut current, _) = unwrapped(nodes, node_id);
@@ -383,7 +384,11 @@ fn require_member_read(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> 
             AstKind::StaticMemberExpression(_)
             | AstKind::ComputedMemberExpression(_)
             | AstKind::ParenthesizedExpression(_)
-            | AstKind::ChainExpression(_) => {
+            | AstKind::ChainExpression(_)
+            | AstKind::TSNonNullExpression(_)
+            | AstKind::TSAsExpression(_)
+            | AstKind::TSSatisfiesExpression(_)
+            | AstKind::TSTypeAssertion(_) => {
                 current = nodes.parent_id(current);
             }
             AstKind::AssignmentExpression(_)
@@ -647,6 +652,10 @@ mod tests {
             "let m = require('./g'); m = other; m.x;",
             "const m = require('./g'); m.x = other;",
             "const m = require('./g'); m.x.y = other;",
+            "const m = require('./g'); m.x! = other;",
+            "const m = require('./g'); (m.x as any) = other;",
+            "const m = require('./g'); (m.x satisfies any) = other;",
+            "const m = require('./g'); m.x!.y = other;",
             "const m = require('./g'); delete m.x;",
             "const m = require('./g'); m.x++;",
             "const m = require('./g'); [m.x] = other;",
