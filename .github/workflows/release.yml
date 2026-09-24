@@ -1,6 +1,7 @@
 # Builds a binary for every target the crate declares and publishes them to npm
 # as one launcher package plus one package per platform, publishes the crate to
-# crates.io, and then records the release on GitHub with its changelog.
+# crates.io, and then records the release on GitHub with its changelog and an
+# archive of each binary.
 #
 # Both registries authenticate this workflow by OIDC rather than by a token,
 # and the trusted publisher each holds is pinned to this repository *and to this
@@ -226,9 +227,39 @@ jobs:
           } > changelog.md
           cat changelog.md
 
-      # A re-run after the release exists refreshes its notes rather than
-      # failing, as the publish jobs finish a partial release rather than
-      # colliding with it.
+      # The same binaries npm shipped, from the build jobs of this run.
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # One archive per target, named for the version and the triple. tar keeps
+      # the executable bit that the artifact zip dropped; Windows has no such
+      # bit, and zip is what it opens. Each carries the licenses and the README,
+      # and SHA256SUMS covers every archive. Neither format records who built
+      # it: the runner's account is nothing a download should carry.
+      - name: Archive the binaries
+        run: |
+          mkdir stage assets
+          for built in artifacts/*/; do
+            triple=$(basename "$built")
+            name=fallout-$GITHUB_REF_NAME-$triple
+            mkdir "stage/$name"
+            cp "$built"* LICENSE-MIT LICENSE-APACHE README.md "stage/$name/"
+            case "$triple" in
+              *-windows-*)
+                (cd stage && zip -qrX "../assets/$name.zip" "$name") ;;
+              *)
+                chmod +x "stage/$name/fallout"
+                tar -C stage --owner=0 --group=0 --numeric-owner \
+                  -czf "assets/$name.tar.gz" "$name" ;;
+            esac
+          done
+          (cd assets && sha256sum -- * > SHA256SUMS)
+          ls -l assets
+
+      # A re-run after the release exists refreshes its notes and replaces its
+      # archives rather than failing, as the publish jobs finish a partial
+      # release rather than colliding with it.
       - name: Create or update the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -239,3 +270,4 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --verify-tag \
               --title "fallout ${GITHUB_REF_NAME#v}" --notes-file changelog.md
           fi
+          gh release upload "$GITHUB_REF_NAME" assets/* --clobber
