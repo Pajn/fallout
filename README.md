@@ -161,7 +161,7 @@ A declaration whose initialiser runs something belongs to module initialisation,
 importing anything from its file reaches it. In React-shaped code that catches nearly
 every top-level declaration, because nearly every one of them is a call.
 
-Five things take a call back out of initialisation:
+Six things take a call back out of initialisation:
 
 - a `/* @__PURE__ */` annotation, the author of the call site saying it only computes
   a value;
@@ -169,6 +169,14 @@ Five things take a call back out of initialisation:
   built in;
 - `Object.freeze` of an object or array literal written in place, which is how enums
   and constant tables are usually written, provided `Object` is the global;
+- the language's own functions that only compute a value: `new Map()` and `new Set()`
+  (empty, or filled from an array literal), `Math.*`, `Number.is*`, `parseInt`,
+  `String()`, `Array.isArray`, `Object.is`, `Date.now()`, `new Error("…")` and a few
+  more, taken from oxc's side-effect analysis. An argument such a function converts to
+  a string or a number must be a primitive written out, since converting an object
+  runs its `toString` or `valueOf`, and one converted to a number must not be a
+  BigInt, which throws. Functions that throw on some literals — `decodeURI`,
+  `String.fromCodePoint`, `new Array(n)` — are not included;
 - entries in the project's `fallout.toml`;
 - a proof for a small local helper.
 
@@ -179,7 +187,8 @@ return, and a final return. It accepts
 literals (including negative numbers and templates with no interpolation), reads of
 parameters and locals, reads of top-level `const` primitives and of functions,
 plain array and object construction, conditionals, logical operators, strict
-equality, `Object.freeze` of a literal, and calls to other proven helpers. For
+equality, `Object.freeze` of a literal, the global functions above, and calls to
+other proven helpers. For
 example, `const make = (value) => ({ value })` makes `const item = make("item")`
 independent of unrelated exports. Consumers of `item` still depend on `make` and any
 helpers it calls.

@@ -263,7 +263,7 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) {
+        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.local.constructs(expr) {
             self.impure = true;
         }
         walk::walk_new_expression(self, expr);

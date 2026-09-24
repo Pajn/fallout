@@ -13,8 +13,9 @@
 //! helper or value — and a call written before that position is not proven.
 use ahash::AHashMap;
 use oxc_ast::ast::*;
-use oxc_semantic::SymbolId;
+use oxc_semantic::{IsGlobalReference, SymbolId};
 
+use super::globals;
 use super::parse::{Ctx, frozen};
 
 /// A position in the file from which a proof holds. Zero for one that holds
@@ -29,6 +30,9 @@ pub(super) struct LocalPure<'c, 'a> {
     /// primitive, or any function, since reading one does not call it — and where
     /// each becomes readable.
     values: AHashMap<SymbolId, Ready>,
+    /// Which of those values are primitives a conversion can be applied to, each
+    /// with whether it is a BigInt, which a conversion to a number throws on.
+    primitives: AHashMap<SymbolId, bool>,
 }
 
 /// The locals of the body being proven, each bound once and readable anywhere
@@ -54,6 +58,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             ctx,
             proven: AHashMap::default(),
             values: AHashMap::default(),
+            primitives: AHashMap::default(),
         };
         let scoping = ctx.semantic.scoping();
         let root = scoping.root_scope_id();
@@ -122,6 +127,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                             }
                             init if is_primitive(init) => {
                                 result.values.insert(symbol, ready);
+                                result.primitives.insert(symbol, is_bigint(init));
                             }
                             _ => {}
                         }
@@ -170,7 +176,20 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         frozen_literal(self.ctx, call).is_some()
     }
 
+    /// Whether a top-level `new` is proven to run nothing where it is written.
+    ///
+    /// What a collection is filled with is the caller's to judge, as the literal
+    /// is for `Object.freeze`: iterating an array literal reads its elements and
+    /// runs nothing.
+    pub(super) fn constructs(&self, new: &NewExpression<'_>) -> bool {
+        self.construct_ready(new, &Locals::default(), false)
+            .is_some_and(|ready| ready <= new.span.start)
+    }
+
     fn call_ready(&self, call: &CallExpression<'_>, locals: &Locals) -> Option<Ready> {
+        if let Some((conversion, _)) = self.global_call(call) {
+            return self.converted(&call.arguments, conversion, locals);
+        }
         let mut ready = if let Some(literal) = frozen_literal(self.ctx, call) {
             // Freezing a literal made on the spot is invisible to anyone but its
             // holder, and the literal's contents are proven as any other.
@@ -185,6 +204,155 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             ready = ready.max(self.expression(argument.as_expression()?, locals)?);
         }
         Some(ready)
+    }
+
+    /// The name a callee or an object goes by, where it is a global rather than a
+    /// binding of the file.
+    fn global<'e>(&self, expr: &'e Expression<'_>) -> Option<&'e str> {
+        match expr {
+            Expression::Identifier(id) if id.is_global_reference(self.ctx.semantic.scoping()) => {
+                Some(id.name.as_str())
+            }
+            _ => None,
+        }
+    }
+
+    /// A call to a global function or namespace method that only computes a value.
+    fn global_call(
+        &self,
+        call: &CallExpression<'_>,
+    ) -> Option<(globals::Conversion, globals::Returns)> {
+        match &call.callee {
+            Expression::StaticMemberExpression(member) => {
+                globals::method(self.global(&member.object)?, member.property.name.as_str())
+            }
+            callee => globals::function(self.global(callee)?),
+        }
+    }
+
+    /// Arguments proven safe to hand to a function that converts them as given.
+    fn converted(
+        &self,
+        arguments: &[Argument<'_>],
+        conversion: globals::Conversion,
+        locals: &Locals,
+    ) -> Option<Ready> {
+        let mut ready = 0;
+        for argument in arguments {
+            let argument = argument.as_expression()?;
+            ready = ready.max(match conversion {
+                globals::Conversion::None => self.expression(argument, locals)?,
+                globals::Conversion::ToString => self.primitive(argument, locals, false)?,
+                globals::Conversion::ToNumber => self.primitive(argument, locals, true)?,
+            });
+        }
+        Some(ready)
+    }
+
+    fn construct_ready(
+        &self,
+        new: &NewExpression<'_>,
+        locals: &Locals,
+        contents: bool,
+    ) -> Option<Ready> {
+        use globals::Constructor;
+
+        let constructor = globals::constructor(self.global(&new.callee)?)?;
+        let entries = match constructor {
+            Constructor::Converting(conversion) => {
+                return self.converted(&new.arguments, conversion, locals);
+            }
+            Constructor::Set | Constructor::Map | Constructor::Empty => {
+                match new.arguments.as_slice() {
+                    [] => return Some(0),
+                    [argument] => argument.as_expression()?,
+                    _ => return None,
+                }
+            }
+        };
+        if matches!(entries, Expression::NullLiteral(_))
+            || self.global(entries) == Some("undefined")
+        {
+            return Some(0);
+        }
+        let Expression::ArrayExpression(array) = entries else {
+            return None;
+        };
+        let mut ready = 0;
+        for element in &array.elements {
+            let element = element.as_expression()?;
+            match constructor {
+                // A primitive key throws, and nothing here can tell one apart.
+                Constructor::Empty => return None,
+                // Each entry must be a pair written out, or it is read by iterating.
+                Constructor::Map if !matches!(element, Expression::ArrayExpression(_)) => {
+                    return None;
+                }
+                _ => {}
+            }
+            if contents {
+                ready = ready.max(self.expression(element, locals)?);
+            }
+        }
+        Some(ready)
+    }
+
+    /// A value proven to be a primitive a conversion can be applied to, running
+    /// nothing: a string, a number, a boolean, `null` or `undefined`, and a BigInt
+    /// unless the conversion is to a number.
+    fn primitive(&self, expr: &Expression<'_>, locals: &Locals, number: bool) -> Option<Ready> {
+        match expr {
+            expr if is_primitive(expr) => (!number || !is_bigint(expr)).then_some(0),
+            Expression::TemplateLiteral(template) if template.expressions.is_empty() => Some(0),
+            Expression::Identifier(id) => match self.symbol(id) {
+                Some(symbol) => {
+                    let bigint = *self.primitives.get(&symbol)?;
+                    (!number || !bigint).then(|| self.values.get(&symbol).copied())?
+                }
+                None => self
+                    .global(expr)
+                    .is_some_and(globals::primitive_global)
+                    .then_some(0),
+            },
+            Expression::ParenthesizedExpression(inner) => {
+                self.primitive(&inner.expression, locals, number)
+            }
+            // A boolean, a type name or `undefined`, whatever the operand was.
+            Expression::UnaryExpression(unary)
+                if matches!(unary.operator.as_str(), "!" | "void" | "typeof") =>
+            {
+                self.expression(&unary.argument, locals)
+            }
+            Expression::BinaryExpression(binary)
+                if matches!(binary.operator.as_str(), "===" | "!==") =>
+            {
+                Some(
+                    self.expression(&binary.left, locals)?
+                        .max(self.expression(&binary.right, locals)?),
+                )
+            }
+            Expression::ConditionalExpression(conditional) => Some(
+                self.expression(&conditional.test, locals)?
+                    .max(self.primitive(&conditional.consequent, locals, number)?)
+                    .max(self.primitive(&conditional.alternate, locals, number)?),
+            ),
+            // Either operand can be the result.
+            Expression::LogicalExpression(logical) => Some(
+                self.primitive(&logical.left, locals, number)?
+                    .max(self.primitive(&logical.right, locals, number)?),
+            ),
+            Expression::StaticMemberExpression(member) => self
+                .global(&member.object)
+                .is_some_and(|object| globals::constant(object, member.property.name.as_str()))
+                .then_some(0),
+            Expression::CallExpression(call) => match self.global_call(call)? {
+                (conversion, globals::Returns::Primitive) => {
+                    self.converted(&call.arguments, conversion, locals)
+                }
+                (_, globals::Returns::Other) => None,
+            },
+            _ => None,
+        }
     }
 
     fn symbol(&self, id: &IdentifierReference<'_>) -> Option<SymbolId> {
@@ -246,13 +414,17 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             expr if is_primitive(expr) => Some(0),
             Expression::TemplateLiteral(template) if template.expressions.is_empty() => Some(0),
             Expression::Identifier(id) => {
-                let symbol = self.symbol(id)?;
+                let Some(symbol) = self.symbol(id) else {
+                    return self.primitive(expr, locals, false);
+                };
                 if locals.contains_key(&symbol) {
                     Some(0)
                 } else {
                     self.values.get(&symbol).copied()
                 }
             }
+            Expression::StaticMemberExpression(_) => self.primitive(expr, locals, false),
+            Expression::NewExpression(new) => self.construct_ready(new, locals, true),
             Expression::ParenthesizedExpression(expr) => self.expression(&expr.expression, locals),
             Expression::ArrayExpression(array) => {
                 let mut ready = 0;
@@ -352,6 +524,17 @@ fn simple_params(params: &FormalParameters<'_>) -> Option<Vec<SymbolId>> {
             id.symbol_id.get()
         })
         .collect()
+}
+
+/// A BigInt literal, which a conversion to a number throws on.
+fn is_bigint(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::BigIntLiteral(_) => true,
+        Expression::UnaryExpression(unary) => {
+            matches!(unary.argument, Expression::BigIntLiteral(_))
+        }
+        _ => false,
+    }
 }
 
 /// A literal with no interior, including a negated number.
@@ -516,6 +699,70 @@ mod tests {
             "const result = Object.freeze({}, extra);",
             "const result = Object.seal({});",
             "function make(x) { return Object.freeze({ x: other() }); } const result = make(1);",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+    }
+
+    #[test]
+    fn global_functions_that_only_compute_a_value_are_proven() {
+        for source in [
+            "export const cache = new Map();",
+            "export const seen = new Set(['a', 'b']);",
+            "export const table = new Map([['a', 1], ['b', lookup]]);",
+            "export const refs = new WeakMap();",
+            "export const nothing = new Set(null);",
+            "export const MAX = Math.max(1, 2, Number.MAX_SAFE_INTEGER);",
+            "export const HALF = Math.PI / 2 ? Math.round(0.5) : 0;",
+            "const LIMIT = 10; export const limit = Math.min(LIMIT, 5);",
+            "export const count = parseInt('12', 10);",
+            "export const label = String(42);",
+            "function make(x) { return Boolean(x); } export const on = make({});",
+            "export const list = Array.of(1, 2);",
+            "export const same = Object.is(NaN, NaN);",
+            "export const at = Date.now();",
+            "export const error = new Error('broken');",
+            "export const when = new Date('2024-01-01');",
+            "function clamp(x) { return Math.min(Math.max(x === null ? 0 : 1, 0), 1); } export const result = clamp(1);",
+            "const make = (x) => ({ x, list: Array.isArray(x), at: new Map() }); export const result = make(1);",
+            "const make = () => ({ big: Number.isFinite(1n), none: undefined }); export const result = make();",
+        ] {
+            assert!(init(source).is_empty(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_conversion_that_could_run_code_or_throw_stays_in_initialisation() {
+        for source in [
+            // `valueOf` and `toString` of an object, and of a parameter that may be one.
+            "export const result = Math.max({ valueOf() { return 1; } });",
+            "export const result = String({});",
+            "function make(x) { return Math.abs(x); } export const result = make(1);",
+            "function make(x) { return String(x); } export const result = make(1);",
+            // Converting a BigInt, or a symbol, to a number throws.
+            "export const result = Math.abs(1n);",
+            "const BIG = 1n; export const result = Math.abs(BIG);",
+            "export const result = isNaN(-1n);",
+            "export const result = Math.abs(Symbol.for('x'));",
+            "export const result = new Date(1n);",
+            // Entries a weak collection throws on, and entries nothing wrote out.
+            "export const result = new WeakSet([1]);",
+            "export const result = new WeakMap([[1, 2]]);",
+            "export const result = new Map(entries);",
+            "export const result = new Map(['ab']);",
+            "export const result = new Set(items);",
+            // Left out on purpose: each throws on some literal.
+            "export const result = decodeURI('%');",
+            "export const result = String.fromCodePoint(-1);",
+            "export const result = new Array(-1);",
+            // Methods that mutate, or read through a proxy.
+            "export const result = Object.keys({});",
+            "export const result = Object.assign({}, {});",
+            "export const result = JSON.stringify({});",
+            // A binding that only looks like the global.
+            "const Math = { max: () => sideEffect() }; export const result = Math.max(1);",
+            "import { Map } from './map'; export const result = new Map();",
+            "export const result = Math.max(...[1, 2]);",
         ] {
             assert!(init(source).contains(&"result".to_string()), "{source}");
         }
