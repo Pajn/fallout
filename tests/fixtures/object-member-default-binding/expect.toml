@@ -1,0 +1,18 @@
+# `export default utils` exports the object `utils` holds, as
+# `export { utils as default }` would, so the default import is read by property.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/PricePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PricePage.tsx)",
+    "Decl(src/pages/PricePage.tsx, PricePage)",
+    "Member(src/lib/utils.ts, default.formatPrice)",
+    "Member(src/lib/utils.ts, utils.formatPrice)",
+    "Decl(src/lib/utils.ts, formatPrice)",
+]

@@ -133,6 +133,14 @@ pub(crate) fn writes_object(
     let Some(object) = object else {
         return true;
     };
+    // `export default utils` hands the object to its importers, whose own reads
+    // and writes are theirs to account for, as an `export { }` list does.
+    if matches!(
+        nodes.parent_kind(node_id),
+        AstKind::ExportDefaultDeclaration(_)
+    ) {
+        return false;
+    }
     !member_call(nodes, node_id).is_some_and(|member| object.callable.contains(&member))
 }
 

@@ -31,6 +31,9 @@ pub(crate) struct Objects {
     list: Vec<Object>,
     /// The binding of each object that has one, for the readers in this file.
     pub by_symbol: AHashMap<SymbolId, ObjectRef>,
+    /// `export default utils`, as the default export's declaration paired with the
+    /// object's. The default export holds the same object, and has its members.
+    defaults: Vec<(DeclId, DeclId)>,
 }
 
 /// An object declaration as a reader in its own file sees it.
@@ -110,6 +113,31 @@ pub(crate) fn find<'a>(
             members,
         });
     }
+
+    // `export default utils` exports the object `utils` holds, as
+    // `export { utils as default }` does.
+    for (index, statement) in program.body.iter().enumerate() {
+        let Statement::ExportDefaultDeclaration(export) = statement else {
+            continue;
+        };
+        let Some(Expression::Identifier(identifier)) = export.declaration.as_expression() else {
+            continue;
+        };
+        let Some(object) = identifier
+            .reference_id
+            .get()
+            .and_then(|id| ctx.semantic.scoping().get_reference(id).symbol_id())
+            .and_then(|symbol| objects.by_symbol.get(&symbol))
+        else {
+            continue;
+        };
+        let default = drafts
+            .iter()
+            .position(|draft| draft.statement == index && draft.name == "default");
+        if let Some(default) = default {
+            objects.defaults.push((default as DeclId, object.decl));
+        }
+    }
     objects
 }
 
@@ -128,6 +156,7 @@ pub(crate) fn attach(
     let Objects {
         mut list,
         by_symbol,
+        defaults,
     } = objects;
     if list.is_empty() {
         return;
@@ -184,6 +213,25 @@ pub(crate) fn attach(
             decls[decl as usize].interior = object.interior;
             decls[decl as usize].members = members.clone();
         }
+    }
+
+    // Each member of the default export is the object's member of the same name,
+    // which carries what that member depends on. The statement has no literal of its
+    // own, so an edit to it reaches every member.
+    for (default, object) in defaults {
+        let members = decls[object as usize]
+            .members
+            .iter()
+            .map(|member| Member {
+                name: member.name.clone(),
+                span: Span::default(),
+                refs: Vec::new(),
+                member_refs: vec![(object, member.name.clone())],
+                imports: Vec::new(),
+                receiver: false,
+            })
+            .collect();
+        decls[default as usize].members = members;
     }
 }
 
@@ -260,10 +308,11 @@ fn object_literal<'s, 'a>(expression: &'s Expression<'a>) -> Option<&'s ObjectEx
     }
 }
 
-/// Every reference to the binding reads one property and writes nothing, or names
-/// it in an `export { }` list. Any other use — passing it, spreading it, assigning
-/// through it, reading it inside its own literal — lets code this analysis does not
-/// see decide what the properties hold.
+/// Every reference to the binding reads one property and writes nothing, or exports
+/// it: in an `export { }` list, or as `export default utils`, which exports the same
+/// object. Any other use — passing it, spreading it, assigning through it, reading
+/// it inside its own literal — lets code this analysis does not see decide what the
+/// properties hold.
 fn only_read_for_members(ctx: &Ctx<'_>, symbol: SymbolId, statement: Span) -> bool {
     let scoping = ctx.semantic.scoping();
     let nodes = ctx.semantic.nodes();
@@ -274,8 +323,10 @@ fn only_read_for_members(ctx: &Ctx<'_>, symbol: SymbolId, statement: Span) -> bo
         if reference.is_write() || statement.contains(at.start) {
             return false;
         }
-        matches!(nodes.parent_kind(node_id), AstKind::ExportSpecifier(_))
-            || unwritten_member_read(nodes, node_id).is_some()
+        matches!(
+            nodes.parent_kind(node_id),
+            AstKind::ExportSpecifier(_) | AstKind::ExportDefaultDeclaration(_)
+        ) || unwritten_member_read(nodes, node_id).is_some()
     })
 }
 
@@ -642,7 +693,6 @@ mod tests {
             "const utils = { a: 1 }; delete utils.a;",
             "const utils = { a: 1 }; Object.assign(utils, {});",
             "const utils = { a: 1 }; const alias = utils;",
-            "const utils = { a: 1 }; export default utils;",
             "const utils = { a: 1 }; utils['a'];",
             "const utils = { a: 1 }; const { a } = utils;",
             "const utils = { a: () => utils.b, b: 1 };",
@@ -671,6 +721,42 @@ mod tests {
         ] {
             assert_eq!(members(source), [("a".to_string(), vec![])], "{source}");
         }
+    }
+
+    #[test]
+    fn a_default_export_of_the_binding_has_the_objects_members() {
+        for source in [
+            "const utils = { a: 1, b: 2 }; export default utils;",
+            "const utils = { a: 1, b: 2 }; export { utils as default };",
+        ] {
+            let module = module(source);
+            let utils = module.decl_named("utils").unwrap();
+            assert_eq!(module.decls[utils as usize].members.len(), 2, "{source}");
+        }
+
+        let source = "const utils = { a: 1, b: 2 }; export default utils;
+            export const page = () => utils.a;";
+        let module = module(source);
+        let utils = module.decl_named("utils").unwrap();
+        let default = module.decl_named("default").unwrap() as usize;
+        let reads: Vec<_> = module.decls[default]
+            .members
+            .iter()
+            .map(|member| member.member_refs.clone())
+            .collect();
+        assert_eq!(
+            reads,
+            [
+                vec![(utils, "a".to_string())],
+                vec![(utils, "b".to_string())]
+            ]
+        );
+        // Exporting the object is not a write a reader in the file has to reach.
+        let page = module.decl_named("page").unwrap() as usize;
+        assert!(module.decls[page].refs.is_empty());
+
+        // A default export of anything but the bare binding is a use of it.
+        assert!(members("const utils = { a: 1 }; export default (utils);").is_empty());
     }
 
     #[test]
