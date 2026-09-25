@@ -9,23 +9,30 @@ use oxc_semantic::{AstNodes, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
 
 use super::decls::{DeclDraft, ImportBinding, RequireCall, source_id};
+use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
 use super::{Decl, DeclId, ImportRef, ImportTarget, SourceId, Span};
+
+/// The edges the shared-state rule added, by the declaration each was added to.
+pub(crate) type SharedEdges = AHashMap<DeclId, Vec<DeclId>>;
 
 /// Fills in each declaration's references, and returns the import statement spans
 /// paired with the declarations that use the bindings those statements introduce.
 ///
 /// A read of one property of an object in `objects` is a reference to that
-/// property rather than to the declaration. Such an object is only ever read for
-/// its properties, and none of them can reach it through `this`, so a call on one
-/// of them does not count as a write to it either.
+/// property rather than to the declaration. See [`writes_object`] for when a use
+/// of one counts as a write.
+///
+/// Also returns the edges the shared-state rule added, by the declaration they
+/// were added to, since those belong to every property of an object declaration
+/// whatever each property names.
 pub(crate) fn link(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
     imports: &[ImportBinding],
-    objects: &AHashMap<SymbolId, DeclId>,
+    objects: &AHashMap<SymbolId, ObjectRef>,
     decls: &mut [Decl],
-) -> Vec<(Span, Vec<DeclId>)> {
+) -> (Vec<(Span, Vec<DeclId>)>, SharedEdges) {
     let scoping = ctx.semantic.scoping();
     let root = scoping.root_scope_id();
 
@@ -70,7 +77,7 @@ pub(crate) fn link(
                 continue;
             };
 
-            let object = objects.get(&symbol_id).copied();
+            let object = objects.get(&symbol_id);
             let member = object.and_then(|_| unwritten_member_read(ctx.semantic.nodes(), node_id));
             for &user in users {
                 if let Some(target) = target_decl {
@@ -93,18 +100,59 @@ pub(crate) fn link(
                     push_unique(import_users.entry(binding.span).or_default(), user);
                 }
                 push_unique(users_of.entry(symbol_id).or_default(), user);
-                if object.is_none() && classify(ctx.semantic.nodes(), node_id) == Use::Mutate {
+                if writes_object(ctx.semantic.nodes(), node_id, object) {
                     push_unique(mutators_of.entry(symbol_id).or_default(), user);
                 }
             }
         }
     }
 
-    apply_shared_state(drafts, &decl_by_name, &users_of, &mutators_of, ctx, decls);
+    let shared = apply_shared_state(drafts, &decl_by_name, &users_of, &mutators_of, ctx, decls);
 
     let mut spans: Vec<(Span, Vec<DeclId>)> = import_users.into_iter().collect();
     spans.sort_by_key(|(span, _)| *span);
-    spans
+    (spans, shared)
+}
+
+/// Whether a reference could change what its binding holds, for the shared-state
+/// rule.
+///
+/// For an object read only for its members, a call on one of them, `utils.fn()`,
+/// leaves the object as it was where the member is known not to reach the object
+/// through `this`. Anything else the whole-value rule counts as a write still is
+/// one: handing a member to other code, `wipe(store.items)`, can change what it
+/// holds.
+pub(crate) fn writes_object(
+    nodes: &AstNodes<'_>,
+    node_id: NodeId,
+    object: Option<&ObjectRef>,
+) -> bool {
+    if classify(nodes, node_id) != Use::Mutate {
+        return false;
+    }
+    let Some(object) = object else {
+        return true;
+    };
+    !member_call(nodes, node_id).is_some_and(|member| object.callable.contains(&member))
+}
+
+/// The member a reference is the object of a direct call on: `utils.fn()`, and
+/// `(utils.fn)()`, which binds `this` the same way.
+fn member_call(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
+    let (inner, span) = unwrapped(nodes, node_id);
+    let AstKind::StaticMemberExpression(member) = nodes.parent_kind(inner) else {
+        return None;
+    };
+    if member.object.span() != span {
+        return None;
+    }
+    let (outer, outer_span) = unwrapped(nodes, nodes.parent_id(inner));
+    match nodes.parent_kind(outer) {
+        AstKind::CallExpression(call) if call.callee.span() == outer_span => {
+            Some(member.property.name.to_string())
+        }
+        _ => None,
+    }
 }
 
 /// A declaration that could change what a shared module-scope binding holds is
@@ -121,8 +169,9 @@ fn apply_shared_state(
     mutators_of: &AHashMap<SymbolId, Vec<DeclId>>,
     ctx: &Ctx<'_>,
     decls: &mut [Decl],
-) {
+) -> SharedEdges {
     let scoping = ctx.semantic.scoping();
+    let mut added = SharedEdges::default();
 
     for (symbol_id, users) in users_of {
         if users.len() < 2 {
@@ -147,10 +196,12 @@ fn apply_shared_state(
             for &mutator in mutators {
                 if user != mutator {
                     push_unique(&mut decls[user as usize].refs, mutator);
+                    push_unique(added.entry(user).or_default(), mutator);
                 }
             }
         }
     }
+    added
 }
 
 /// A namespace read for one of its exports depends on that export alone, and an

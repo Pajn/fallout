@@ -21,7 +21,7 @@ use oxc_span::GetSpan;
 use super::cjs;
 use super::decls::{DeclDraft, ImportBinding};
 use super::parse::{Ctx, is_require, span_of};
-use super::refs::{Use, classify, narrowed, unwritten_member_read};
+use super::refs::{SharedEdges, narrowed, unwritten_member_read, writes_object};
 use super::{Decl, DeclId, ImportRef, Member, Span};
 
 /// The declarations whose properties can be read apart, found before any reference
@@ -30,7 +30,15 @@ use super::{Decl, DeclId, ImportRef, Member, Span};
 pub(crate) struct Objects {
     list: Vec<Object>,
     /// The binding of each object that has one, for the readers in this file.
-    pub by_symbol: AHashMap<SymbolId, DeclId>,
+    pub by_symbol: AHashMap<SymbolId, ObjectRef>,
+}
+
+/// An object declaration as a reader in its own file sees it.
+pub(crate) struct ObjectRef {
+    pub decl: DeclId,
+    /// The members a call through the object, `utils.fn()`, cannot reach the
+    /// object from: calling one of them leaves every other property as it was.
+    pub callable: Vec<String>,
 }
 
 struct Object {
@@ -80,7 +88,18 @@ pub(crate) fn find<'a>(
             continue;
         };
         if let Some(symbol) = symbol {
-            objects.by_symbol.insert(symbol, decls[0]);
+            let callable = members
+                .iter()
+                .filter(|member| !member.receiver)
+                .map(|member| member.name.clone())
+                .collect();
+            objects.by_symbol.insert(
+                symbol,
+                ObjectRef {
+                    decl: decls[0],
+                    callable,
+                },
+            );
         }
         objects.list.push(Object {
             decls,
@@ -103,6 +122,7 @@ pub(crate) fn attach(
     drafts: &[DeclDraft],
     imports: &[ImportBinding],
     objects: Objects,
+    shared: &SharedEdges,
     decls: &mut [Decl],
 ) {
     let Objects {
@@ -119,14 +139,18 @@ pub(crate) fn attach(
         let mut members = object.members;
         let first = &decls[object.decls[0] as usize];
         // What the declaration depends on beyond its properties' values — a type
-        // annotation, the shared-state rule — is not any one property's to drop.
+        // annotation — is not any one property's to drop. Nor is an edge of the
+        // shared-state rule, even where a property names its target: that
+        // property is not the one reading what the target writes.
+        let shared = shared.get(&object.decls[0]);
         let extra_refs: Vec<DeclId> = first
             .refs
             .iter()
             .copied()
             .filter(|target| {
                 !object.decls.contains(target)
-                    && !members.iter().any(|member| member.refs.contains(target))
+                    && (shared.is_some_and(|shared| shared.contains(target))
+                        || !members.iter().any(|member| member.refs.contains(target)))
             })
             .collect();
         let extra_members: Vec<(DeclId, String)> = first
@@ -278,7 +302,8 @@ fn members(ctx: &Ctx<'_>, object: &ObjectExpression<'_>) -> Option<Vec<Member>> 
         if members.iter().any(|member| member.name == name) {
             return None;
         }
-        if reaches_outside(&property.value) || calls_with_receiver(ctx, &property.value) {
+        let outside = reaches_outside(&property.value);
+        if outside.loads {
             return None;
         }
         members.push(Member {
@@ -287,79 +312,135 @@ fn members(ctx: &Ctx<'_>, object: &ObjectExpression<'_>) -> Option<Vec<Member>> 
             refs: Vec::new(),
             member_refs: Vec::new(),
             imports: Vec::new(),
+            receiver: outside.receiver || may_read_receiver(ctx, &property.value),
         });
     }
     Some(members)
 }
 
-/// Whether a value depends on something its references do not show: the object
-/// itself through `this` or `super`, or a module loaded where it is written, which
-/// is attributed to the statement rather than to a reference.
-fn reaches_outside(value: &Expression<'_>) -> bool {
+/// What a value depends on that its references do not show.
+fn reaches_outside(value: &Expression<'_>) -> Outside {
     let mut finder = Outside::default();
     finder.visit_expression(value);
-    finder.found
+    finder
 }
 
 #[derive(Default)]
 struct Outside {
-    found: bool,
+    /// The object itself, through `this` or `super`.
+    receiver: bool,
+    /// A module loaded where it is written, which is attributed to the statement
+    /// rather than to a reference, so no one property could own it.
+    loads: bool,
 }
 
 impl<'a> Visit<'a> for Outside {
     fn visit_this_expression(&mut self, _: &ThisExpression) {
-        self.found = true;
+        self.receiver = true;
     }
 
     fn visit_super(&mut self, _: &Super) {
-        self.found = true;
+        self.receiver = true;
     }
 
     fn visit_import_expression(&mut self, _: &ImportExpression<'a>) {
-        self.found = true;
+        self.loads = true;
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if is_require(call) {
-            self.found = true;
+            self.loads = true;
         }
         walk::walk_call_expression(self, call);
     }
 }
 
-/// A local function placed in the object by name, which reads the object as `this`
-/// when called as `utils.fn()`. A function imported from elsewhere is not looked
-/// into; like a helper that mutates itself, that is the assumption bundlers make.
-fn calls_with_receiver(ctx: &Ctx<'_>, value: &Expression<'_>) -> bool {
-    let Expression::Identifier(identifier) = value else {
-        return false;
-    };
+/// Whether a value could be a function that reads the object as `this` when it
+/// is called through it, `utils.fn()`.
+///
+/// Only a value known to be something else is ruled out: a literal, an arrow,
+/// which has no `this` of its own, a class, which cannot be called, and a local
+/// function that never reads `this`. An imported function, a call's result or a
+/// property read off something else could be any function at all.
+fn may_read_receiver(ctx: &Ctx<'_>, value: &Expression<'_>) -> bool {
+    match value.get_inner_expression() {
+        Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::TemplateLiteral(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::ObjectExpression(_)
+        | Expression::ArrayExpression(_)
+        | Expression::ClassExpression(_)
+        // `this` inside one was found by `reaches_outside`.
+        | Expression::FunctionExpression(_) => false,
+        Expression::Identifier(identifier) => identifier_may_read_receiver(ctx, identifier),
+        _ => true,
+    }
+}
+
+fn identifier_may_read_receiver(ctx: &Ctx<'_>, identifier: &IdentifierReference<'_>) -> bool {
     let scoping = ctx.semantic.scoping();
     let Some(symbol) = identifier
         .reference_id
         .get()
         .and_then(|id| scoping.get_reference(id).symbol_id())
     else {
-        return false;
+        return true;
     };
+    // A binding something reassigns could hold any function by the time of a call.
+    if scoping
+        .get_resolved_reference_ids(symbol)
+        .iter()
+        .any(|id| scoping.get_reference(*id).is_write())
+    {
+        return true;
+    }
     let nodes = ctx.semantic.nodes();
-    let declaration = scoping.symbol_declaration(symbol);
-    let function = match nodes.kind(declaration) {
-        AstKind::Function(function) => Some(function),
-        AstKind::VariableDeclarator(declarator) => match &declarator.init {
-            Some(Expression::FunctionExpression(function)) => Some(function.as_ref()),
-            _ => None,
-        },
-        _ => None,
-    };
-    function.is_some_and(|function| {
-        let mut finder = Outside::default();
-        finder.visit_formal_parameters(&function.params);
-        if let Some(body) = &function.body {
-            finder.visit_function_body(body);
+    let function = match nodes.kind(scoping.symbol_declaration(symbol)) {
+        AstKind::Function(function) => function,
+        AstKind::Class(_) => return false,
+        AstKind::VariableDeclarator(declarator) => {
+            match declarator
+                .init
+                .as_ref()
+                .map(Expression::get_inner_expression)
+            {
+                Some(Expression::FunctionExpression(function)) => function.as_ref(),
+                Some(init) => return may_read_receiver_literal(init),
+                None => return true,
+            }
         }
-        finder.found
-    })
+        // An import, a parameter, a pattern: nothing here says what it holds.
+        _ => return true,
+    };
+    let mut finder = Outside::default();
+    finder.visit_formal_parameters(&function.params);
+    if let Some(body) = &function.body {
+        finder.visit_function_body(body);
+    }
+    finder.receiver
+}
+
+/// Whether a local `const`'s initialiser could be a function reading `this`.
+fn may_read_receiver_literal(init: &Expression<'_>) -> bool {
+    !matches!(
+        init,
+        Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::StringLiteral(_)
+            | Expression::RegExpLiteral(_)
+            | Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::ObjectExpression(_)
+            | Expression::ArrayExpression(_)
+            | Expression::ClassExpression(_)
+    )
 }
 
 /// Each member's references, read the way [`super::refs::link`] reads a
@@ -372,7 +453,7 @@ fn link_members(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
     imports: &[ImportBinding],
-    by_symbol: &AHashMap<SymbolId, DeclId>,
+    by_symbol: &AHashMap<SymbolId, ObjectRef>,
     list: &mut [Object],
 ) {
     let scoping = ctx.semantic.scoping();
@@ -399,7 +480,7 @@ fn link_members(
         if target_decl.is_none() && target_import.is_none() {
             continue;
         }
-        let object = by_symbol.get(&symbol_id).copied();
+        let object = by_symbol.get(&symbol_id);
         // Which properties of each object read and write this binding.
         let mut readers: Vec<(usize, usize)> = Vec::new();
         let mut writers: Vec<(usize, usize)> = Vec::new();
@@ -421,7 +502,7 @@ fn link_members(
                 {
                     match object.zip(unwritten_member_read(nodes, node_id)) {
                         Some((object, read)) => {
-                            push_unique(&mut member.member_refs, (object, read))
+                            push_unique(&mut member.member_refs, (object.decl, read))
                         }
                         None => push_unique(&mut member.refs, target),
                     }
@@ -433,17 +514,15 @@ fn link_members(
                     );
                 }
                 readers.push((index, position));
-                if classify(nodes, node_id) == Use::Mutate {
+                if writes_object(nodes, node_id, object) {
                     writers.push((index, position));
                 }
             }
         }
 
-        // An object read only for its members cannot be changed through them, and
-        // a primitive `const` cannot be changed at all. An import is its own
+        // A primitive `const` cannot be changed at all. An import is its own
         // module's business, as it is for the shared-state rule.
-        let shared =
-            target_decl.is_some_and(|decl| !drafts[decl as usize].immutable) && object.is_none();
+        let shared = target_decl.is_some_and(|decl| !drafts[decl as usize].immutable);
         if !shared {
             continue;
         }
@@ -567,9 +646,6 @@ mod tests {
             "const utils = { set a(v) {} };",
             "const utils = { __proto__: null, a: 1 };",
             "const utils = { a: 1, a: 2 };",
-            "const utils = { a() { return this.b; }, b: 1 };",
-            "function a() { return this.b; } const utils = { a, b: 1 };",
-            "const a = function () { return this.b; }; const utils = { a, b: 1 };",
             "const utils = { a: () => import('./x') };",
             "const utils = { a: () => require('./x') };",
             // Not an object literal at all.
@@ -670,6 +746,88 @@ mod tests {
                 ("fixed".to_string(), vec![]),
             ]
         );
+    }
+
+    /// Which members of `utils` may read it as `this` when called through it.
+    fn receivers(source: &str) -> Vec<String> {
+        let module = module(source);
+        let utils = module.decl_named("utils").expect("utils");
+        module.decls[utils as usize]
+            .members
+            .iter()
+            .filter(|member| member.receiver)
+            .map(|member| member.name.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_member_that_may_read_this_is_marked_and_the_rest_are_not() {
+        let source = "import { imported } from './helpers';
+            function local() { return 1; }
+            function reads() { return this.b; }
+            const expression = function () { return this.b; };
+            const arrow = () => 1;
+            let later = () => 1; later = other;
+            const made = make();
+            export const utils = {
+                imported, local, reads, expression, arrow, later, made,
+                method() { return this.b; },
+                inline: () => 1,
+                read: helpers.read,
+                b: 1,
+            };";
+        assert_eq!(
+            receivers(source),
+            [
+                "imported",
+                "reads",
+                "expression",
+                "later",
+                "made",
+                "method",
+                "read"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_shared_state_edge_belongs_to_every_member_even_one_that_names_it() {
+        // `inc` names `bump`, but it is `read` that sees what `bump` writes.
+        let source = "let count = 0; function bump() { count++; }
+            export const counter = { read: () => count, inc: bump };";
+        let module = module(source);
+        let counter = module.decl_named("counter").unwrap() as usize;
+        let bump = module.decl_named("bump").unwrap();
+        for member in &module.decls[counter].members {
+            assert!(member.refs.contains(&bump), "{}", member.name);
+        }
+    }
+
+    #[test]
+    fn a_member_handed_to_other_code_is_a_write_but_a_call_on_one_is_not() {
+        let source = "const store = { items: [] as number[], size: () => 1, run: helpers.run };
+            export const clear = () => wipe(store.items);
+            export const size = () => store.items.length;
+            export const call = () => store.size();
+            export const other = () => store.size();
+            export const unknown = () => store.run();
+            export const reader = () => store.items;";
+        let module = module(source);
+        let refs = |name: &str| -> Vec<String> {
+            let decl = module.decl_named(name).unwrap() as usize;
+            module.decls[decl]
+                .refs
+                .iter()
+                .map(|&id| module.decls[id as usize].name.clone())
+                .collect()
+        };
+        // Handing `store.items` to `wipe` can change it, as the whole-value rule
+        // has always said.
+        assert!(refs("size").contains(&"clear".to_string()));
+        // Calling a member that cannot reach the object changes nothing.
+        assert!(!refs("call").contains(&"other".to_string()));
+        // One that may read the object as `this` may write it too.
+        assert!(refs("reader").contains(&"unknown".to_string()));
     }
 
     #[test]

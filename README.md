@@ -124,16 +124,20 @@ alone, with or without a base revision.
 This only applies while nothing can change what a property holds. In the file that
 declares it, the object must be used only by reading a property or by `export { }`.
 A property must be a plain value or method under a fixed key. A spread, a computed
-key, a getter or setter, `__proto__`, a duplicate key, `this` or `super` in a value, a
-`require` or `import()` inside it, and a local function that reads `this` all keep the
-object whole. So does a write through it, passing it on, reading `utils[key]`,
-destructuring it, or re-exporting it as a default. A consumer that writes through a
-property, uses the object as a whole, or re-exports a binding destructured from it
-depends on every property. Two properties that share a binding of their file, where
-one of them could write it, still reach each other. Calling a property does not count
-as a write to the object, since nothing in it can reach the object through `this`. A
-function imported from elsewhere and placed in the object is assumed not to either,
-which is the same assumption bundlers make.
+key, a getter or setter, `__proto__`, a duplicate key, and a `require` or `import()`
+inside it all keep the object whole. So does a write through it, passing it on,
+reading `utils[key]`, destructuring it, or re-exporting it as a default. A consumer
+that writes through a property, uses the object as a whole, or re-exports a binding
+destructured from it depends on every property. Two properties that share a binding
+of their file, where one of them could write it, still reach each other, and so do
+two declarations of the file where one hands a property to other code.
+
+Calling a property as `utils.fn()` hands `fn` the object as `this`, through which it
+can reach every other property. A property whose value may use it — a method or a
+local function that reads `this`, a function imported from elsewhere, a call's
+result, anything not visibly a literal, an arrow, a class or a local function that
+never reads `this` — depends on the whole object. Calling any other property reads
+that property and leaves the object as it was.
 
 ### Pure calls
 

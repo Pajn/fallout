@@ -1,0 +1,16 @@
+# `readPrice` comes from another module, and called as `utils.readPrice()` it reads
+# `utils` as `this` and calls `formatPrice` through it. Nothing here can see into
+# it, so reading that member depends on the whole object, and the edit to
+# `formatPrice` reaches the page.
+[[anchor]]
+path = "src/pages/PricePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PricePage.tsx)",
+    "Decl(src/pages/PricePage.tsx, PricePage)",
+    "Member(src/lib/utils.ts, utils.readPrice)",
+    "Decl(src/lib/utils.ts, utils)",
+    "Decl(src/lib/utils.ts, formatPrice)",
+]

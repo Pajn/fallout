@@ -64,6 +64,11 @@ pub struct Member {
     pub member_refs: Vec<(DeclId, String)>,
     /// Imported bindings the property's value references.
     pub imports: Vec<ImportRef>,
+    /// Whether calling the property through the object, `utils.fn()`, may read the
+    /// object as `this`, which reaches every other property. True for any value not
+    /// known to be something else: an imported function, a local one that reads
+    /// `this`, a call's result.
+    pub receiver: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

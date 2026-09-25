@@ -318,14 +318,22 @@ impl Graph {
         };
         let member = self.name(member);
         match member_of(module, decl, &member) {
-            Some(entry) => self.reference_edges(
-                file,
-                &analysed,
-                module,
-                &entry.refs,
-                &entry.member_refs,
-                &entry.imports,
-            ),
+            Some(entry) => {
+                let mut edges = self.reference_edges(
+                    file,
+                    &analysed,
+                    module,
+                    &entry.refs,
+                    &entry.member_refs,
+                    &entry.imports,
+                );
+                // Called through the object, it may read any other property as
+                // `this`.
+                if entry.receiver {
+                    edges.push(Node::Decl(file, decl));
+                }
+                edges
+            }
             // Nothing hands out a member node that is not there, but a stale one
             // costs precision rather than an answer.
             None => vec![Node::Decl(file, decl)],
