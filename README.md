@@ -122,15 +122,16 @@ through `as const` or `satisfies`), an `export default { … }`, or a CommonJS
 alone, with or without a base revision.
 
 This only applies while nothing can change what a property holds. In the file that
-declares it, the object must be used only by reading a property or by `export { }`.
-A property must be a plain value or method under a fixed key. A spread, a computed
-key, a getter or setter, `__proto__`, a duplicate key, and a `require` or `import()`
-inside it all keep the object whole. So does a write through it, passing it on,
-reading `utils[key]`, destructuring it, or re-exporting it as a default. A consumer
-that writes through a property, uses the object as a whole, or re-exports a binding
-destructured from it depends on every property. Two properties that share a binding
-of their file, where one of them could write it, still reach each other, and so do
-two declarations of the file where one hands a property to other code.
+declares it, the object must be used only by reading a property or by `export { }`. A
+property must be a plain value or method under a fixed key. A spread, a computed key,
+a getter or setter, a `__proto__: value` that sets the prototype, a duplicate key, and
+a `require` or `import()` inside it all keep the object whole. So does a write through
+it, passing it on, reading `utils[key]`, destructuring it, or re-exporting it as a
+default. The shorthand `{ __proto__ }` is an ordinary property. A consumer that writes
+through a property, uses the object as a whole, or re-exports a binding destructured
+from it depends on every property. Two properties that share a binding of their file,
+where one of them could write it, still reach each other, and so do two declarations
+of the file where one hands a property to other code.
 
 Calling a property as `utils.fn()` hands `fn` the object as `this`, through which it
 can reach every other property. A property whose value may use it — a method or a

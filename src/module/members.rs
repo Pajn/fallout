@@ -403,6 +403,13 @@ fn identifier_may_read_receiver(ctx: &Ctx<'_>, identifier: &IdentifierReference<
     let function = match nodes.kind(scoping.symbol_declaration(symbol)) {
         AstKind::Function(function) => function,
         AstKind::Class(_) => return false,
+        // A pattern takes its value out of the initialiser, which says nothing
+        // about what that value is: `const { fn } = { fn() { return this.b; } }`.
+        AstKind::VariableDeclarator(declarator)
+            if !matches!(declarator.id, BindingPattern::BindingIdentifier(_)) =>
+        {
+            return true;
+        }
         AstKind::VariableDeclarator(declarator) => {
             match declarator
                 .init
@@ -769,8 +776,10 @@ mod tests {
             const arrow = () => 1;
             let later = () => 1; later = other;
             const made = make();
+            const { picked } = { picked() { return this.b; } };
+            const [first] = [function () { return this.b; }];
             export const utils = {
-                imported, local, reads, expression, arrow, later, made,
+                imported, local, reads, expression, arrow, later, made, picked, first,
                 method() { return this.b; },
                 inline: () => 1,
                 read: helpers.read,
@@ -784,6 +793,8 @@ mod tests {
                 "expression",
                 "later",
                 "made",
+                "picked",
+                "first",
                 "method",
                 "read"
             ]
