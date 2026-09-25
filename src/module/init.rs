@@ -12,6 +12,7 @@ use ahash::AHashMap;
 
 use super::cjs;
 use super::decls::{DeclDraft, ImportBinding};
+use super::local_pure::LocalPure;
 use super::parse::{Ctx, span_of};
 use super::{Decl, DeclId, ImportTarget};
 use crate::pure::PureList;
@@ -48,6 +49,7 @@ pub(crate) fn collect(
     pure: &PureList,
 ) -> Vec<DeclId> {
     let origins = origins(imports, sources);
+    let local = LocalPure::infer(ctx, program);
     let mut init: Vec<DeclId> = Vec::new();
 
     for (index, statement) in program.body.iter().enumerate() {
@@ -64,7 +66,7 @@ pub(crate) fn collect(
 
         // An initialiser that may have side effects runs at import time whether or
         // not anyone reads the binding.
-        if statement_has_impure_initialiser(statement, &origins, pure) {
+        if statement_has_impure_initialiser(statement, &origins, pure, &local) {
             for (id, draft) in drafts.iter().enumerate() {
                 if draft.statement == index {
                     push_unique(&mut init, id as DeclId);
@@ -122,11 +124,12 @@ fn statement_has_impure_initialiser(
     statement: &Statement<'_>,
     origins: &Origins<'_>,
     pure: &PureList,
+    local: &LocalPure<'_, '_>,
 ) -> bool {
     let declaration = match statement {
         Statement::ExportDeclaration(export) => Some(&export.declaration),
         Statement::ExportDefaultDeclaration(export) => {
-            return export.declaration.check_impurity(origins, pure);
+            return export.declaration.check_impurity(origins, pure, local);
         }
         // Only a statement that declares something reaches here, so an expression
         // statement is a CommonJS export: either the assignment that fills the table,
@@ -134,7 +137,7 @@ fn statement_has_impure_initialiser(
         // stores what it is handed without running any of it.
         Statement::ExpressionStatement(statement) => {
             return cjs::assigned_value(&statement.expression)
-                .is_some_and(|value| value.check_impurity(origins, pure));
+                .is_some_and(|value| value.check_impurity(origins, pure, local));
         }
         statement => statement.as_declaration(),
     };
@@ -154,31 +157,46 @@ fn statement_has_impure_initialiser(
             // decides whether this runs anything is the value alone.
             cjs::assigned_value(init)
                 .unwrap_or(init)
-                .check_impurity(origins, pure)
+                .check_impurity(origins, pure, local)
         })
 }
 
-pub(crate) trait ImpurityCheck<'a> {
-    fn check_impurity(&self, origins: &Origins<'_>, pure: &PureList) -> bool;
+trait ImpurityCheck<'a> {
+    fn check_impurity(
+        &self,
+        origins: &Origins<'_>,
+        pure: &PureList,
+        local: &LocalPure<'_, '_>,
+    ) -> bool;
 }
 
 impl<'a> ImpurityCheck<'a> for Expression<'a> {
-    fn check_impurity(&self, origins: &Origins<'_>, pure: &PureList) -> bool {
-        let mut detector = ImpureDetector::new(origins, pure);
+    fn check_impurity(
+        &self,
+        origins: &Origins<'_>,
+        pure: &PureList,
+        local: &LocalPure<'_, '_>,
+    ) -> bool {
+        let mut detector = ImpureDetector::new(origins, pure, local);
         detector.visit_expression(self);
         detector.impure
     }
 }
 
 impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
-    fn check_impurity(&self, origins: &Origins<'_>, pure: &PureList) -> bool {
+    fn check_impurity(
+        &self,
+        origins: &Origins<'_>,
+        pure: &PureList,
+        local: &LocalPure<'_, '_>,
+    ) -> bool {
         match self {
             // `export default function f() {}` binds without running anything.
             ExportDefaultDeclarationKind::FunctionDeclaration(_)
             | ExportDefaultDeclarationKind::ClassDeclaration(_)
             | ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => false,
             expression => {
-                let mut detector = ImpureDetector::new(origins, pure);
+                let mut detector = ImpureDetector::new(origins, pure, local);
                 if let Some(expression) = expression.as_expression() {
                     detector.visit_expression(expression);
                 }
@@ -188,16 +206,18 @@ impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
     }
 }
 
-struct ImpureDetector<'c, 'o> {
+struct ImpureDetector<'c, 'o, 'a> {
+    local: &'c LocalPure<'c, 'a>,
     impure: bool,
     origins: &'c Origins<'o>,
     pure: &'c PureList,
 }
 
-impl<'c, 'o> ImpureDetector<'c, 'o> {
-    fn new(origins: &'c Origins<'o>, pure: &'c PureList) -> Self {
+impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
+    fn new(origins: &'c Origins<'o>, pure: &'c PureList, local: &'c LocalPure<'c, 'a>) -> Self {
         Self {
             impure: false,
+            local,
             origins,
             pure,
         }
@@ -227,9 +247,9 @@ impl<'c, 'o> ImpureDetector<'c, 'o> {
     }
 }
 
-impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o> {
+impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) {
+        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.local.call(expr) {
             self.impure = true;
         }
         // A pure callee says nothing about its arguments, which still run.

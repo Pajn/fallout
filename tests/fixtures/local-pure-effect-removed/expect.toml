@@ -1,0 +1,10 @@
+# The unchanged call no longer has effects in the current graph. A base revision
+# must retain the effect removed from the helper body. Line ranges cannot recover
+# the earlier helper's behaviour.
+[[anchor]]
+path = "page.js"
+affected = true
+from = "base"
+
+[anchor.explain]
+base = ["File(page.js)", "ModuleInit(page.js)", "ModuleInit(helpers.js)"]

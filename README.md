@@ -116,13 +116,31 @@ A declaration whose initialiser runs something belongs to module initialisation,
 importing anything from its file reaches it. In React-shaped code that catches nearly
 every top-level declaration, because nearly every one of them is a call.
 
-Three things take a call back out of initialisation:
+Four things take a call back out of initialisation:
 
 - a `/* @__PURE__ */` annotation, the author of the call site saying it only computes
   a value;
 - React's own factories — `memo`, `forwardRef`, `createContext`, `lazy` — which are
   built in;
-- entries in the project's `fallout.toml`.
+- entries in the project's `fallout.toml`;
+- a proof for a small local function declaration.
+
+Local inference covers top-level function declarations whose binding is never
+reassigned or redeclared, with simple parameters and a single return. It accepts
+literals, parameter reads, plain array
+and object construction, conditionals, logical operators, strict equality, and
+calls to other proven helpers. For example, `function make(value) { return
+{ value }; }` makes `const item = make("item")` independent of unrelated exports.
+Consumers of `item` still depend on `make` and any helpers it calls.
+
+The proof also checks argument evaluation. Literal arguments and calls to proven
+helpers qualify; arbitrary variable arguments remain conservative. Captured value
+reads, property reads (which may invoke getters), coercing arithmetic, writes,
+unknown calls, recursion, defaults, destructuring, spread, async and generator
+functions, default-exported declarations, and function expressions and arrows keep
+the existing broad behaviour. No annotation or configuration is needed for an
+inferred helper. Use `--base` to detect an effect removed from a helper: line-only
+analysis sees its current body, not the previous side effect.
 
 ```toml
 # fallout.toml
@@ -144,7 +162,7 @@ An entry is written as the import source, `#`, and the path taken from the bindi
 that import introduces. The first segment is the name the target exports, with
 `default` and `*` for the two unnamed forms, so `React.memo` is `react#default.memo`.
 An entry is honoured only where the callee is reached from the import it names: a
-local function called `memo` is not React's, and keeps its call impure.
+local function called `memo` is not covered by React's entry.
 
 An entry is a claim about someone else's function. It says nothing about the
 arguments, which still run, and nothing about the exports of the file it sits in,

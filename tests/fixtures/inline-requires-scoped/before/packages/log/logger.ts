@@ -1,6 +1,7 @@
 const prefix = createPrefix()
 
 function createPrefix() {
+  console.log("initializing logger")
   return '[%s]'
 }
 

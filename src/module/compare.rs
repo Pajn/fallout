@@ -41,10 +41,9 @@ pub struct Comparison {
     /// module's directives, or an `export * from` went and took with it a set of
     /// names that cannot be listed without reading the module it named.
     pub whole_file: bool,
-    /// Something the base version did on evaluation is no longer done, or is done in
-    /// a different order: an import or a bare statement went, a private declaration
-    /// that may have run something went, or two statements swapped places. Nothing a
-    /// declaration *is* has changed, only when the module gets round to it.
+    /// Work reached during base-version evaluation changed, disappeared, or moved.
+    /// This includes an edited helper that used to have effects: its unchanged
+    /// caller may no longer be part of initialisation in the current graph.
     pub init_differs: bool,
 }
 
@@ -145,6 +144,7 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
     }
 
     let mut changed = Vec::new();
+    let mut changed_before = Vec::new();
     let mut init_differs = false;
     let mut furthest = 0;
 
@@ -168,6 +168,7 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
 
         if old_statements[index].node.content_ne(statement.node) {
             changed.push(statement.span);
+            changed_before.push((index, statement));
         }
     }
 
@@ -176,10 +177,11 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
     // work it no longer does when the module is evaluated.
     let removed: Vec<usize> = unmatched.into_values().flatten().collect();
 
-    // What the base version did on evaluation cannot be read off its syntax without
-    // guessing at which initialisers run something, so it is analysed the way any
-    // module is — but only when something went, which is not the common case.
-    let old_analysis = (!removed.is_empty())
+    // A changed helper can stop having effects while its top-level caller stays
+    // unchanged. The current graph then no longer connects that helper to module
+    // initialisation, so ask the base graph about changed statements as well as
+    // removed ones. Trivia-only edits still need no module analysis.
+    let old_analysis = (!removed.is_empty() || !changed_before.is_empty())
         .then(|| analyse_source(path, &before, reading))
         .flatten()
         .map(|(analysis, _)| analysis);
@@ -198,6 +200,30 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
 
     let mut whole_file = false;
     let mut lost_exports = Vec::new();
+    // A changed statement the current version still runs is reached through its own
+    // declaration. Only one that ran before and no longer does is work that went.
+    let mut new_analysis = None;
+    for &(index, statement) in &changed_before {
+        let Some(module) = old_module else {
+            // A formerly opaque module cannot prove which effects disappeared.
+            whole_file = true;
+            init_differs = true;
+            continue;
+        };
+        if !ran_on_evaluation(module, &old_statements[index]) {
+            continue;
+        }
+        let new_module = new_analysis.get_or_insert_with(|| {
+            analyse_source(path, &after, reading).map(|(analysis, _)| analysis)
+        });
+        let runs_now = match new_module {
+            Some(ModuleAnalysis::Fine(module)) => ran_on_evaluation(module, statement),
+            _ => true,
+        };
+        if !runs_now {
+            init_differs = true;
+        }
+    }
     for index in removed {
         let statement = &old_statements[index];
 
@@ -571,6 +597,41 @@ mod tests {
 
         let comparison = compared(before, after).expect("comparable");
         assert!(comparison.init_differs);
+        assert!(!comparison.whole_file);
+    }
+
+    #[test]
+    fn a_changed_helper_preserves_its_former_initialisation_effects() {
+        let before = "function make() { return register(); }\nconst value = make();\nexport const version = 1;\n";
+        let after =
+            "function make() { return 1; }\nconst value = make();\nexport const version = 1;\n";
+
+        let comparison = compared(before, after).expect("comparable");
+        assert_eq!(
+            changed(after, &comparison),
+            ["function make() { return 1; }"]
+        );
+        assert!(comparison.init_differs);
+        assert!(!comparison.whole_file);
+    }
+
+    #[test]
+    fn a_changed_initialiser_that_still_runs_is_reached_through_its_declaration() {
+        let before = "export const client = track(\"boot\");\n";
+        let after = "export const client = track(\"start\");\n";
+
+        let comparison = compared(before, after).expect("comparable");
+        assert!(!comparison.init_differs);
+        assert!(!comparison.whole_file);
+    }
+
+    #[test]
+    fn an_uncalled_helpers_body_is_not_a_former_initialisation_effect() {
+        let before = "function make() { return register(); }\nexport const version = 1;\n";
+        let after = "function make() { return 1; }\nexport const version = 1;\n";
+
+        let comparison = compared(before, after).expect("comparable");
+        assert!(!comparison.init_differs);
         assert!(!comparison.whole_file);
     }
 

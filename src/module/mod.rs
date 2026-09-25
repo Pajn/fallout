@@ -9,6 +9,7 @@ pub mod compare;
 pub mod decls;
 pub mod exports;
 pub mod init;
+mod local_pure;
 pub mod parse;
 pub mod refs;
 pub mod style;
