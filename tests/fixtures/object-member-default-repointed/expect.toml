@@ -1,0 +1,5 @@
+# Neither object changed, but the default export now names the other one. The
+# statement is part of every member read through it, so the page reaches the edit.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true

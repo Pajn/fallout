@@ -1,0 +1,5 @@
+# Destructuring takes `utils` as a whole before any property is read, so the page
+# depends on every property of it.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true

@@ -1,0 +1,20 @@
+# A reader in the object's own file reads one property too. `dateLabel` calls
+# `utils.formatDate`, and a call on a property of an object that cannot reach
+# itself through `this` does not count as a write shared with `priceLabel`.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/PricePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PricePage.tsx)",
+    "Decl(src/pages/PricePage.tsx, PricePage)",
+    "Export(src/lib/format.ts, priceLabel)",
+    "Decl(src/lib/format.ts, priceLabel)",
+    "Member(src/lib/format.ts, utils.formatPrice)",
+    "Decl(src/lib/format.ts, formatPrice)",
+]

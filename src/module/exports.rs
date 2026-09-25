@@ -133,10 +133,13 @@ fn reexported(imports: &[ImportBinding], local: &str) -> Option<ExportTarget> {
     let binding = imports.iter().find(|binding| binding.local == local)?;
     let source = binding.reference.source;
     Some(match &binding.reference.target {
-        ImportTarget::Named(name) => ExportTarget::Reexport {
-            source,
-            name: name.clone(),
-        },
+        // An import statement names whole exports; a member is only ever read later.
+        ImportTarget::Named(name) | ImportTarget::Member { export: name, .. } => {
+            ExportTarget::Reexport {
+                source,
+                name: name.clone(),
+            }
+        }
         ImportTarget::Namespace => ExportTarget::ReexportAll { source },
     })
 }

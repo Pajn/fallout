@@ -30,7 +30,7 @@ fn origins<'a>(imports: &'a [ImportBinding], sources: &'a [String]) -> Origins<'
             continue;
         };
         let exported = match &binding.reference.target {
-            ImportTarget::Named(name) => name.as_str(),
+            ImportTarget::Named(name) | ImportTarget::Member { export: name, .. } => name.as_str(),
             ImportTarget::Namespace => "*",
         };
         map.insert(binding.local.as_str(), (source.as_str(), exported));
@@ -75,10 +75,13 @@ pub(crate) fn collect(
         }
     }
 
-    // Initialisation reaches whatever those declarations reach.
+    // Initialisation reaches whatever those declarations reach, including an object
+    // one of them reads a property of.
     let mut queue: Vec<DeclId> = init.clone();
     while let Some(current) = queue.pop() {
-        for &next in &decls[current as usize].refs {
+        let entry = &decls[current as usize];
+        let objects = entry.member_refs.iter().map(|(object, _)| object);
+        for &next in entry.refs.iter().chain(objects) {
             if !init.contains(&next) {
                 init.push(next);
                 queue.push(next);

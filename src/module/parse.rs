@@ -12,7 +12,8 @@ use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use super::{
-    Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, init, refs, types,
+    Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, init, members, refs,
+    types,
 };
 
 /// Extensions we parse for further imports. Anything else that resolves — images,
@@ -231,14 +232,20 @@ fn build_fine(
             name: draft.name.clone(),
             span: draft.span,
             refs: Vec::new(),
+            member_refs: Vec::new(),
             imports: Vec::new(),
+            members: Vec::new(),
+            interior: Span::default(),
         })
         .collect();
 
-    let import_spans = refs::link(&ctx, &drafts, &imports, &mut decls);
+    let objects = members::find(&ctx, program, &drafts, cjs);
+    let (import_spans, shared) =
+        refs::link(&ctx, &drafts, &imports, &objects.by_symbol, &mut decls);
     let requires = decls::require_calls(program, sources)?;
     let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls);
     let init_dynamic = refs::attach_dynamic_imports(&ctx, &drafts, sources, &mut decls)?;
+    members::attach(&ctx, &drafts, &imports, objects, &shared, &mut decls);
     let init_decls = init::collect(&ctx, program, &drafts, &decls, &imports, sources, pure);
 
     // A `require` outside every declaration runs on evaluation, exactly like a bare

@@ -12,7 +12,8 @@ use ahash::{AHashMap, AHashSet};
 
 use crate::module::Reading;
 use crate::module::{
-    DeclId, ExportTarget, ImportTarget, LineTable, ModuleAnalysis, SourceId, is_source_file,
+    DeclId, ExportTarget, FineModule, ImportRef, ImportTarget, LineTable, Member, ModuleAnalysis,
+    SourceId, is_source_file,
 };
 use crate::resolve::{Resolver, SideEffects};
 
@@ -32,13 +33,22 @@ pub enum Node {
     File(FileId),
     Decl(FileId, DeclId),
     Export(FileId, NameId),
+    /// One property of a declaration bound to a plain object literal: `Member(f,
+    /// utils, formatDate)`. It depends on that property's value alone, where
+    /// `Decl(f, utils)` depends on every property. Readers in `f` and in the modules
+    /// importing the object reach the same node.
+    Member(FileId, DeclId, NameId),
     ModuleInit(FileId),
 }
 
 impl Node {
     pub fn file(&self) -> FileId {
         match self {
-            Node::File(f) | Node::Decl(f, _) | Node::Export(f, _) | Node::ModuleInit(f) => *f,
+            Node::File(f)
+            | Node::Decl(f, _)
+            | Node::Export(f, _)
+            | Node::Member(f, _, _)
+            | Node::ModuleInit(f) => *f,
         }
     }
 }
@@ -205,6 +215,7 @@ impl Graph {
             Node::File(file) => self.file_edges(file),
             Node::Decl(file, decl) => self.decl_edges(file, decl),
             Node::Export(file, name) => self.export_edges(file, name),
+            Node::Member(file, decl, member) => self.member_edges(file, decl, member),
             Node::ModuleInit(file) => self.init_edges(file),
         }
     }
@@ -250,20 +261,111 @@ impl Graph {
             return Vec::new();
         };
 
+        self.reference_edges(
+            file,
+            &analysed,
+            module,
+            &entry.refs,
+            &entry.member_refs,
+            &entry.imports,
+        )
+    }
+
+    /// The nodes a declaration's references, or a member's, point at.
+    fn reference_edges(
+        &self,
+        file: FileId,
+        analysed: &Analysed,
+        module: &FineModule,
+        refs: &[DeclId],
+        member_refs: &[(DeclId, String)],
+        imports: &[ImportRef],
+    ) -> Vec<Node> {
         let mut edges = Vec::new();
-        for &target in &entry.refs {
+        for &target in refs {
             edges.push(Node::Decl(file, target));
         }
-        for import in &entry.imports {
-            let Some(target) = self.target_of(&analysed, import.source) else {
+        for (target, member) in member_refs {
+            edges.push(self.local_member(file, module, *target, member));
+        }
+        for import in imports {
+            let Some(target) = self.target_of(analysed, import.source) else {
                 continue;
             };
             match &import.target {
                 ImportTarget::Named(name) => edges.push(self.resolve_export(target, name)),
+                ImportTarget::Member { export, member } => {
+                    let node = self.resolve_member(target, export, member);
+                    // Reading a member reaches the module the way reading the export
+                    // would, and only an export node says so by itself.
+                    if self.inline_requires && matches!(node, Node::Member(..)) {
+                        edges.push(Node::ModuleInit(target));
+                    }
+                    edges.push(node);
+                }
                 ImportTarget::Namespace => edges.extend(self.all_exports(target)),
             }
         }
         edges
+    }
+
+    fn member_edges(&self, file: FileId, decl: DeclId, member: NameId) -> Vec<Node> {
+        let Some(analysed) = self.analysis(file) else {
+            return Vec::new();
+        };
+        let Some(module) = analysed.analysis.as_fine() else {
+            return vec![Node::File(file)];
+        };
+        let member = self.name(member);
+        match member_of(module, decl, &member) {
+            Some(entry) => {
+                let mut edges = self.reference_edges(
+                    file,
+                    &analysed,
+                    module,
+                    &entry.refs,
+                    &entry.member_refs,
+                    &entry.imports,
+                );
+                // Called through the object, it may read any other property as
+                // `this`.
+                if entry.receiver {
+                    edges.push(Node::Decl(file, decl));
+                }
+                edges
+            }
+            // Nothing hands out a member node that is not there, but a stale one
+            // costs precision rather than an answer.
+            None => vec![Node::Decl(file, decl)],
+        }
+    }
+
+    /// A read of `member` off the declaration `decl` of the same file: that member
+    /// where the object has it, and the whole declaration otherwise.
+    fn local_member(&self, file: FileId, module: &FineModule, decl: DeclId, member: &str) -> Node {
+        match member_of(module, decl, member) {
+            Some(_) => Node::Member(file, decl, self.name_id(member)),
+            None => Node::Decl(file, decl),
+        }
+    }
+
+    /// The node a read of `member` off the export `export` of `file` should point
+    /// at: the member itself where the export is an object of this file that can be
+    /// read apart, and the whole export otherwise — a re-export, a lost name, a
+    /// value of any other shape.
+    ///
+    /// A re-export is not followed: the statement that forwards the name is part of
+    /// what the reader depends on, and only `Export` of the forwarding file says so.
+    pub fn resolve_member(&self, file: FileId, export: &str, member: &str) -> Node {
+        if is_source_file(&self.path(file))
+            && let Some(analysed) = self.analysis(file)
+            && let Some(module) = analysed.analysis.as_fine()
+            && let Some(ExportTarget::Local(decl)) = module.export_named(export).map(|e| &e.target)
+            && member_of(module, *decl, member).is_some()
+        {
+            return Node::Member(file, *decl, self.name_id(member));
+        }
+        self.resolve_export(file, export)
     }
 
     fn export_edges(&self, file: FileId, name: NameId) -> Vec<Node> {
@@ -484,6 +586,17 @@ impl Graph {
                 format!("Decl({}, {})", path, name)
             }
             Node::Export(_, name) => format!("Export({}, {})", path, self.name(name)),
+            Node::Member(file, decl, member) => {
+                let object = self
+                    .analysis(file)
+                    .and_then(|a| {
+                        a.analysis
+                            .as_fine()
+                            .and_then(|m| m.decls.get(decl as usize).map(|d| d.name.clone()))
+                    })
+                    .unwrap_or_else(|| decl.to_string());
+                format!("Member({}, {}.{})", path, object, self.name(member))
+            }
             Node::ModuleInit(_) => format!("ModuleInit({})", path),
         }
     }
@@ -510,4 +623,15 @@ pub fn display_path(path: &Path, root: &Path) -> String {
         .map(|c| c.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// The member `member` of the declaration `decl`, if its properties can be read
+/// apart and it has that one.
+fn member_of<'m>(module: &'m FineModule, decl: DeclId, member: &str) -> Option<&'m Member> {
+    module
+        .decls
+        .get(decl as usize)?
+        .members
+        .iter()
+        .find(|entry| entry.name == member)
 }

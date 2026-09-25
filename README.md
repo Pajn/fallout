@@ -110,6 +110,37 @@ do `<ns.Thing />`, `const m = await import("./g"); m.x`, `(await import("./g")).
 module object anywhere else — passing it on, reading `ns[key]` — keeps the whole
 table, and a binding that does both keeps the whole table.
 
+An object literal is read the same way. Given
+`export const utils = { formatDate, formatPrice }`, a page calling
+`utils.formatDate()` depends on `formatDate` and not on `formatPrice`. That holds
+however the property is reached: off `import { utils }`, off `ns.utils` from a
+namespace, off `require("./u").utils` or a module object bound from `require` or
+`import()`, off a binding destructured from one, or from another declaration in the
+same file. The object can be a `const` bound directly to the literal (optionally
+through `as const` or `satisfies`), an `export default { … }`, or a CommonJS
+`exports.utils = { … }`. An edit inside one property's value marks that property
+alone, with or without a base revision.
+
+This only applies while nothing can change what a property holds. In the file that
+declares it, the object must be used only by reading a property or by exporting it,
+whether as `export { utils }`, `export { utils as default }` or
+`export default utils`. A property must be a plain value or method under a fixed key.
+A spread, a computed key, a getter or setter, a `__proto__: value` that sets the
+prototype, a duplicate key, and a `require` or `import()` inside it all keep the
+object whole. So does a write through it, passing it on, reading `utils[key]`, or
+destructuring it. The shorthand `{ __proto__ }` is an ordinary property. A consumer
+that writes through a property, uses the object as a whole, or re-exports a binding
+destructured from it depends on every property. Two properties that share a binding of
+their file, where one of them could write it, still reach each other, and so do two
+declarations of the file where one hands a property to other code.
+
+Calling a property as `utils.fn()` hands `fn` the object as `this`, through which it
+can reach every other property. A property whose value may use it — a method or a
+local function that reads `this`, a function imported from elsewhere, a call's
+result, anything not visibly a literal, an arrow, a class or a local function that
+never reads `this` — depends on the whole object. Calling any other property reads
+that property and leaves the object as it was.
+
 ### Pure calls
 
 A declaration whose initialiser runs something belongs to module initialisation, so
@@ -364,7 +395,10 @@ it sits, which makes the remaining cases exact:
 - A statement that only moved marks module initialisation, because the order the
   module computes things in is the only thing that changed about it.
 - A statement that really differs marks what it declares, exports or imports, with no
-  guessing at the statements around it.
+  guessing at the statements around it. For an object literal that differs only in
+  its properties' values, that means only the properties that changed. Any other
+  change to it, including a property added, removed or reordered, marks every
+  property.
 - An export the base had and this version does not marks that *name*. A removal is
   invisible from inside the file — everything left behind reads as it did — so the
   name has to carry the mark itself, and it reaches the consumers that still ask for

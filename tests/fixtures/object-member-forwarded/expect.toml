@@ -1,0 +1,12 @@
+# Neither object changed, but `helpers` now names the other one. The export list
+# is part of every member read through it, so the page reaches the edit.
+[[anchor]]
+path = "src/pages/DatePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/DatePage.tsx)",
+    "Decl(src/pages/DatePage.tsx, DatePage)",
+    "Member(src/lib/utils.ts, local.formatDate)",
+]

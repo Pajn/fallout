@@ -1,0 +1,22 @@
+# `exports.utils = { ... }` holds an object the way `export const` does, and a
+# property read through `require` — straight off the call, off a module object
+# bound to a name, or off a destructured binding — reaches that property alone.
+[[anchor]]
+path = "src/pages/DatePage.js"
+affected = false
+
+[[anchor]]
+path = "src/pages/DestructuredPage.js"
+affected = false
+
+[[anchor]]
+path = "src/pages/PricePage.js"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PricePage.js)",
+    "Decl(src/pages/PricePage.js, lib)",
+    "Member(src/lib/utils.js, exports.utils.formatPrice)",
+    "Decl(src/lib/utils.js, formatPrice)",
+]

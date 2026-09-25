@@ -23,12 +23,13 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::{ContentEq, GetSpan, SourceType};
 
 use super::parse::{analyse_source, is_source_file, span_of};
-use super::{FineModule, ModuleAnalysis, Reading, Span, cjs, decls, types};
+use super::{FineModule, ModuleAnalysis, Reading, Span, cjs, decls, members, types};
 
 /// How a file's current version differs from its base version.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Comparison {
-    /// Spans, in the current version, of the top-level statements that differ.
+    /// Spans, in the current version, of the top-level statements that differ, or
+    /// of the properties that differ where only an object literal's values do.
     pub changed: Vec<Span>,
     /// Names the base version exported and this one does not.
     ///
@@ -148,7 +149,9 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
     let mut init_differs = false;
     let mut furthest = 0;
 
-    for statement in &new_statements {
+    let old_cjs = cjs::table(&old.program);
+    let new_cjs = cjs::table(&new.program);
+    for (new_index, statement) in new_statements.iter().enumerate() {
         let counterpart = unmatched
             .get_mut(&statement.key)
             .and_then(VecDeque::pop_front);
@@ -167,7 +170,18 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         furthest = furthest.max(index);
 
         if old_statements[index].node.content_ne(statement.node) {
-            changed.push(statement.span);
+            let old_object =
+                members::object_literal_of(old_statements[index].node, index, &old_cjs);
+            let new_object = members::object_literal_of(statement.node, new_index, &new_cjs);
+            match changed_members(
+                old_object,
+                new_object,
+                (old_statements[index].node, statement.node),
+                (&before, &after),
+            ) {
+                Some(spans) => changed.extend(spans),
+                None => changed.push(statement.span),
+            }
             changed_before.push((index, statement));
         }
     }
@@ -259,6 +273,57 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         whole_file,
         init_differs,
     })
+}
+
+/// The properties that differ between two versions of an object literal
+/// declaration, where nothing else about the declaration does.
+///
+/// Each member of an exported object is read on its own, so an edit to one
+/// property is an edit to that member. Anything else — the binding, the keys, their
+/// order, a property added or removed, a comment beside the literal — is `None`,
+/// and the statement is changed as a whole.
+fn changed_members(
+    old_object: Option<(Option<&BindingIdentifier<'_>>, &ObjectExpression<'_>)>,
+    new_object: Option<(Option<&BindingIdentifier<'_>>, &ObjectExpression<'_>)>,
+    (old, new): (&Statement<'_>, &Statement<'_>),
+    (before, after): (&str, &str),
+) -> Option<Vec<Span>> {
+    let (_, old_object) = old_object?;
+    let (_, new_object) = new_object?;
+    let framing = |text: &str, statement: oxc_span::Span, object: oxc_span::Span| {
+        (
+            text.get(statement.start as usize..object.start as usize)
+                .map(str::to_string),
+            text.get(object.end as usize..statement.end as usize)
+                .map(str::to_string),
+        )
+    };
+    if framing(before, old.span(), old_object.span) != framing(after, new.span(), new_object.span)
+        || old_object.properties.len() != new_object.properties.len()
+    {
+        return None;
+    }
+
+    let mut spans = Vec::new();
+    for (old, new) in old_object.properties.iter().zip(&new_object.properties) {
+        let (ObjectPropertyKind::ObjectProperty(old), ObjectPropertyKind::ObjectProperty(new)) =
+            (old, new)
+        else {
+            return None;
+        };
+        if old.kind != new.kind
+            || old.method != new.method
+            || old.shorthand != new.shorthand
+            || old.computed != new.computed
+            || old.key.content_ne(&new.key)
+        {
+            return None;
+        }
+        if old.value.content_ne(&new.value) {
+            spans.push(span_of(new.span));
+        }
+    }
+    (!spans.is_empty()).then_some(spans)
 }
 
 /// Did evaluating the base version do this statement's work?
