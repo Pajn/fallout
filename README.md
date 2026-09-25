@@ -97,7 +97,8 @@ object or of one property is followed to its own uses, and a write through it co
 as a write in the declaration where it is written. Anything that cannot be pinned to
 one property uses the whole object and meets every property: calling a method on it,
 passing it anywhere, a computed key, `__proto__`, an exported or reassignable alias,
-destructuring it, and aliases nested more than four deep.
+destructuring it, and aliases nested more than four deep. A write through one of those
+aliases still counts in the declaration where it is written.
 
 A declaration whose initialiser may run something — a
 call, a `new`, an `await`, a tagged template, an assignment to a member — belongs to

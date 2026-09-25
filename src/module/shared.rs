@@ -12,8 +12,10 @@
 //! method call, which hands the method the object as `this`; passing the object on;
 //! a computed key; `__proto__`. A `const` alias of the object or of one property is
 //! followed to its own uses, which are credited to the declarations they are written
-//! in, since that is where the write happens. An alias that is exported, or is not a
-//! `const`, is taken as writing the whole of what it aliases.
+//! in, since that is where the write happens. An alias that is exported, is not a
+//! `const`, destructures, or is nested too deep is taken as writing the whole of
+//! what it aliases, and each of its own uses as a use of the whole of it, credited
+//! where that use is written.
 
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
@@ -154,7 +156,18 @@ fn reference_accesses(
             // `const view = state`: what `view` does, `state` does.
             return match followed_alias(ctx, top, mode, depth) {
                 Some(uses) => uses,
-                None => whole(true),
+                // An alias this cannot follow is taken as writing the whole object
+                // where it is declared, and each of its uses as a use of the whole
+                // object where that use is written.
+                None => {
+                    let mut uses = whole(true);
+                    uses.extend(
+                        untracked_uses(ctx, top, depth)
+                            .into_iter()
+                            .map(|(offset, write)| (offset, Access::whole(write))),
+                    );
+                    uses
+                }
             };
         }
         // Reading the value in place, as the whole-value rule does.
@@ -268,7 +281,16 @@ fn property_use(ctx: &Ctx<'_>, member: NodeId, depth: usize) -> PropertyUse {
                         .map(|(offset, access)| (Some(offset), access.write))
                         .collect(),
                 ),
-                None => written(true),
+                // As for an alias of the object, but of this one property.
+                None => PropertyUse::Uses(
+                    std::iter::once((None, true))
+                        .chain(
+                            untracked_uses(ctx, top, depth)
+                                .into_iter()
+                                .map(|(offset, write)| (Some(offset), write)),
+                        )
+                        .collect(),
+                ),
             }
         }
         // Handed to other code, stored, written, or deleted: the value can change.
@@ -332,6 +354,41 @@ fn followed_alias(
         uses.extend(reference_accesses(ctx, node_id, mode, depth + 1));
     }
     Some(uses)
+}
+
+/// The uses of every binding the declarator above `value` introduces, each with
+/// where it is written and whether it could change what it reaches, for an alias
+/// [`followed_alias`] could not follow.
+///
+/// `export let view = state` is still a name for `state`, and a write through it
+/// elsewhere in the file is a write to `state` made there, whatever else may
+/// happen to `view`. Past the depth aliases are followed to, every use is taken as
+/// a write without looking further.
+fn untracked_uses(ctx: &Ctx<'_>, value: NodeId, depth: usize) -> Vec<(u32, bool)> {
+    let nodes = ctx.semantic.nodes();
+    let AstKind::VariableDeclarator(declarator) = nodes.kind(nodes.parent_id(value)) else {
+        return Vec::new();
+    };
+    let scoping = ctx.semantic.scoping();
+    let mut uses = Vec::new();
+    for binding in declarator.id.get_binding_identifiers() {
+        let Some(symbol) = binding.symbol_id.get() else {
+            continue;
+        };
+        for reference_id in scoping.get_resolved_reference_ids(symbol) {
+            let node_id = scoping.get_reference(*reference_id).node_id();
+            if depth < ALIAS_DEPTH {
+                uses.extend(
+                    reference_accesses(ctx, node_id, Mode::Properties, depth + 1)
+                        .into_iter()
+                        .map(|(offset, access)| (offset, access.write)),
+                );
+            } else {
+                uses.push((nodes.get_node(node_id).kind().span().start, true));
+            }
+        }
+    }
+    uses
 }
 
 /// Walks out through parentheses and type-only wrappers, which leave the value as
@@ -496,6 +553,29 @@ mod tests {
             export default utils;
             export const read = () => utils.a();";
         assert!(!reaches(source, "read", "default"), "{source}");
+    }
+
+    #[test]
+    fn a_write_through_an_alias_that_cannot_be_followed_still_reaches_readers() {
+        for (alias, writer) in [
+            ("export let view = state;", "view.volume = 2;"),
+            ("let view = state;", "view.volume = 2;"),
+            ("export const view = state;", "view.volume = 2;"),
+            ("const { list } = state;", "list.push(1);"),
+            ("export let volume = state.list;", "volume.push(1);"),
+            ("let a = state; let b = a;", "b.volume = 2;"),
+            (
+                "const a = state; const b = a; const c = b; const d = c; const e = d;",
+                "e.volume = 2;",
+            ),
+        ] {
+            let source = format!(
+                "{STATE}{alias}
+                export const write = () => {{ {writer} }};
+                export const read = () => [state.volume, state.list];"
+            );
+            assert!(reaches(&source, "read", "write"), "{source}");
+        }
     }
 
     #[test]
