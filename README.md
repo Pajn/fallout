@@ -125,8 +125,9 @@ Four things take a call back out of initialisation:
 - entries in the project's `fallout.toml`;
 - a proof for a small local function declaration.
 
-Local inference covers unmodified top-level function declarations with simple
-parameters and a single return. It accepts literals, parameter reads, plain array
+Local inference covers top-level function declarations whose binding is never
+reassigned or redeclared, with simple parameters and a single return. It accepts
+literals, parameter reads, plain array
 and object construction, conditionals, logical operators, strict equality, and
 calls to other proven helpers. For example, `function make(value) { return
 { value }; }` makes `const item = make("item")` independent of unrelated exports.
