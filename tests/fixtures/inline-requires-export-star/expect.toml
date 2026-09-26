@@ -1,0 +1,15 @@
+# With imports deferred to first use, reading `x` through a barrel evaluates the
+# barrel, and the bare import it holds runs then. The name arrives through
+# `export *`, which is a hop through the barrel all the same.
+[[anchor]]
+path = "src/page.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/page.ts)",
+    "Decl(src/page.ts, Page)",
+    "Export(src/barrel.ts, x)",
+    "ModuleInit(src/barrel.ts)",
+    "ModuleInit(src/polyfill.ts)",
+]
