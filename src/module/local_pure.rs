@@ -743,6 +743,8 @@ mod tests {
             "export const result = Math.abs(1n);",
             "const BIG = 1n; export const result = Math.abs(BIG);",
             "export const result = isNaN(-1n);",
+            "export const result = parseInt('12', 10n);",
+            "const R = 10n; export const result = Number.parseInt('ff', R);",
             "export const result = Math.abs(Symbol.for('x'));",
             "export const result = new Date(1n);",
             // Entries a weak collection throws on, and entries nothing wrote out.

@@ -45,7 +45,11 @@ pub(crate) fn function(name: &str) -> Option<(Conversion, Returns)> {
     use Returns::*;
     Some(match name {
         "isFinite" | "isNaN" => (ToNumber, Primitive),
-        "parseFloat" | "parseInt" => (ToString, Primitive),
+        "parseFloat" => (ToString, Primitive),
+        // The string is converted to a string, but the radix goes through
+        // `ToInt32`, which throws on a BigInt. One conversion covers every argument,
+        // so it is the stricter of the two.
+        "parseInt" => (ToNumber, Primitive),
         // `String(symbol)` describes the symbol rather than converting it.
         "String" => (ToString, Primitive),
         "Boolean" => (None, Primitive),
@@ -65,7 +69,8 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
     Some(match (object, method) {
         ("Math", method) if is_math_method(method) => (ToNumber, Primitive),
         ("Number", "isFinite" | "isInteger" | "isNaN" | "isSafeInteger") => (None, Primitive),
-        ("Number", "parseFloat" | "parseInt") => (ToString, Primitive),
+        ("Number", "parseFloat") => (ToString, Primitive),
+        ("Number", "parseInt") => (ToNumber, Primitive),
         ("Array", "isArray") => (None, Primitive),
         ("Array", "of") => (None, Other),
         ("ArrayBuffer", "isView") => (None, Primitive),
