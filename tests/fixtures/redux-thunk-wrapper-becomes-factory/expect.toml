@@ -1,0 +1,7 @@
+# The store's `createAsyncThunk` was a wrapper that notes the type of each thunk
+# it creates, and becomes `withTypes` of RTK's. Evaluating the session module
+# calls it, so what it did when that module was loaded changes, and a case that
+# only reads a constant of that module reaches the edit.
+[[anchor]]
+path = "src/cases/label.cases.tsx"
+affected = true

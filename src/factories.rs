@@ -29,15 +29,28 @@ pub struct Rule {
     pub sources: &'static [&'static str],
     /// The name those modules export it under.
     pub export: &'static str,
-    /// Properties of its result that depend only on `args`.
-    pub members: &'static [&'static str],
-    /// The arguments those properties depend on, by position.
-    pub args: &'static [usize],
+    /// Properties of its result read on their own, each with the arguments, by
+    /// position, it depends on.
+    pub members: &'static [(&'static str, &'static [usize])],
 }
 
 impl Rule {
-    pub fn has_member(&self, name: &str) -> bool {
-        self.members.contains(&name)
+    /// The arguments `name` depends on, if it is a property the rule lists.
+    pub fn member(&self, name: &str) -> Option<&'static [usize]> {
+        self.members
+            .iter()
+            .find(|(member, _)| *member == name)
+            .map(|(_, args)| *args)
+    }
+
+    /// Every property the rule lists.
+    pub fn member_names(&self) -> impl Iterator<Item = &'static str> {
+        self.members.iter().map(|(name, _)| *name)
+    }
+
+    /// Whether some property depends on argument `index`.
+    pub fn reads_argument(&self, index: usize) -> bool {
+        self.members.iter().any(|(_, args)| args.contains(&index))
     }
 
     /// Whether `source#export` names this factory.
@@ -48,13 +61,20 @@ impl Rule {
 
 /// `createAsyncThunk(type, payloadCreator, options)` returns a thunk action creator
 /// with `pending`, `fulfilled` and `rejected` action creators, a `settled` matcher,
-/// and its `typePrefix`, all built from `type`. The payload creator and the options
-/// only run when the thunk is dispatched.
+/// and its `typePrefix`, built from `type`. `rejected` also serialises the error it
+/// is given with `options.serializeError`, so it reads the options too. The payload
+/// creator only runs when the thunk is dispatched, and the rest of the options with
+/// it.
 pub const RULES: &[Rule] = &[Rule {
     sources: &["@reduxjs/toolkit", "@reduxjs/toolkit/react"],
     export: "createAsyncThunk",
-    members: &["pending", "fulfilled", "rejected", "settled", "typePrefix"],
-    args: &[0],
+    members: &[
+        ("pending", &[0]),
+        ("fulfilled", &[0]),
+        ("rejected", &[0, 2]),
+        ("settled", &[0]),
+        ("typePrefix", &[0]),
+    ],
 }];
 
 /// The rule for `source#export`, if there is one.

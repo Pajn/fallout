@@ -315,9 +315,10 @@ export const sessionSlice = createSlice({
 
 Read as a plain call, `refreshPlan.fulfilled` reaches the whole declaration: the
 payload creator, and everything it calls. But `fulfilled` is an action creator made
-from the type string alone. So is `pending`, `rejected`, `settled` and `typePrefix`.
-Each depends on the first argument only, and creating the thunk runs nothing, so it
-is not module initialisation. A reducer, and every case or page built from it, is
+from the type string alone. So is `pending`, `settled` and `typePrefix`, and so is
+`rejected`, except that it also serialises the error with the options' `serializeError`,
+the third argument. None reads the payload creator, and creating the thunk runs
+nothing, so it is not module initialisation. A reducer, and every case or page built from it, is
 reached by an edit to the type string and not by one to the payload creator. Calling
 the thunk, as `dispatch(refreshPlan(id))` does, still reaches all of it.
 
@@ -325,13 +326,15 @@ The factory is matched however an app reaches it: imported from `@reduxjs/toolki
 directly or through a namespace, typed with `createAsyncThunk.withTypes<…>()`, and
 through modules of the app's own that export or re-export any of those. The usual
 shape is a store module that exports the typed factory, imported by every slice.
-A function merely called `createAsyncThunk` is not matched.
+A function merely called `createAsyncThunk` is not matched, and neither is one in a
+file of the app that `@reduxjs/toolkit` resolves to.
 
 As with an object literal, this holds only while nothing can change what a property
 of the thunk holds: in its own file, its binding must only be read for a property,
 called, or exported. An edit inside the payload creator marks the thunk's members
-neither as a line range nor against a base revision. An edit to the type string, to
-the call around the arguments, or to the binding marks all of them.
+neither as a line range nor against a base revision, and one to the options marks
+`rejected`. An edit to the type string, to the call around the arguments, or to the
+binding marks all of them.
 
 ### Where a claim applies
 

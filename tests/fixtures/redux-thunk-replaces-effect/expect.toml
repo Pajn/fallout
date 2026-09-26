@@ -1,0 +1,7 @@
+# A statement that registered a type when the module was evaluated now creates a
+# thunk, which runs nothing. A case that only reads a constant of the module loses
+# that registration, which a line range cannot see but a base revision can.
+[[anchor]]
+path = "src/cases/label.cases.tsx"
+affected = true
+from = "base"

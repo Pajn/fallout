@@ -45,7 +45,8 @@ struct Pending {
     decl: DeclId,
     callee: Callee,
     args: Vec<Span>,
-    statement: Span,
+    /// The top-level statement the call is written in.
+    statement: usize,
     /// Inside the parentheses: from the end of the callee, and of any type
     /// arguments, to the closing parenthesis.
     interior: Span,
@@ -159,7 +160,7 @@ pub(crate) fn find<'a>(
             decl,
             callee,
             args,
-            statement: span_of(statement.span()),
+            statement: index,
             interior: Span {
                 start: opens,
                 end: call.span.end.saturating_sub(1),
@@ -169,9 +170,6 @@ pub(crate) fn find<'a>(
     candidates
 }
 
-/// The import or declaration an expression names, read through properties and
-/// through `withTypes<T>()`, which RTK gives its factories to type them and which
-/// returns the factory itself.
 /// The file's top-level names, looked up once per statement.
 struct Names<'d> {
     decls: AHashMap<&'d str, DeclId>,
@@ -198,6 +196,9 @@ impl<'d> Names<'d> {
     }
 }
 
+/// The import or declaration an expression names, read through properties and
+/// through `withTypes<T>()`, which RTK gives its factories to type them and which
+/// returns the factory itself.
 fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<Callee> {
     match expr.get_inner_expression() {
         Expression::Identifier(identifier) => {
@@ -273,10 +274,11 @@ fn read_by_property(ctx: &Ctx<'_>, symbol: SymbolId, statement: Span) -> bool {
 
 /// Fills in each call's arguments, once every edge of its declaration is known.
 ///
-/// A reference is attributed to the argument it is written in. What the
-/// declaration depends on outside every argument, and every edge the shared-state
-/// rule gave it, goes to the frame, which every member reached through the call
-/// depends on.
+/// A reference is attributed by where it is written: to the argument it is in, or,
+/// outside every argument, to the frame, which every member reached through the
+/// call depends on. A name read in both places is in both. What the declaration
+/// depends on that no reference in the statement accounts for, and every edge the
+/// shared-state rule gave it, goes to the frame too.
 pub(crate) fn attach(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
@@ -305,12 +307,19 @@ pub(crate) fn attach(
         .iter()
         .map(|binding| (binding.local.as_str(), binding))
         .collect();
+    let call_by_statement: AHashMap<usize, usize> = candidates
+        .calls
+        .iter()
+        .enumerate()
+        .map(|(index, call)| (call.statement, index))
+        .collect();
 
     let mut args: Vec<Vec<Deps>> = candidates
         .calls
         .iter()
         .map(|call| vec![Deps::default(); call.args.len()])
         .collect();
+    let mut frames: Vec<Deps> = vec![Deps::default(); candidates.calls.len()];
     for symbol_id in scoping.symbol_ids() {
         if scoping.symbol_scope_id(symbol_id) != root {
             continue;
@@ -325,60 +334,65 @@ pub(crate) fn attach(
         for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
             let node_id = scoping.get_reference(*reference_id).node_id();
             let at = nodes.get_node(node_id).kind().span().start;
-            for (index, call) in candidates.calls.iter().enumerate() {
-                if !call.statement.contains(at) {
-                    continue;
+            let Some(&index) = ctx
+                .statement_at(at)
+                .and_then(|statement| call_by_statement.get(&statement))
+            else {
+                continue;
+            };
+            let call = &candidates.calls[index];
+            let deps = match call.args.iter().position(|span| span.contains(at)) {
+                Some(argument) => &mut args[index][argument],
+                None => &mut frames[index],
+            };
+            if let Some(target) = target_decl
+                && target != call.decl
+            {
+                match object.zip(unwritten_member_read(nodes, node_id)) {
+                    Some((object, read)) => push_unique(&mut deps.member_refs, (object.decl, read)),
+                    None => push_unique(&mut deps.refs, target),
                 }
-                let Some(argument) = call.args.iter().position(|span| span.contains(at)) else {
-                    continue;
-                };
-                let deps = &mut args[index][argument];
-                if let Some(target) = target_decl
-                    && target != call.decl
-                {
-                    match object.zip(unwritten_member_read(nodes, node_id)) {
-                        Some((object, read)) => {
-                            push_unique(&mut deps.member_refs, (object.decl, read))
-                        }
-                        None => push_unique(&mut deps.refs, target),
-                    }
-                }
-                if let Some(binding) = target_import {
-                    push_unique(
-                        &mut deps.imports,
-                        narrowed(nodes, node_id, &binding.reference),
-                    );
-                }
+            }
+            if let Some(binding) = target_import {
+                push_unique(
+                    &mut deps.imports,
+                    narrowed(nodes, node_id, &binding.reference),
+                );
             }
         }
     }
 
-    for (call, args) in candidates.calls.into_iter().zip(args) {
+    for ((call, args), mut frame) in candidates.calls.into_iter().zip(args).zip(frames) {
         let entry = &decls[call.decl as usize];
-        let shared = shared.get(&call.decl);
-        let mut frame = Deps {
-            refs: entry
-                .refs
-                .iter()
-                .copied()
-                .filter(|target| {
-                    shared.is_some_and(|shared| shared.contains(target))
-                        || !args.iter().any(|deps| deps.refs.contains(target))
-                })
-                .collect(),
-            member_refs: entry
-                .member_refs
-                .iter()
-                .filter(|read| !args.iter().any(|deps| deps.member_refs.contains(read)))
-                .cloned()
-                .collect(),
-            imports: entry
-                .imports
-                .iter()
-                .filter(|import| !args.iter().any(|deps| deps.imports.contains(import)))
-                .cloned()
-                .collect(),
-        };
+        let attributed = || args.iter().chain(std::iter::once(&frame));
+        let refs: Vec<DeclId> = entry
+            .refs
+            .iter()
+            .copied()
+            .filter(|target| !attributed().any(|deps| deps.refs.contains(target)))
+            .chain(shared.get(&call.decl).into_iter().flatten().copied())
+            .collect();
+        let member_refs: Vec<_> = entry
+            .member_refs
+            .iter()
+            .filter(|read| !attributed().any(|deps| deps.member_refs.contains(read)))
+            .cloned()
+            .collect();
+        let imports: Vec<_> = entry
+            .imports
+            .iter()
+            .filter(|import| !attributed().any(|deps| deps.imports.contains(import)))
+            .cloned()
+            .collect();
+        for target in refs {
+            push_unique(&mut frame.refs, target);
+        }
+        for read in member_refs {
+            push_unique(&mut frame.member_refs, read);
+        }
+        for import in imports {
+            push_unique(&mut frame.imports, import);
+        }
         frame.refs.retain(|&target| target != call.decl);
         decls[call.decl as usize].factory = Some(FactoryCall {
             callee: call.callee,
@@ -432,6 +446,21 @@ mod tests {
         // Creating the thunk runs nothing but the call, so it waits on the graph.
         assert!(module.conditional_init.contains(&(t as u32)));
         assert!(!module.init_decls.contains(&(t as u32)));
+    }
+
+    #[test]
+    fn a_name_read_by_the_callee_and_by_an_argument_is_in_both() {
+        let module = module(
+            "import { createAsyncThunk } from '@reduxjs/toolkit';
+            const create = createAsyncThunk.withTypes<{ state: unknown }>();
+            export const t = create('a/b', async () => create);\n",
+        );
+        let t = module.decl_named("t").unwrap() as usize;
+        let create = module.decl_named("create").unwrap();
+        let call = module.decls[t].factory.as_ref().expect("a call");
+        assert!(call.frame.refs.contains(&create));
+        assert!(call.args[1].1.refs.contains(&create));
+        assert!(!call.args[0].1.refs.contains(&create));
     }
 
     #[test]

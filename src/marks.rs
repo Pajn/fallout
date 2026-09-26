@@ -241,13 +241,13 @@ fn mark_members(
         && let Some(rule) = graph.made_by(file, id)
     {
         let framing = !within(call.interior, decl.span, start, end);
-        let named = rule.args.iter().any(|&index| {
-            call.args
-                .get(index)
-                .is_some_and(|(span, _)| span.intersects(start, end))
-        });
-        if framing || named {
-            for member in rule.members {
+        for (member, args) in rule.members {
+            let named = args.iter().any(|&index| {
+                call.args
+                    .get(index)
+                    .is_some_and(|(span, _)| span.intersects(start, end))
+            });
+            if framing || named {
                 out.insert(Node::Member(file, id, graph.name_id(member)));
             }
         }
@@ -281,7 +281,7 @@ fn mark_forwarded(
     if decl.factory.is_some()
         && let Some(rule) = graph.made_by(file, id)
     {
-        for member in rule.members {
+        for member in rule.member_names() {
             out.insert(Node::Member(file, id, graph.name_id(member)));
         }
     }

@@ -387,11 +387,9 @@ impl Graph {
     ) -> Option<crate::module::Deps> {
         let call = module.decls.get(decl as usize)?.factory.as_ref()?;
         let rule = self.made_by(file, decl)?;
-        if !rule.has_member(member) {
-            return None;
-        }
+        let args = rule.member(member)?;
         let mut deps = call.frame.clone();
-        for &index in rule.args {
+        for &index in args {
             let Some((_, argument)) = call.args.get(index) else {
                 continue;
             };
@@ -410,21 +408,6 @@ impl Graph {
         let module = analysed.analysis.as_fine()?;
         let call = module.decls.get(decl as usize)?.factory.as_ref()?;
         self.callee_rule(file, &call.callee, 0)
-    }
-
-    /// The rule of the factory `decl` of `file` is another name for, if it is one.
-    fn names_factory(&self, file: FileId, decl: DeclId) -> bool {
-        let Some(analysed) = self.analysis(file) else {
-            return false;
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return false;
-        };
-        module
-            .decls
-            .get(decl as usize)
-            .and_then(|entry| entry.derived.as_ref())
-            .is_some_and(|derived| self.callee_rule(file, derived, 0).is_some())
     }
 
     /// The rule of the factory a callee written in `file` names, followed through
@@ -450,17 +433,24 @@ impl Graph {
                 self.callee_rule(file, &extended(derived, path), depth + 1)
             }
             Callee::Import { source, name, path } => {
+                // Where the specifier lands in the project's own source, that is the
+                // module it names, whatever it is spelled as: a `paths` entry can
+                // map a package's name onto a shim.
+                if let Some(target) = self.target_of(&analysed, *source) {
+                    let target_path = self.path(target);
+                    if is_source_file(&target_path)
+                        && !target_path
+                            .components()
+                            .any(|part| part.as_os_str() == "node_modules")
+                    {
+                        return self.export_rule(target, name, path, depth + 1);
+                    }
+                }
                 let specifier = module.sources.get(*source as usize)?;
-                if path.is_empty()
-                    && let Some(rule) = crate::factories::rule(specifier, name)
-                {
-                    return Some(rule);
+                if path.is_empty() {
+                    return crate::factories::rule(specifier, name);
                 }
-                let target = self.target_of(&analysed, *source)?;
-                if !is_source_file(&self.path(target)) {
-                    return None;
-                }
-                self.export_rule(target, name, path, depth + 1)
+                None
             }
         }
     }
@@ -483,7 +473,15 @@ impl Graph {
             ("*", []) => return None,
             (name, path) => (name, path),
         };
-        match &module.export_named(name)?.target {
+        let Some(export) = module.export_named(name) else {
+            // Through `export *`, one module at a time.
+            let mut seen = AHashSet::default();
+            return match self.through_stars(file, name, &mut seen)? {
+                Node::Export(next, _) => self.export_rule(next, name, path, depth + 1),
+                _ => None,
+            };
+        };
+        match &export.target {
             ExportTarget::Local(decl) => {
                 let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
                 self.callee_rule(file, &extended(derived, path), depth + 1)
@@ -591,10 +589,28 @@ impl Graph {
                 edges.push(Node::Decl(file, decl));
             }
             // A call that may be a factory's runs something unless the callee is a
-            // factory that only builds values, or `withTypes` of one.
+            // factory that only builds values. Even then it runs the callee, and what
+            // makes the callee one is initialisation's to reach: an edit that turns a
+            // wrapper with an effect into the factory changes what loading this module
+            // does. The call's arguments are what a factory leaves alone. A name that
+            // is `withTypes` of a factory reads nothing but it, so it is reached whole.
             for &decl in &module.conditional_init {
-                if self.made_by(file, decl).is_none() && !self.names_factory(file, decl) {
-                    edges.push(Node::Decl(file, decl));
+                let call = module
+                    .decls
+                    .get(decl as usize)
+                    .and_then(|d| d.factory.as_ref());
+                match call {
+                    Some(call) if self.made_by(file, decl).is_some() => {
+                        edges.extend(self.reference_edges(
+                            file,
+                            &analysed,
+                            module,
+                            &call.frame.refs,
+                            &call.frame.member_refs,
+                            &call.frame.imports,
+                        ));
+                    }
+                    _ => edges.push(Node::Decl(file, decl)),
                 }
             }
         }

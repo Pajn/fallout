@@ -222,14 +222,22 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             init_differs = true;
             continue;
         };
-        if !ran_on_evaluation(module, &old_statements[index]) {
+        let ran = evaluation(module, &old_statements[index], &before);
+        if ran == Evaluation::Nothing {
             continue;
         }
         let new_module = new_analysis.get_or_insert_with(|| {
             analyse_source(path, &after, reading).map(|(analysis, _)| analysis)
         });
         let runs_now = match new_module {
-            Some(ModuleAnalysis::Fine(module)) => ran_on_evaluation(module, statement),
+            Some(ModuleAnalysis::Fine(module)) => match evaluation(module, statement, &after) {
+                Evaluation::Runs => true,
+                Evaluation::Nothing => false,
+                // The current graph decides whether a call runs anything, which
+                // answers for the base version only if it asked the same of the
+                // same callee.
+                now @ Evaluation::Call(_) => now == ran,
+            },
             _ => true,
         };
         if !runs_now {
@@ -260,7 +268,7 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             }
         }
 
-        if statement.runs || ran_on_evaluation(module, statement) {
+        if statement.runs || evaluation(module, statement, &before) != Evaluation::Nothing {
             init_differs = true;
         }
     }
@@ -366,23 +374,43 @@ fn changed_arguments(
     (!spans.is_empty()).then_some(spans)
 }
 
-/// Did evaluating the base version do this statement's work?
+/// What evaluating `module` does with a statement.
+#[derive(Debug, PartialEq, Eq)]
+enum Evaluation<'s> {
+    Nothing,
+    /// Runs the statement's initialisers.
+    Runs,
+    /// Runs a call that may be a factory's, written up to its arguments as this.
+    /// Whether it did anything is a question about another module.
+    Call(&'s str),
+}
+
+/// What evaluating `module`, whose text is `source`, does with this statement.
 ///
 /// Only a statement that binds values has to ask; every other kind says so for
 /// itself. What the answer turns on is whether the initialiser may do anything, and
 /// that is a judgement the module analysis has already made.
-fn ran_on_evaluation(module: &FineModule, statement: &Keyed<'_>) -> bool {
+fn evaluation<'s>(module: &FineModule, statement: &Keyed<'_>, source: &'s str) -> Evaluation<'s> {
     if !matches!(statement.key, Key::Declares(_)) {
-        return false;
+        return Evaluation::Nothing;
     }
-    // A call that may be a factory's is taken to have run: whether it did is a
-    // question about another module, and this answer only ever widens.
-    module
-        .init_decls
-        .iter()
-        .chain(&module.conditional_init)
-        .filter_map(|&decl| module.decls.get(decl as usize))
-        .any(|decl| decl.span == statement.span)
+    let decl_at = |ids: &[super::DeclId]| {
+        ids.iter()
+            .filter_map(|&decl| module.decls.get(decl as usize))
+            .find(|decl| decl.span == statement.span)
+    };
+    if decl_at(&module.init_decls).is_some() {
+        return Evaluation::Runs;
+    }
+    let Some(decl) = decl_at(&module.conditional_init) else {
+        return Evaluation::Nothing;
+    };
+    // `X.withTypes<T>()` has no arguments to set apart, so it is its whole text.
+    let head = decl
+        .factory
+        .as_ref()
+        .map_or(statement.span.end, |call| call.interior.start);
+    Evaluation::Call(&source[statement.span.start as usize..head as usize])
 }
 
 /// How a top-level statement is matched to its counterpart in the base version.

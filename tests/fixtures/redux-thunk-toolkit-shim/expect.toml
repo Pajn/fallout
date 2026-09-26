@@ -1,0 +1,7 @@
+# `@reduxjs/toolkit` is mapped by the tsconfig to a file of the app, whose
+# `createAsyncThunk` runs the payload creator when a thunk is created. The name
+# is RTK's but the function is not, so creating the thunk is initialisation, and a
+# case built from the slice's reducer reaches the edit to the payload creator.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true
