@@ -1,0 +1,6 @@
+# `setTheme` writes `state.theme` and the page reads `state.volume`. The object is a
+# plain literal nothing reassigns, so its properties are separate slots, and an
+# edit to the writer of one does not reach a reader of the other.
+[[anchor]]
+path = "src/pages/VolumePage.tsx"
+affected = false
