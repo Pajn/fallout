@@ -236,16 +236,17 @@ fn mark_members(
     }
 
     // A factory's members depend on the arguments its rule names and on the call
-    // around them, and on nothing in the other arguments.
+    // around them, and on nothing in the other arguments. An argument the call does
+    // not pass is touched by an edit where it would be written, which is where
+    // removing it leaves its mark.
     if let Some(call) = &decl.factory
         && let Some(rule) = graph.made_by(file, id)
     {
         let framing = !within(call.interior, decl.span, start, end);
         for (member, args) in rule.members {
-            let named = args.iter().any(|&index| {
-                call.args
-                    .get(index)
-                    .is_some_and(|(span, _)| span.intersects(start, end))
+            let named = args.iter().any(|&index| match call.args.get(index) {
+                Some((span, _)) => span.intersects(start, end),
+                None => call.missing.intersects(start, end),
             });
             if framing || named {
                 out.insert(Node::Member(file, id, graph.name_id(member)));

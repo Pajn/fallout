@@ -50,6 +50,7 @@ struct Pending {
     /// Inside the parentheses: from the end of the callee, and of any type
     /// arguments, to the closing parenthesis.
     interior: Span,
+    missing: Span,
 }
 
 /// The call a `const` binds, `const t = f(…)`, exported or not.
@@ -156,6 +157,8 @@ pub(crate) fn find<'a>(
             .type_arguments
             .as_ref()
             .map_or(call.callee.span().end, |types| types.span.end);
+        let closes = call.span.end.saturating_sub(1);
+        let missing = missing_argument(ctx, args.last().map_or(opens, |span| span.end), closes);
         candidates.calls.push(Pending {
             decl,
             callee,
@@ -163,11 +166,43 @@ pub(crate) fn find<'a>(
             statement: index,
             interior: Span {
                 start: opens,
-                end: call.span.end.saturating_sub(1),
+                end: closes,
             },
+            missing,
         });
     }
     candidates
+}
+
+/// Where an argument after the last would be written, between the end of the last
+/// argument, `after`, and the closing parenthesis at `closes`.
+///
+/// Without a trailing comma, taking a later argument away edits the line the last
+/// one ends on, so that line is the place. With one, that line stays as it was and
+/// the removal lands on a later one, so the place starts after it. A line of the
+/// last argument that is edited with its comma left alone is then no edit to an
+/// argument the call does not pass.
+fn missing_argument(ctx: &Ctx<'_>, after: u32, closes: u32) -> Span {
+    let text = ctx
+        .semantic
+        .source_text()
+        .get(after as usize..closes as usize)
+        .unwrap_or("");
+    let start = match text.find(',') {
+        Some(comma) => {
+            let rest = &text[comma + 1..];
+            let line = rest
+                .find('\n')
+                .map_or(comma + 1, |newline| comma + 1 + newline + 1);
+            after + line as u32
+        }
+        None => after,
+    };
+    // The closing parenthesis is included, so that a removal on its line counts.
+    Span {
+        start: start.min(closes),
+        end: closes + 1,
+    }
 }
 
 /// The file's top-level names, looked up once per statement.
@@ -399,6 +434,7 @@ pub(crate) fn attach(
             args: call.args.into_iter().zip(args).collect(),
             frame,
             interior: call.interior,
+            missing: call.missing,
         });
     }
 }

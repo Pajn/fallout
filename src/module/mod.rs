@@ -90,11 +90,16 @@ pub struct FactoryCall {
     /// Each argument's span, and what it depends on.
     pub args: Vec<(Span, Deps)>,
     /// What the declaration depends on outside every argument: the callee, a type
-    /// annotation, and every edge of the shared-state rule.
+    /// annotation, every edge of the shared-state rule, and anything no reference
+    /// accounts for, such as an import or `require` inside an argument.
     pub frame: Deps,
     /// Inside the parentheses. An edit here that touches no argument touches only
     /// the commas and the space between them.
     pub interior: Span,
+    /// Where an argument the call does not pass would be written: after the last
+    /// one and its trailing comma, if it has one, up to the closing parenthesis.
+    /// Removing that argument leaves its mark here.
+    pub missing: Span,
 }
 
 /// One property of an object literal declaration, and what reading it depends on.

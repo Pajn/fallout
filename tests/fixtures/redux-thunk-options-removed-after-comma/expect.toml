@@ -1,0 +1,7 @@
+# The thunk's options are removed from under a payload creator that keeps its
+# trailing comma, so the only change is the lines the options took up. `rejected`
+# no longer serialises the error with `serializeError`, so a reducer that handles
+# it reaches the edit.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true

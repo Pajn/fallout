@@ -8,8 +8,9 @@
 //! on none of it. It is an action creator made from the type string alone.
 //!
 //! A rule here says so about one factory: calling it only builds a value, so module
-//! initialisation does not reach it, and a property it lists depends only on the
-//! arguments it lists. Reading any other property of the result, calling the
+//! initialisation reaches the call's callee and the rest of the call around the
+//! arguments but not the arguments themselves, and a property it lists depends
+//! only on the arguments it lists. Reading any other property of the result, calling the
 //! result, or using it as a whole depends on every argument.
 //!
 //! A factory is matched however an app reaches it: imported directly, through a
@@ -46,11 +47,6 @@ impl Rule {
     /// Every property the rule lists.
     pub fn member_names(&self) -> impl Iterator<Item = &'static str> {
         self.members.iter().map(|(name, _)| *name)
-    }
-
-    /// Whether some property depends on argument `index`.
-    pub fn reads_argument(&self, index: usize) -> bool {
-        self.members.iter().any(|(_, args)| args.contains(&index))
     }
 
     /// Whether `source#export` names this factory.

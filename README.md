@@ -315,12 +315,15 @@ export const sessionSlice = createSlice({
 
 Read as a plain call, `refreshPlan.fulfilled` reaches the whole declaration: the
 payload creator, and everything it calls. But `fulfilled` is an action creator made
-from the type string alone. So is `pending`, `settled` and `typePrefix`, and so is
+from the type string alone. So are `pending`, `settled` and `typePrefix`, and so is
 `rejected`, except that it also serialises the error with the options' `serializeError`,
-the third argument. None reads the payload creator, and creating the thunk runs
-nothing, so it is not module initialisation. A reducer, and every case or page built from it, is
-reached by an edit to the type string and not by one to the payload creator. Calling
-the thunk, as `dispatch(refreshPlan(id))` does, still reaches all of it.
+the third argument. None reads the payload creator, and creating the thunk calls
+nothing but the factory, so module initialisation reaches the call's callee and not
+its arguments. A reducer, and every case or page built from it, is reached by an edit
+to the type string and not by one to the payload creator. Calling the thunk, as
+`dispatch(refreshPlan(id))` does, still reaches all of it. An argument that itself
+runs something when evaluated, such as a type string built by a call, makes creating
+the thunk ordinary initialisation.
 
 The factory is matched however an app reaches it: imported from `@reduxjs/toolkit`
 directly or through a namespace, typed with `createAsyncThunk.withTypes<…>()`, and
@@ -331,10 +334,12 @@ file of the app that `@reduxjs/toolkit` resolves to.
 
 As with an object literal, this holds only while nothing can change what a property
 of the thunk holds: in its own file, its binding must only be read for a property,
-called, or exported. An edit inside the payload creator marks the thunk's members
-neither as a line range nor against a base revision, and one to the options marks
-`rejected`. An edit to the type string, to the call around the arguments, or to the
-binding marks all of them.
+called, or exported. An edit to lines of the payload creator's own marks the
+thunk's members neither as a line range nor against a base revision, and an edit to
+the options marks `rejected`. Adding or removing the options counts as an edit to
+them wherever the edit lands after the last argument. An edit to the type string, to
+the call around the arguments, or to the binding marks all of them, and so does one
+to a line the payload creator shares with any of those.
 
 ### Where a claim applies
 
