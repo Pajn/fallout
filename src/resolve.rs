@@ -532,7 +532,11 @@ impl Resolver {
                         .as_ref()
                         .and_then(|tsconfig| tsconfig.compiler_options.root_dirs.clone())
                         .unwrap_or_default();
-                    if let Some(rest) = roots.iter().find_map(|root| named.strip_prefix(root).ok())
+                    // The resolver takes the longest root the request falls under.
+                    // Every one it falls under is tried here, which includes that.
+                    for rest in roots
+                        .iter()
+                        .filter_map(|root| named.strip_prefix(root).ok())
                     {
                         candidates.extend(roots.iter().map(|root| root.join(rest)));
                     }
@@ -591,11 +595,10 @@ impl Resolver {
                 None => Vec::new(),
             };
             for specifier in extends {
-                let Some(extended) = self.extended_config(&config, &specifier) else {
-                    continue;
-                };
-                if !reads.contains(&extended) {
-                    reads.push(extended);
+                for extended in self.extended_configs(&config, &specifier) {
+                    if !reads.contains(&extended) {
+                        reads.push(extended);
+                    }
                 }
             }
         }
@@ -607,16 +610,33 @@ impl Resolver {
         reads
     }
 
-    /// The file an `extends` entry of the tsconfig at `config` names, whether or not
-    /// it is still there.
-    fn extended_config(&self, config: &Path, specifier: &str) -> Option<PathBuf> {
-        let directory = config.parent()?;
+    /// The files an `extends` entry of the tsconfig at `config` may name, whether or
+    /// not they are still there.
+    ///
+    /// A relative entry written without `.json` may name a file with it added, or a
+    /// directory's `tsconfig.json`, and which one is a question about the disk before
+    /// the change as much as after it, so both are read.
+    fn extended_configs(&self, config: &Path, specifier: &str) -> Vec<PathBuf> {
+        let Some(directory) = config.parent() else {
+            return Vec::new();
+        };
         if crate::repoint::is_relative(specifier) {
-            let mut path = crate::repoint::normalize(&directory.join(specifier));
-            if path.extension().is_none_or(|extension| extension != "json") {
-                path.as_mut_os_string().push(".json");
+            let path = crate::repoint::normalize(&directory.join(specifier));
+            let mut named = vec![path.join("tsconfig.json")];
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                named.push(path);
+            } else {
+                let mut file = path;
+                file.as_mut_os_string().push(".json");
+                named.push(file);
             }
-            return Some(dunce::canonicalize(&path).unwrap_or(path));
+            return named
+                .into_iter()
+                .map(|path| dunce::canonicalize(&path).unwrap_or(path))
+                .collect();
         }
         // A package's config, looked for the way oxc_resolver looks for it when it
         // follows `extends`: a JSON file, and a package's `tsconfig.json` where
@@ -634,6 +654,8 @@ impl Resolver {
             .resolve(directory, specifier)
             .ok()
             .map(|resolution| resolution.full_path())
+            .into_iter()
+            .collect()
     }
 
     /// Resolves `specifier` the way Sass would.
