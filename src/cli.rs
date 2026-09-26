@@ -70,10 +70,10 @@ pub struct Cli {
     /// Answer each anchor on its own, in one run, and print the answers as JSON
     ///
     /// Each answer carries the chain that produced it and the specifiers its search
-    /// could not place, each classed as `path`, `alias`, `package` (installed, but
-    /// nothing it offers matches `[resolve]`) or `missing-package`. The first three
-    /// name something in this repository.
-    #[arg(long)]
+    /// could not place, each classed as `path`, `alias`, `package` (installed or the
+    /// repository's own, but nothing it offers matches `[resolve]`) or
+    /// `missing-package`. The first three name something in this repository.
+    #[arg(long, conflicts_with_all = ["explain", "unresolved"])]
     pub json: bool,
 }
 

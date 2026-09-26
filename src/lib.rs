@@ -130,6 +130,7 @@ pub fn analyse(options: &Options) -> Result<Outcome, Error> {
     for (bundler, anchors) in run.groups() {
         let engine = run.engine(bundler);
         let judged = engine.judge(&run, &anchors);
+        run.unresolved.absorb(engine.resolver().unresolved());
         if judged.verdict.is_affected() {
             verdict = judged.verdict;
             break;
@@ -174,8 +175,12 @@ pub fn analyse_each(options: &Options) -> Result<Vec<AnchorOutcome>, Error> {
         let engine = run.engine(bundler);
         for anchor in anchors {
             let judged = engine.judge(&run, std::slice::from_ref(&anchor));
-            let unresolved = run
-                .unresolved
+            // Only what this anchor's own bundler failed to place, and only where its
+            // own searches went. A name several files write is as in-repo as the most
+            // in-repo of them says, since each file resolves it in its own chain.
+            let unresolved = engine
+                .resolver()
+                .unresolved()
                 .sorted()
                 .into_iter()
                 .filter_map(|(specifier, from)| {
@@ -183,7 +188,10 @@ pub fn analyse_each(options: &Options) -> Result<Vec<AnchorOutcome>, Error> {
                         .into_iter()
                         .filter(|file| judged.visited.contains(file))
                         .collect();
-                    let kind = engine.resolver().unresolved_kind(from.first()?, &specifier);
+                    let kind = from
+                        .iter()
+                        .map(|file| engine.resolver().unresolved_kind(file, &specifier))
+                        .min()?;
                     Some(UnresolvedImport {
                         specifier,
                         from,
@@ -219,7 +227,9 @@ struct Run<'o> {
     reading: module::Reading,
     packages: std::sync::Arc<lockfile::Changed>,
     base: Option<base::Base>,
-    unresolved: std::sync::Arc<Unresolved>,
+    /// Every group's unresolved specifiers together, for the combined report. Each
+    /// group records its own, since what one bundler cannot place another may.
+    unresolved: Unresolved,
     /// The files the change marks, for the searches that work file by file: every
     /// file-level search, and the upstream one at any granularity. Worked out once,
     /// since nothing about it depends on the bundler.
@@ -282,7 +292,7 @@ impl<'o> Run<'o> {
             reading,
             packages,
             base,
-            unresolved: std::sync::Arc::new(Unresolved::default()),
+            unresolved: Unresolved::default(),
             changed: std::cell::OnceCell::new(),
         })
     }
@@ -320,7 +330,7 @@ impl<'o> Run<'o> {
         match self.options.granularity {
             Granularity::File => Engine::File(Box::new(Resolver::new(
                 self.configs.clone(),
-                self.unresolved.clone(),
+                std::sync::Arc::new(Unresolved::default()),
                 self.root.clone(),
                 self.packages.clone(),
                 bundler.lookup,
@@ -329,7 +339,7 @@ impl<'o> Run<'o> {
                 let graph = graph::Graph::new(
                     self.reading.clone(),
                     bundler,
-                    self.unresolved.clone(),
+                    std::sync::Arc::new(Unresolved::default()),
                     self.root.clone(),
                     self.packages.clone(),
                 );

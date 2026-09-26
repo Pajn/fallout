@@ -1323,3 +1323,149 @@ export const GapPage = () => 1;
         "{stdout}"
     );
 }
+
+#[test]
+fn test_json_classes_a_specifier_by_its_most_in_repo_writer() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    fs::create_dir_all(root.join("apps/web/src")).unwrap();
+    fs::create_dir_all(root.join("shared")).unwrap();
+    fs::write(
+        root.join("apps/web/fallout.toml"),
+        "[aliases]\n\"~\" = \"src\"\n",
+    )
+    .unwrap();
+    // The same missing name, written in the app, where it is an alias, and in a
+    // shared file, where nothing says so.
+    fs::write(
+        root.join("apps/web/page.tsx"),
+        "import \"~/theme\";\nimport \"../../shared/util\";\nexport const Page = () => 1;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("shared/util.ts"),
+        "import \"~/theme\";\nexport const util = 1;\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["apps/web/page.tsx"],
+        &["src/components/Button.tsx"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains(r#"{"specifier":"~/theme","kind":"alias","in_repo":true"#),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn test_json_lists_only_what_an_anchors_own_bundler_could_not_place() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    let package = root.join("node_modules/native-only");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{ "name": "native-only", "exports": { ".": { "react-native": "./native.js" } } }"#,
+    )
+    .unwrap();
+    fs::write(package.join("native.js"), "export const a = 1;\n").unwrap();
+    for app in ["apps/mobile", "apps/web"] {
+        fs::create_dir_all(root.join(app)).unwrap();
+        fs::write(
+            root.join(app).join("Page.tsx"),
+            "import { a } from 'native-only';\nexport const Page = () => a;\n",
+        )
+        .unwrap();
+    }
+    fs::write(
+        root.join("apps/mobile/fallout.toml"),
+        "[resolve]\nconditions = [\"react-native\"]\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["apps/web/Page.tsx", "apps/mobile/Page.tsx"],
+        &["src/components/Button.tsx"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains(r#"{"anchor":"apps/mobile/Page.tsx","affected":false,"granularity":"file","unresolved":[]}"#),
+        "the mobile bundler placed it: {stdout}"
+    );
+    assert!(
+        stdout.contains(r#"{"specifier":"native-only","kind":"package""#),
+        "the web bundler did not: {stdout}"
+    );
+}
+
+#[test]
+fn test_json_classes_stylesheet_names_and_workspace_packages() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    fs::create_dir_all(root.join("node_modules/bootstrap")).unwrap();
+    fs::create_dir_all(root.join("packages/ui")).unwrap();
+    fs::write(
+        root.join("packages/ui/package.json"),
+        "{\n  \"name\": \"@acme/ui\",\n  \"dependencies\": { \"name\": \"not this one\" }\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/styled.scss"),
+        "@use \"mixins\";\n@use \"~bootstrap/scss/gone\";\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/StyledPage.tsx"),
+        "import \"./styled.scss\";\nimport \"@acme/ui\";\nexport const StyledPage = () => 1;\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/StyledPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    for (specifier, kind) in [
+        ("mixins", "path"),
+        ("~bootstrap/scss/gone", "package"),
+        ("@acme/ui", "package"),
+    ] {
+        let entry = format!(r#"{{"specifier":"{specifier}","kind":"{kind}","in_repo":true"#);
+        assert!(stdout.contains(&entry), "{entry} in {stdout}");
+    }
+}
+
+#[test]
+fn test_json_does_not_take_flags_it_already_answers() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    for flag in ["--explain", "--unresolved"] {
+        let (code, _, stderr) = run_is_affected_with(
+            &binary,
+            &root,
+            &["src/pages/CheckoutPage.tsx"],
+            &["src/components/Button.tsx"],
+            &["--json", flag],
+        );
+        assert_eq!(code, 2, "{flag}: {stderr}");
+    }
+}

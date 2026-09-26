@@ -64,6 +64,15 @@ impl Unresolved {
         }
     }
 
+    /// Adds everything `other` holds, for a report about several resolvers at once.
+    pub fn absorb(&self, other: &Unresolved) {
+        for (specifier, writers) in other.seen.read().unwrap().iter() {
+            for writer in writers {
+                self.note(writer, specifier);
+            }
+        }
+    }
+
     /// Each specifier with the files that wrote it, both in a settled order so that
     /// two runs over the same tree print the same report.
     pub fn sorted(&self) -> Vec<(String, Vec<PathBuf>)> {
@@ -96,9 +105,9 @@ pub enum UnresolvedKind {
     /// A name the project maps to its own files: a `fallout.toml` alias, a
     /// `package.json` `#import`, or a `tsconfig.json` `paths` entry or `baseUrl`.
     Alias,
-    /// A package that is installed, with no entry the bundler's `[resolve]` settings
-    /// select: an `exports` condition it does not match, or a subpath it does not
-    /// export.
+    /// A package that is installed, or is one of the repository's own, with no entry
+    /// the bundler's `[resolve]` settings select: an `exports` condition it does not
+    /// match, a subpath it does not export, or a workspace package not yet linked.
     Package,
     /// A package that is not installed.
     MissingPackage,
@@ -161,6 +170,12 @@ pub struct Resolver {
     /// Which `exports` conditions and entry fields the app's bundler reads. One per
     /// resolver: anchors whose bundlers differ get resolvers of their own.
     lookup: Lookup,
+    /// The names of the repository's own packages, read when first asked.
+    workspace: std::sync::OnceLock<ahash::AHashSet<String>>,
+    /// What each file imports, resolved, for the searches that walk file by file.
+    /// Several anchors' searches walk the same files, and reading one means parsing
+    /// it.
+    imports: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
 }
 
 impl Resolver {
@@ -179,6 +194,8 @@ impl Resolver {
             root,
             packages,
             lookup,
+            workspace: std::sync::OnceLock::new(),
+            imports: RwLock::new(AHashMap::default()),
             modules: RwLock::new(AHashMap::default()),
             style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
@@ -270,6 +287,24 @@ impl Resolver {
         resolver
     }
 
+    /// The files `file` imports, worked out by `read` the first time it is asked.
+    pub fn imports_of(&self, file: &Path, read: impl FnOnce() -> Vec<PathBuf>) -> Arc<[PathBuf]> {
+        if let Some(known) = self.imports.read().unwrap().get(file) {
+            return known.clone();
+        }
+        let imports: Arc<[PathBuf]> = read().into();
+        self.imports
+            .write()
+            .unwrap()
+            .insert(file.to_path_buf(), imports.clone());
+        imports
+    }
+
+    /// The specifiers this resolver could not place.
+    pub fn unresolved(&self) -> &Unresolved {
+        &self.unresolved
+    }
+
     /// What kind of name `specifier`, written in `from_file`, is. Asked only of one
     /// that resolved to nothing.
     pub fn unresolved_kind(&self, from_file: &Path, specifier: &str) -> UnresolvedKind {
@@ -280,6 +315,18 @@ impl Resolver {
         if specifier.starts_with('#') {
             return UnresolvedKind::Alias;
         }
+        // A stylesheet names a sibling by a bare name, and a package with `~`.
+        let specifier = if is_style_file(from_file) {
+            match specifier.strip_prefix('~') {
+                Some(package) => package,
+                None if !self.style_aliased(from_file, specifier) => {
+                    return UnresolvedKind::Path;
+                }
+                None => specifier,
+            }
+        } else {
+            specifier
+        };
         let chain = self.configs.chain(from_file);
         let aliased = chain
             .aliases()
@@ -289,7 +336,7 @@ impl Resolver {
         if aliased {
             return UnresolvedKind::Alias;
         }
-        if package_installed(from_file, specifier) {
+        if package_installed(from_file, specifier) || self.workspace_package(specifier) {
             return UnresolvedKind::Package;
         }
         let mapped = self
@@ -307,6 +354,38 @@ impl Resolver {
         } else {
             UnresolvedKind::MissingPackage
         }
+    }
+
+    fn style_aliased(&self, from_file: &Path, specifier: &str) -> bool {
+        self.configs
+            .chain(from_file)
+            .style_aliases()
+            .iter()
+            .any(|(name, _)| alias_matches(name, specifier))
+    }
+
+    /// Whether a bare specifier names one of the repository's own packages, which a
+    /// workspace links rather than installs. Every `package.json` under the root
+    /// that is not in a `node_modules` is read once, for its `name`.
+    fn workspace_package(&self, specifier: &str) -> bool {
+        let Some(name) = package_name(specifier) else {
+            return false;
+        };
+        self.workspace
+            .get_or_init(|| {
+                walkdir::WalkDir::new(&self.root)
+                    .into_iter()
+                    .filter_entry(|entry| {
+                        let name = entry.file_name().to_string_lossy();
+                        name != "node_modules" && !(entry.depth() > 0 && name.starts_with('.'))
+                    })
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.file_name() == "package.json")
+                    .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+                    .filter_map(|text| declared_name(&text))
+                    .collect()
+            })
+            .contains(&name)
     }
 
     /// Resolves `specifier` as written in `from_file`, or `None` if it does not
@@ -508,19 +587,59 @@ fn alias_matches(name: &str, specifier: &str) -> bool {
 /// Whether the package a bare specifier names is installed where Node would look
 /// for it from `from_file`: a `node_modules` in its directory or any above it.
 fn package_installed(from_file: &Path, specifier: &str) -> bool {
-    let mut segments = specifier.split('/');
-    let name = match segments.next() {
-        Some(scope) if scope.starts_with('@') => match segments.next() {
-            Some(package) => format!("{scope}/{package}"),
-            None => return false,
-        },
-        Some(package) if !package.is_empty() => package.to_string(),
-        _ => return false,
+    let Some(name) = package_name(specifier) else {
+        return false;
     };
     from_file
         .ancestors()
         .skip(1)
         .any(|dir| dir.join("node_modules").join(&name).is_dir())
+}
+
+/// The package a bare specifier names: `@scope/name` or `name`.
+fn package_name(specifier: &str) -> Option<String> {
+    let mut segments = specifier.split('/');
+    match segments.next()? {
+        scope if scope.starts_with('@') => Some(format!("{scope}/{}", segments.next()?)),
+        "" => None,
+        package => Some(package.to_string()),
+    }
+}
+
+/// The top-level `name` a `package.json` declares, read without a JSON parser: the
+/// first `"name"` key at the first level of nesting.
+fn declared_name(text: &str) -> Option<String> {
+    let mut depth = 0usize;
+    let mut chars = text.char_indices().peekable();
+    while let Some((at, character)) = chars.next() {
+        match character {
+            '{' | '[' => depth += 1,
+            '}' | ']' => depth = depth.saturating_sub(1),
+            '"' => {
+                let start = at + 1;
+                let mut end = start;
+                let mut escaped = false;
+                for (index, inner) in chars.by_ref() {
+                    if escaped {
+                        escaped = false;
+                    } else if inner == '\\' {
+                        escaped = true;
+                    } else if inner == '"' {
+                        end = index;
+                        break;
+                    }
+                }
+                if depth != 1 || &text[start..end] != "name" {
+                    continue;
+                }
+                let rest = text[end + 1..].trim_start().strip_prefix(':')?.trim_start();
+                let value = rest.strip_prefix('"')?;
+                return Some(value[..value.find('"')?].to_string());
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Webpack lets an import name its loaders inline, as in `!!file-loader!./logo.png`.

@@ -157,14 +157,17 @@ pub fn upstream(
 }
 
 fn edges_from(file: &Path, resolver: &Resolver, reading: &Reading) -> Vec<PathBuf> {
-    let Some(specifiers) = imported_specifiers(file, reading) else {
-        return Vec::new();
-    };
-
-    specifiers
-        .iter()
-        .filter_map(|specifier| resolver.resolve(file, specifier))
-        .collect()
+    resolver
+        .imports_of(file, || {
+            let Some(specifiers) = imported_specifiers(file, reading) else {
+                return Vec::new();
+            };
+            specifiers
+                .iter()
+                .filter_map(|specifier| resolver.resolve(file, specifier))
+                .collect()
+        })
+        .to_vec()
 }
 
 /// Rebuilds the chain from a root to `target`, root first.

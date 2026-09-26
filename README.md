@@ -89,11 +89,15 @@ an in-repo gap as a reason to run the anchor anyway. Each specifier is classed:
 - `path` — a relative or absolute path to a file that is not there;
 - `alias` — a name the project maps to its own files: a `fallout.toml` alias, a
   `package.json` `#import`, or a `tsconfig.json` `paths` entry or `baseUrl`;
-- `package` — a package that is installed, where nothing it offers matches the
-  bundler's [`[resolve]`](#package-entry-points) settings;
+- `package` — a package that is installed or is one of the repository's own, where
+  nothing it offers matches the bundler's [`[resolve]`](#package-entry-points)
+  settings, or which the workspace has not linked;
 - `missing-package` — a package that is not installed.
 
-`in_repo` is true for the first three.
+`in_repo` is true for the first three. In a stylesheet a bare name is a sibling file
+first, so it is a `path`, and a `~` names a package. A specifier several files write
+is as in-repo as the most in-repo of them says, and only what the anchor's own
+bundler could not place is listed.
 
 ### Direction
 
@@ -624,9 +628,13 @@ main-fields = ["react-native", "main"]
 
 Without it, the conditions are `import` and `require`, so a package whose `exports`
 offers nothing else still resolves, and the only field is `main`. A `default` entry
-always matches. Like `inline-requires`, `[resolve]` is read from the chain above the
-anchor, the nearest file wins for each key, and anchors in apps that disagree are each
-answered on a graph of their own.
+always matches. Where a package's `exports` offers several conditions the app matches,
+the package's own order decides which, as it does in Node, not the order written here.
+`main-fields` reads a field that names a file; the object form of `browser`, which
+replaces files within the package, is not read. Any other key under `[resolve]` is an
+error rather than a setting that silently does nothing. Like `inline-requires`,
+`[resolve]` is read from the chain above the anchor, the nearest file wins for each
+key, and anchors in apps that disagree are each answered on a graph of their own.
 
 ## Changed dependencies
 

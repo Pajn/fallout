@@ -79,6 +79,8 @@ pub enum Error {
     NotABoolean { path: String, key: String },
     /// A setting that is a list of names was written as something else.
     NotAList { path: String, key: String },
+    /// A key this file does not read, where it would silently do nothing.
+    UnknownKey { path: String, key: String },
     /// Something wrong with this file's `pure` list.
     Pure(crate::pure::Error),
 }
@@ -95,6 +97,12 @@ impl fmt::Display for Error {
             ),
             Error::NotABoolean { path, key } => {
                 write!(f, "{path}: `{key}` must be true or false")
+            }
+            Error::UnknownKey { path, key } => {
+                write!(
+                    f,
+                    "{path}: `{key}` is not a setting; `[resolve]` takes `conditions` and `main-fields`"
+                )
             }
             Error::NotAList { path, key } => {
                 write!(f, "{path}: `{key}` must be a list of strings")
@@ -125,7 +133,8 @@ struct Declared {
 /// How the bundler of an app finds a file for a package specifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Lookup {
-    /// The `exports` conditions it matches, in the order it tries them.
+    /// The `exports` conditions it matches. Where a package offers several of them,
+    /// the order the package lists them in decides, as it does in Node.
     pub conditions: Vec<String>,
     /// The `package.json` fields it reads for a package's entry point, in order.
     pub main_fields: Vec<String>,
@@ -294,19 +303,6 @@ impl Configs {
         chain
     }
 
-    /// Whether this run may treat an import as deferred to its first use.
-    ///
-    /// Read from the anchors rather than from each file, because it describes the
-    /// bundler and the anchor is what picks one. Several anchors have to agree: this
-    /// is the setting that drops edges, so one anchor in an app that does not inline
-    /// is enough to turn it off for the run.
-    pub fn inline_requires(&self, anchors: &[PathBuf]) -> bool {
-        !anchors.is_empty()
-            && anchors
-                .iter()
-                .all(|anchor| self.chain(anchor).inline_requires())
-    }
-
     /// What the bundler of `anchor`'s app does, from the chain above it.
     pub fn bundler(&self, anchor: &Path) -> Bundler {
         let chain = self.chain(anchor);
@@ -392,7 +388,9 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
     }))
 }
 
-/// A list under `[resolve]`, written as the bundler's own option would be.
+/// A list under `[resolve]`. The keys are this file's own, `conditions` and
+/// `main-fields`; any other key is a mistake, such as a bundler's own spelling, and
+/// is reported rather than ignored.
 fn resolve_list(
     document: &toml::Table,
     key: &str,
@@ -405,6 +403,15 @@ fn resolve_list(
         path: shown.to_string(),
         key: "resolve".to_string(),
     })?;
+    if let Some(unknown) = resolve
+        .keys()
+        .find(|name| !matches!(name.as_str(), "conditions" | "main-fields"))
+    {
+        return Err(Error::UnknownKey {
+            path: shown.to_string(),
+            key: format!("resolve.{unknown}"),
+        });
+    }
     let Some(value) = resolve.get(key) else {
         return Ok(None);
     };
@@ -678,20 +685,20 @@ mod tests {
     #[test]
     fn a_setting_is_off_until_the_project_turns_it_on() {
         let (dir, configs) = tree(&[("apps/mobile", "inline-requires = true\n")]);
-        assert!(configs.inline_requires(&[dir.path().join("apps/mobile/page.tsx")]));
-        assert!(!configs.inline_requires(&[dir.path().join("apps/web/page.tsx")]));
-        assert!(!configs.inline_requires(&[]), "no anchors claim nothing");
+        let inlines = |path: &str| configs.bundler(&dir.path().join(path)).inline_requires;
+        assert!(inlines("apps/mobile/page.tsx"));
+        assert!(!inlines("apps/web/page.tsx"));
     }
 
     #[test]
-    fn every_anchor_has_to_claim_it() {
-        // It is the setting that drops edges, so one anchor that does not inline is
-        // enough to turn it off: the alternative is under-reporting for that anchor.
+    fn each_anchor_is_answered_by_its_own_app() {
+        // One run can hold anchors of both apps; each gets its own bundler's answer,
+        // on a graph of its own.
         let (dir, configs) = tree(&[("apps/mobile", "inline-requires = true\n")]);
-        let mobile = dir.path().join("apps/mobile/page.tsx");
-        let web = dir.path().join("apps/web/page.tsx");
-        assert!(configs.inline_requires(std::slice::from_ref(&mobile)));
-        assert!(!configs.inline_requires(&[mobile, web]));
+        let mobile = configs.bundler(&dir.path().join("apps/mobile/page.tsx"));
+        let web = configs.bundler(&dir.path().join("apps/web/page.tsx"));
+        assert!(mobile.inline_requires && !web.inline_requires);
+        assert_ne!(mobile, web);
     }
 
     #[test]
@@ -700,8 +707,9 @@ mod tests {
             ("", "inline-requires = true\n"),
             ("apps/web", "inline-requires = false\n"),
         ]);
-        assert!(configs.inline_requires(&[dir.path().join("apps/mobile/page.tsx")]));
-        assert!(!configs.inline_requires(&[dir.path().join("apps/web/page.tsx")]));
+        let inlines = |path: &str| configs.bundler(&dir.path().join(path)).inline_requires;
+        assert!(inlines("apps/mobile/page.tsx"));
+        assert!(!inlines("apps/web/page.tsx"));
     }
 
     #[test]
@@ -777,13 +785,17 @@ mod tests {
             "[resolve]\nconditions = \"react-native\"\n",
             "[resolve]\nmain-fields = [1]\n",
             "resolve = 1\n",
+            // A bundler's own spelling would otherwise do nothing, silently.
+            "[resolve]\nmainFields = [\"react-native\"]\n",
         ] {
             let (dir, configs) = tree(&[("", body)]);
             configs.chain(&dir.path().join("a.tsx"));
             assert!(
                 matches!(
                     configs.failure(),
-                    Some(Error::NotAList { .. } | Error::NotATable { .. })
+                    Some(
+                        Error::NotAList { .. } | Error::NotATable { .. } | Error::UnknownKey { .. }
+                    )
                 ),
                 "{body}"
             );
@@ -826,6 +838,6 @@ mod tests {
     fn a_file_above_the_root_is_answered_by_the_root() {
         let (dir, configs) = tree(&[("", "inline-requires = true\n")]);
         let outside = dir.path().parent().expect("a parent").join("elsewhere.tsx");
-        assert!(configs.inline_requires(&[outside]));
+        assert!(configs.bundler(&outside).inline_requires);
     }
 }
