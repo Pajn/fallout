@@ -1,0 +1,6 @@
+# The same store, with a `createAsyncThunk` of the app's own. Nothing says what its
+# result's properties depend on, so the case built from the slice's reducer reaches
+# the payload creator, and the edit to the API it calls.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true

@@ -1,0 +1,19 @@
+# The edit is to the payload creator, the thunk's second argument, in a module
+# that is evaluated when it is imported. Creating the thunk runs nothing, and its
+# `pending`, `fulfilled` and `rejected` depend on the first argument only, so a
+# case built from the slice's reducer does not reach the edit, as a line range or
+# against a base revision. A case that dispatches the thunk does.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/refresh-button.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/refresh-button.cases.tsx)",
+    "Decl(src/cases/refresh-button.cases.tsx, RefreshButton)",
+    "Export(src/store/session.ts, refreshPlan)",
+]

@@ -1,0 +1,6 @@
+# The edit is to the thunk's options, its third argument. `rejected` builds its
+# action's `error` with the options' `serializeError`, so a reducer that handles it
+# reaches the edit.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true

@@ -173,12 +173,10 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             let old_object =
                 members::object_literal_of(old_statements[index].node, index, &old_cjs, None);
             let new_object = members::object_literal_of(statement.node, new_index, &new_cjs, None);
-            match changed_members(
-                old_object,
-                new_object,
-                (old_statements[index].node, statement.node),
-                (&before, &after),
-            ) {
+            let pair = (old_statements[index].node, statement.node);
+            match changed_members(old_object, new_object, pair, (&before, &after))
+                .or_else(|| changed_arguments(pair, (&before, &after)))
+            {
                 Some(spans) => changed.extend(spans),
                 None => changed.push(statement.span),
             }
@@ -224,14 +222,22 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             init_differs = true;
             continue;
         };
-        if !ran_on_evaluation(module, &old_statements[index]) {
+        let ran = evaluation(module, &old_statements[index], &before);
+        if ran == Evaluation::Nothing {
             continue;
         }
         let new_module = new_analysis.get_or_insert_with(|| {
             analyse_source(path, &after, reading).map(|(analysis, _)| analysis)
         });
         let runs_now = match new_module {
-            Some(ModuleAnalysis::Fine(module)) => ran_on_evaluation(module, statement),
+            Some(ModuleAnalysis::Fine(module)) => match evaluation(module, statement, &after) {
+                Evaluation::Runs => true,
+                Evaluation::Nothing => false,
+                // The current graph decides whether a call runs anything, which
+                // answers for the base version only if it asked the same of the
+                // same callee.
+                now @ Evaluation::Call(_) => now == ran,
+            },
             _ => true,
         };
         if !runs_now {
@@ -262,7 +268,7 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             }
         }
 
-        if statement.runs || ran_on_evaluation(module, statement) {
+        if statement.runs || evaluation(module, statement, &before) != Evaluation::Nothing {
             init_differs = true;
         }
     }
@@ -293,9 +299,9 @@ fn changed_members(
     let framing = |text: &str, statement: oxc_span::Span, object: oxc_span::Span| {
         (
             text.get(statement.start as usize..object.start as usize)
-                .map(str::to_string),
+                .map(lines),
             text.get(object.end as usize..statement.end as usize)
-                .map(str::to_string),
+                .map(lines),
         )
     };
     if framing(before, old.span(), old_object.span) != framing(after, new.span(), new_object.span)
@@ -326,20 +332,95 @@ fn changed_members(
     (!spans.is_empty()).then_some(spans)
 }
 
-/// Did evaluating the base version do this statement's work?
+/// The arguments that differ between two versions of `const x = f(…)`, where
+/// nothing else about the declaration does.
+///
+/// The result of a known factory is read by property, and each property depends on
+/// some of the arguments only; see [`crate::factories`]. An edit to one argument is
+/// an edit to what depends on it. Anything else — the callee, the binding, the
+/// number of arguments, a comment between them — is `None`.
+fn changed_arguments(
+    (old, new): (&Statement<'_>, &Statement<'_>),
+    (before, after): (&str, &str),
+) -> Option<Vec<Span>> {
+    let (_, old_call) = super::factories::call_of(old)?;
+    let (_, new_call) = super::factories::call_of(new)?;
+    if old_call.arguments.len() != new_call.arguments.len() || old_call.arguments.is_empty() {
+        return None;
+    }
+    // The text between the arguments, and around them: everything but the
+    // arguments themselves.
+    let framing = |text: &str, statement: oxc_span::Span, call: &CallExpression<'_>| {
+        let mut pieces = Vec::with_capacity(call.arguments.len() + 1);
+        let mut at = statement.start;
+        for argument in &call.arguments {
+            let span = argument.span();
+            pieces.push(lines(text.get(at as usize..span.start as usize)?));
+            at = span.end;
+        }
+        pieces.push(lines(text.get(at as usize..statement.end as usize)?));
+        Some(pieces)
+    };
+    if framing(before, old.span(), old_call)? != framing(after, new.span(), new_call)? {
+        return None;
+    }
+    let spans: Vec<Span> = old_call
+        .arguments
+        .iter()
+        .zip(&new_call.arguments)
+        .filter(|(old, new)| old.content_ne(new))
+        .map(|(_, new)| span_of(new.span()))
+        .collect();
+    (!spans.is_empty()).then_some(spans)
+}
+
+/// What evaluating `module` does with a statement.
+#[derive(Debug, PartialEq, Eq)]
+enum Evaluation {
+    Nothing,
+    /// Runs the statement's initialisers.
+    Runs,
+    /// Runs a call that may be a factory's, written up to its arguments as this.
+    /// Whether it did anything is a question about another module.
+    Call(String),
+}
+
+/// What evaluating `module`, whose text is `source`, does with this statement.
 ///
 /// Only a statement that binds values has to ask; every other kind says so for
 /// itself. What the answer turns on is whether the initialiser may do anything, and
 /// that is a judgement the module analysis has already made.
-fn ran_on_evaluation(module: &FineModule, statement: &Keyed<'_>) -> bool {
+fn evaluation(module: &FineModule, statement: &Keyed<'_>, source: &str) -> Evaluation {
     if !matches!(statement.key, Key::Declares(_)) {
-        return false;
+        return Evaluation::Nothing;
     }
-    module
-        .init_decls
-        .iter()
-        .filter_map(|&decl| module.decls.get(decl as usize))
-        .any(|decl| decl.span == statement.span)
+    let decl_at = |ids: &[super::DeclId]| {
+        ids.iter()
+            .filter_map(|&decl| module.decls.get(decl as usize))
+            .find(|decl| decl.span == statement.span)
+    };
+    if decl_at(&module.init_decls).is_some() {
+        return Evaluation::Runs;
+    }
+    let Some(decl) = decl_at(&module.conditional_init) else {
+        return Evaluation::Nothing;
+    };
+    // `X.withTypes<T>()` has no arguments to set apart, so it is its whole text.
+    let head = decl
+        .factory
+        .as_ref()
+        .map_or(statement.span.end, |call| call.interior.start);
+    Evaluation::Call(lines(&source[statement.span.start as usize..head as usize]))
+}
+
+/// Text to compare with its counterpart in the other version, with each line break
+/// written as `\n`.
+///
+/// Git may hand the base version back with other line breaks than the working tree
+/// has. A line break outside a string means the same whichever it is, and one
+/// inside a template literal is read as `\n` either way.
+fn lines(text: &str) -> String {
+    text.replace("\r\n", "\n")
 }
 
 /// How a top-level statement is matched to its counterpart in the base version.
@@ -548,6 +629,14 @@ mod tests {
         let before = "// adds one\nexport const inc = (n) => n + 1;\n";
         let after = "// Adds one to its argument.\nexport const inc = (n) => n + 1;\n";
         assert!(compared(before, after).expect("comparable").is_empty());
+    }
+
+    #[test]
+    fn line_breaks_written_another_way_leave_an_argument_edit_to_the_argument() {
+        let before = "export const t = make(\n  'a/b',\n  async () => 1,\n);\n";
+        let after = before.replace('1', "2").replace('\n', "\r\n");
+        let comparison = compared(before, &after).expect("comparable");
+        assert_eq!(changed(&after, &comparison), ["async () => 2"]);
     }
 
     #[test]

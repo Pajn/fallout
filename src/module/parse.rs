@@ -12,8 +12,8 @@ use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use super::{
-    Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, init, members, refs,
-    types,
+    Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, factories, init, members,
+    refs, types,
 };
 
 /// Extensions we parse for further imports. Anything else that resolves — images,
@@ -244,17 +244,38 @@ fn build_fine(
             imports: Vec::new(),
             members: Vec::new(),
             interior: Span::default(),
+            derived: None,
+            factory: None,
         })
         .collect();
 
-    let objects = members::find(&ctx, program, &drafts, cjs);
+    let mut objects = members::find(&ctx, program, &drafts, cjs);
+    // A call's result read by property is linked the way an object's is, and is
+    // never read as one only for its members: calling it is not a read of one.
+    let candidates = factories::find(&ctx, program, &drafts, &imports);
+    for &(symbol, decl) in &candidates.by_symbol {
+        objects
+            .by_symbol
+            .entry(symbol)
+            .or_insert(members::ObjectRef {
+                decl,
+                callable: Vec::new(),
+            });
+    }
     let (import_spans, shared) =
         refs::link(&ctx, &drafts, &imports, &objects.by_symbol, &mut decls);
     let requires = decls::require_calls(program, sources)?;
     let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls);
     let init_dynamic = refs::attach_dynamic_imports(&ctx, &drafts, sources, &mut decls)?;
+    let conditional = candidates.conditional.clone();
+    let by_symbol = objects.by_symbol.clone();
     members::attach(&ctx, &drafts, &imports, objects, &shared, &mut decls);
-    let init_decls = init::collect(&ctx, program, &drafts, &decls, &imports, sources, pure);
+    factories::attach(
+        &ctx, &drafts, &imports, &by_symbol, candidates, &shared, &mut decls,
+    );
+    let origins = init::origins(&imports, sources);
+    let (init_decls, conditional_init) =
+        init::collect(&ctx, program, &drafts, &decls, &origins, pure, &conditional);
 
     // A `require` outside every declaration runs on evaluation, exactly like a bare
     // `import "./x"`, so the two share a list.
@@ -273,6 +294,7 @@ fn build_fine(
         init_decls,
         bare_sources,
         import_spans,
+        conditional_init,
     })
 }
 

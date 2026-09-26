@@ -8,6 +8,7 @@ pub mod cjs;
 pub mod compare;
 pub mod decls;
 pub mod exports;
+mod factories;
 mod globals;
 pub mod init;
 mod local_pure;
@@ -48,6 +49,57 @@ pub struct Decl {
     /// The inside of that object literal, between its braces. An edit here that
     /// touches no member touches only the separators between them.
     pub interior: Span,
+    /// What this declaration's value is another name for: `const f = X` and
+    /// `const f = X.withTypes<T>()`, where `X` is an import or a declaration here.
+    pub derived: Option<Callee>,
+    /// The call this declaration's value is the result of, `const t = f(...)`,
+    /// with what each argument depends on. The graph decides whether `f` is a
+    /// factory it knows; see [`crate::factories`].
+    pub factory: Option<FactoryCall>,
+}
+
+/// A value named by an import or a declaration of this file, read through a path of
+/// properties: `rtk.createAsyncThunk` is `Import { name: "*", path: ["createAsyncThunk"] }`
+/// for `import * as rtk`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Callee {
+    Import {
+        source: SourceId,
+        /// The name the target exports, `default` or `*`.
+        name: String,
+        path: Vec<String>,
+    },
+    Local {
+        decl: DeclId,
+        path: Vec<String>,
+    },
+}
+
+/// What part of a declaration depends on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Deps {
+    pub refs: Vec<DeclId>,
+    pub member_refs: Vec<(DeclId, String)>,
+    pub imports: Vec<ImportRef>,
+}
+
+/// `const t = f(a, b)`: the callee, and what each argument depends on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactoryCall {
+    pub callee: Callee,
+    /// Each argument's span, and what it depends on.
+    pub args: Vec<(Span, Deps)>,
+    /// What the declaration depends on outside every argument: the callee, a type
+    /// annotation, every edge of the shared-state rule, and anything no reference
+    /// accounts for, such as an import or `require` inside an argument.
+    pub frame: Deps,
+    /// Inside the parentheses. An edit here that touches no argument touches only
+    /// the commas and the space between them.
+    pub interior: Span,
+    /// Where an argument the call does not pass would be written: after the last
+    /// one and its trailing comma, if it has one, up to the closing parenthesis.
+    /// Removing that argument leaves its mark here.
+    pub missing: Span,
 }
 
 /// One property of an object literal declaration, and what reading it depends on.
@@ -155,6 +207,10 @@ pub struct FineModule {
     /// Spans of the import statements, paired with the declarations that reference
     /// the bindings they introduce. Editing an import line marks those declarations.
     pub import_spans: Vec<(Span, Vec<DeclId>)>,
+    /// Declarations whose initialiser runs nothing but a call to a callee that may
+    /// be a factory the graph knows, or `withTypes` of one. Module initialisation
+    /// reaches each one the graph cannot prove made by such a factory.
+    pub conditional_init: Vec<DeclId>,
 }
 
 impl FineModule {
