@@ -112,7 +112,15 @@ pub(crate) struct Ctx<'a> {
 impl Ctx<'_> {
     /// The top-level statement containing `offset`, if any.
     pub fn statement_at(&self, offset: u32) -> Option<usize> {
-        self.statements.iter().position(|s| s.contains(offset))
+        // Statements are in source order and do not overlap, and this is asked of
+        // every reference in the file.
+        let index = self
+            .statements
+            .partition_point(|statement| statement.end <= offset);
+        self.statements
+            .get(index)
+            .is_some_and(|statement| statement.contains(offset))
+            .then_some(index)
     }
 }
 

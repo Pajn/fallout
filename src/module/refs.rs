@@ -1,6 +1,6 @@
 //! Reference edges between declarations, and the shared-state rule.
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
     BindingPattern, CallExpression, Expression, JSXMemberExpressionObject, UnaryOperator,
@@ -52,6 +52,7 @@ pub(crate) fn link(
     // How each declaration touches each module-scope binding of this file, for the
     // shared-state rule.
     let mut accesses_of: AHashMap<SymbolId, Vec<(DeclId, Access)>> = AHashMap::default();
+    let mut recorded: AHashMap<SymbolId, AHashSet<(DeclId, Access)>> = AHashMap::default();
     // Declarations referencing each import statement's bindings, for hunk attribution.
     let mut import_users: AHashMap<Span, Vec<DeclId>> = AHashMap::default();
 
@@ -126,9 +127,10 @@ pub(crate) fn link(
                     continue;
                 };
                 let entry = accesses_of.entry(symbol_id).or_default();
+                let known = recorded.entry(symbol_id).or_default();
                 for &user in users {
                     let access = (user, access.clone());
-                    if !entry.contains(&access) {
+                    if known.insert(access.clone()) {
                         entry.push(access);
                     }
                 }
@@ -209,13 +211,32 @@ fn apply_shared_state(
     accesses_of: &AHashMap<SymbolId, Vec<(DeclId, Access)>>,
     decls: &mut [Decl],
 ) -> SharedEdges {
+    // A binding can have as many users and writers as the file has declarations, so
+    // the edges are kept unique with a set rather than by searching each list.
     let mut added = SharedEdges::default();
+    let mut seen: AHashMap<DeclId, AHashSet<DeclId>> = AHashMap::default();
+    // Recorded whether or not the declaration already named the writer, since an
+    // object's members each get the rule's edges whatever the declaration names.
+    let mut recorded: AHashSet<(DeclId, DeclId)> = AHashSet::default();
     for accesses in accesses_of.values() {
+        let writers: Vec<&(DeclId, Access)> =
+            accesses.iter().filter(|(_, access)| access.write).collect();
+        if writers.is_empty() {
+            continue;
+        }
         for (user, used) in accesses {
-            for (writer, written) in accesses {
-                if user != writer && used.sees(written) {
-                    push_unique(&mut decls[*user as usize].refs, *writer);
-                    push_unique(added.entry(*user).or_default(), *writer);
+            for (writer, written) in &writers {
+                if user == writer || !used.sees(written) {
+                    continue;
+                }
+                let known = seen
+                    .entry(*user)
+                    .or_insert_with(|| decls[*user as usize].refs.iter().copied().collect());
+                if known.insert(*writer) {
+                    decls[*user as usize].refs.push(*writer);
+                }
+                if recorded.insert((*user, *writer)) {
+                    added.entry(*user).or_default().push(*writer);
                 }
             }
         }

@@ -28,7 +28,7 @@ use super::parse::Ctx;
 use super::refs::{Use, classify};
 
 /// One way a reference touches a shared binding.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Access {
     /// The property it goes through, or `None` for the whole value.
     pub property: Option<String>,
@@ -371,10 +371,7 @@ fn untracked_uses(ctx: &Ctx<'_>, value: NodeId, depth: usize) -> Vec<(u32, bool)
         return Vec::new();
     };
     if depth >= ALIAS_DEPTH {
-        let mut visited = AHashSet::default();
-        let mut uses = Vec::new();
-        writes_through(ctx, declarator, &mut visited, &mut uses);
-        return uses;
+        return writes_through(ctx, declarator);
     }
     let scoping = ctx.semantic.scoping();
     let mut uses = Vec::new();
@@ -402,29 +399,39 @@ fn untracked_uses(ctx: &Ctx<'_>, value: NodeId, depth: usize) -> Vec<(u32, bool)
 /// connects a write through `const f = e` to the readers of what `e` aliases. An
 /// assignment is different: `g = e` uses `g`, and the shared-state rule already
 /// connects whoever does to whoever writes through `g`.
-fn writes_through(
-    ctx: &Ctx<'_>,
-    declarator: &VariableDeclarator<'_>,
-    visited: &mut AHashSet<SymbolId>,
-    uses: &mut Vec<(u32, bool)>,
-) {
+///
+/// A chain can be as long as the file, so it is walked with a worklist rather than
+/// by recursion, which would take a stack frame per alias.
+fn writes_through(ctx: &Ctx<'_>, declarator: &VariableDeclarator<'_>) -> Vec<(u32, bool)> {
     let nodes = ctx.semantic.nodes();
     let scoping = ctx.semantic.scoping();
-    for binding in declarator.id.get_binding_identifiers() {
-        let Some(symbol) = binding.symbol_id.get() else {
-            continue;
-        };
+    let bindings = |declarator: &VariableDeclarator<'_>| -> Vec<SymbolId> {
+        declarator
+            .id
+            .get_binding_identifiers()
+            .iter()
+            .filter_map(|binding| binding.symbol_id.get())
+            .collect()
+    };
+
+    let mut uses = Vec::new();
+    let mut visited = AHashSet::default();
+    let mut pending = bindings(declarator);
+    while let Some(symbol) = pending.pop() {
         if !visited.insert(symbol) {
             continue;
         }
         for reference_id in scoping.get_resolved_reference_ids(symbol) {
             let node_id = scoping.get_reference(*reference_id).node_id();
-            uses.push((nodes.get_node(node_id).kind().span().start, true));
-            if let Some(next) = declared_from(nodes, node_id) {
-                writes_through(ctx, next, visited, uses);
+            // Declaring another alias does nothing to the object; what that alias
+            // is used for is followed in its place.
+            match declared_from(nodes, node_id) {
+                Some(next) => pending.extend(bindings(next)),
+                None => uses.push((nodes.get_node(node_id).kind().span().start, true)),
             }
         }
     }
+    uses
 }
 
 /// The declarator whose initialiser is this reference, or a property read off it:
@@ -660,6 +667,21 @@ mod tests {
             );
             assert!(reaches(&source, "read", "write"), "{source}");
         }
+    }
+
+    #[test]
+    fn a_chain_of_aliases_as_long_as_the_file_is_followed_to_its_end() {
+        // Long enough that a stack frame per alias would not fit in a test thread's
+        // stack, as generated code can be.
+        let chain: String = (1..10_000)
+            .map(|i| format!("const a{i} = a{};\n", i - 1))
+            .collect();
+        let source = format!(
+            "{STATE}const a0 = state;\n{chain}
+            export const write = () => {{ a9999.volume = 2; }};
+            export const read = () => state.volume;"
+        );
+        assert!(reaches(&source, "read", "write"));
     }
 
     #[test]
