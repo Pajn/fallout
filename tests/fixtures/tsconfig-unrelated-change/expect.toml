@@ -1,0 +1,12 @@
+# The tsconfig maps `@icons/*` to another directory and turns on `strict`. A page
+# importing an icon now reads another file. A page importing only from `@ui/*` is
+# resolved as it was, which a base revision can tell by comparing the two versions,
+# and a line range, with no earlier version to compare with, cannot.
+[[anchor]]
+path = "src/pages/rating.ts"
+affected = true
+
+[[anchor]]
+path = "src/pages/form.ts"
+affected = false
+from = "base"

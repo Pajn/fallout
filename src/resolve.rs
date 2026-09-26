@@ -167,6 +167,10 @@ pub struct Resolver {
     root: PathBuf,
     /// Packages a lockfile change touched. See [`crate::lockfile`].
     packages: Arc<crate::lockfile::Changed>,
+    /// What the change could have sent an import to instead. See [`crate::repoint`].
+    repointing: Arc<crate::repoint::Repointing>,
+    /// The configuration files each tsconfig reads, itself first.
+    tsconfig_reads: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
     /// Which `exports` conditions and entry fields the app's bundler reads. One per
     /// resolver: anchors whose bundlers differ get resolvers of their own.
     lookup: Lookup,
@@ -176,6 +180,9 @@ pub struct Resolver {
     /// Several anchors' searches walk the same files, and reading one means parsing
     /// it.
     imports: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
+    /// Whether each file imports something the change may have moved, for the
+    /// same searches, which would otherwise read the file again to ask.
+    repointed_files: RwLock<AHashMap<PathBuf, bool>>,
 }
 
 impl Resolver {
@@ -186,6 +193,7 @@ impl Resolver {
         unresolved: Arc<Unresolved>,
         root: PathBuf,
         packages: Arc<crate::lockfile::Changed>,
+        repointing: Arc<crate::repoint::Repointing>,
         lookup: Lookup,
     ) -> Self {
         Self {
@@ -193,9 +201,12 @@ impl Resolver {
             unresolved,
             root,
             packages,
+            repointing,
+            tsconfig_reads: RwLock::new(AHashMap::default()),
             lookup,
             workspace: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
+            repointed_files: RwLock::new(AHashMap::default()),
             modules: RwLock::new(AHashMap::default()),
             style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
@@ -285,6 +296,23 @@ impl Resolver {
         }));
         self.style.write().unwrap().insert(key, resolver.clone());
         resolver
+    }
+
+    /// Whether `file` imports something the change may have moved, worked out by
+    /// `read` the first time it is asked.
+    pub fn repoints(&self, file: &Path, read: impl FnOnce() -> bool) -> bool {
+        if !self.may_repoint() {
+            return false;
+        }
+        if let Some(&known) = self.repointed_files.read().unwrap().get(file) {
+            return known;
+        }
+        let repoints = read();
+        self.repointed_files
+            .write()
+            .unwrap()
+            .insert(file.to_path_buf(), repoints);
+        repoints
     }
 
     /// The files `file` imports, worked out by `read` the first time it is asked.
@@ -466,6 +494,124 @@ impl Resolver {
         !self.packages.is_empty()
     }
 
+    /// Whether anything the change did could have moved an import, which a search
+    /// likewise cannot learn from the paths it has reached.
+    pub fn may_repoint(&self) -> bool {
+        !self.repointing.is_empty()
+    }
+
+    /// Whether `specifier`, imported from `from_file`, may have resolved to another
+    /// file before the change. See [`crate::repoint`].
+    pub fn may_have_moved(&self, from_file: &Path, specifier: &str) -> bool {
+        use crate::repoint::{is_relative, normalize};
+
+        if self.repointing.is_empty() {
+            return false;
+        }
+        let tsconfig = self
+            .module_resolver(&self.configs.chain(from_file))
+            .find_tsconfig(from_file)
+            .ok()
+            .flatten();
+
+        // What names a file is the request under any inline loaders, without a
+        // resource query or fragment, as `resolve` reads it.
+        let request = without_query(strip_inline_loaders(specifier).unwrap_or(specifier));
+
+        if self.repointing.has_deleted() {
+            let mut candidates = Vec::new();
+            if is_relative(request) {
+                if let Some(directory) = from_file.parent() {
+                    candidates.push(normalize(&directory.join(request)));
+                }
+            } else if let Some(tsconfig) = &tsconfig {
+                candidates.extend(tsconfig.resolve_path_alias_or_base_url(request));
+            }
+            if candidates
+                .iter()
+                .any(|candidate| self.repointing.could_name_deleted(candidate))
+            {
+                return true;
+            }
+        }
+
+        let reads = tsconfig.map(|tsconfig| self.tsconfig_reads(tsconfig.path()));
+        self.repointing.configs().iter().any(|(config, scope)| {
+            if reads.as_ref().is_some_and(|reads| reads.contains(config)) {
+                return scope.covers(request);
+            }
+            // A `tsconfig.json` above a file that it does not read can still decide
+            // which config the file is resolved through: by being added or deleted,
+            // or through `references`. Its own `paths` and `baseUrl` apply to files
+            // it governs, which this one is not, so only a change that could make it
+            // govern the file reaches it.
+            *scope == crate::repoint::Scope::Everything
+                && config
+                    .file_name()
+                    .is_some_and(|name| name == "tsconfig.json")
+                && config
+                    .parent()
+                    .is_some_and(|dir| from_file.starts_with(dir))
+        })
+    }
+
+    /// Every configuration file the tsconfig at `path` reads: itself, and what it
+    /// extends, however far.
+    fn tsconfig_reads(&self, path: &Path) -> Arc<[PathBuf]> {
+        if let Some(known) = self.tsconfig_reads.read().unwrap().get(path) {
+            return known.clone();
+        }
+        let mut reads = vec![path.to_path_buf()];
+        let mut next = 0;
+        while let Some(config) = reads.get(next).cloned() {
+            next += 1;
+            let Some(parsed) = std::fs::read_to_string(&config)
+                .ok()
+                .and_then(|text| oxc_resolver::TsConfig::parse(true, &config, &config, text).ok())
+            else {
+                continue;
+            };
+            let extends = match parsed.extends {
+                Some(oxc_resolver::ExtendsField::Single(one)) => vec![one],
+                Some(oxc_resolver::ExtendsField::Multiple(many)) => many,
+                None => Vec::new(),
+            };
+            for specifier in extends {
+                let Some(extended) = self.extended_config(&config, &specifier) else {
+                    continue;
+                };
+                if !reads.contains(&extended) {
+                    reads.push(extended);
+                }
+            }
+        }
+        let reads: Arc<[PathBuf]> = reads.into();
+        self.tsconfig_reads
+            .write()
+            .unwrap()
+            .insert(path.to_path_buf(), reads.clone());
+        reads
+    }
+
+    /// The file an `extends` entry of the tsconfig at `config` names, whether or not
+    /// it is still there.
+    fn extended_config(&self, config: &Path, specifier: &str) -> Option<PathBuf> {
+        let directory = config.parent()?;
+        if crate::repoint::is_relative(specifier) {
+            let mut path = crate::repoint::normalize(&directory.join(specifier));
+            if path.extension().is_none_or(|extension| extension != "json") {
+                path.as_mut_os_string().push(".json");
+            }
+            return Some(dunce::canonicalize(&path).unwrap_or(path));
+        }
+        // A package's config, as TypeScript looks for it.
+        let resolver = self.module_resolver(&self.configs.chain(config));
+        [specifier.to_string(), format!("{specifier}/tsconfig.json")]
+            .iter()
+            .find_map(|request| resolver.resolve(directory, request).ok())
+            .map(|resolution| resolution.full_path())
+    }
+
     /// Resolves `specifier` the way Sass would.
     ///
     /// Beyond what the tuned resolver already does, two rules are applied here
@@ -563,6 +709,7 @@ impl Default for Resolver {
             Arc::new(Unresolved::default()),
             PathBuf::from("."),
             Arc::new(crate::lockfile::Changed::default()),
+            Arc::default(),
             Lookup::default(),
         )
     }
@@ -653,6 +800,16 @@ fn declared_name(text: &str) -> Option<String> {
 ///
 /// A `?query` or `#fragment` suffix needs no such treatment: the resolver parses those
 /// itself, which is why the resolved path is read back without them.
+/// A request without its `?query` or `#fragment`. A leading `#` names a package
+/// import rather than a fragment, so it stays.
+fn without_query(request: &str) -> &str {
+    let end = request
+        .char_indices()
+        .find(|&(at, character)| character == '?' || (character == '#' && at > 0))
+        .map_or(request.len(), |(at, _)| at);
+    &request[..end]
+}
+
 fn strip_inline_loaders(specifier: &str) -> Option<&str> {
     if !specifier.contains('!') {
         return None;
@@ -669,6 +826,14 @@ fn strip_inline_loaders(specifier: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_request_names_its_file_without_a_query_or_fragment() {
+        assert_eq!(without_query("./logo.svg?url"), "./logo.svg");
+        assert_eq!(without_query("./icon.svg#sprite"), "./icon.svg");
+        assert_eq!(without_query("#app/theme"), "#app/theme");
+        assert_eq!(without_query("./plain.ts"), "./plain.ts");
+    }
 
     #[test]
     fn a_package_name_is_its_top_level_name_key() {

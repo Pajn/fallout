@@ -1,0 +1,6 @@
+# The tsconfig stops mapping `@reduxjs/toolkit` to the app's shim, which runs each
+# payload creator when a thunk is created. The session module's import is unchanged,
+# but it now names the package, so what loading that module does has changed.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true

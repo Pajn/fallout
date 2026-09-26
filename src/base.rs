@@ -45,6 +45,10 @@ impl Base {
 
     /// What `path` contained at the base revision, or `None` when there is no such
     /// version to read.
+    pub fn text(&self, path: &Path) -> Option<String> {
+        self.before(path)
+    }
+
     fn before(&self, path: &Path) -> Option<String> {
         if let Some(cached) = self.contents.borrow().get(path) {
             return cached.clone();
@@ -59,8 +63,19 @@ impl Base {
     fn read(&self, path: &Path) -> Option<String> {
         // Naming the file relative to its own directory saves working out where the
         // repository root is, and works the same from a worktree or a subdirectory.
-        let directory = path.parent()?;
-        let name = path.file_name()?.to_str()?;
+        // A deleted file's directory may have gone with it, so the nearest one that
+        // is still there names it instead.
+        let directory = path
+            .ancestors()
+            .skip(1)
+            .find(|directory| directory.is_dir())?;
+        let name = path
+            .strip_prefix(directory)
+            .ok()?
+            .components()
+            .map(|component| component.as_os_str().to_str())
+            .collect::<Option<Vec<_>>>()?
+            .join("/");
 
         let output = Command::new("git")
             .arg("-C")
