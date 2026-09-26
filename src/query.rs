@@ -81,7 +81,10 @@ pub fn downstream(
     }
 
     while let Some(current) = queue.pop_front() {
-        if changed.contains(&current) || resolver.marks_changed_package(&current) {
+        if changed.contains(&current)
+            || resolver.marks_changed_package(&current)
+            || repointed(&current, resolver, reading)
+        {
             let hit = Hit {
                 direction: Direction::Downstream,
                 rendered: None,
@@ -154,6 +157,17 @@ pub fn upstream(
     }
 
     Search { hit: None, visited }
+}
+
+/// Whether an import of `file` may have gone to another file before the change,
+/// which changes the file as much as rewriting the import would.
+fn repointed(file: &Path, resolver: &Resolver, reading: &Reading) -> bool {
+    resolver.may_repoint()
+        && imported_specifiers(file, reading).is_some_and(|specifiers| {
+            specifiers
+                .iter()
+                .any(|specifier| resolver.may_have_moved(file, specifier))
+        })
 }
 
 fn edges_from(file: &Path, resolver: &Resolver, reading: &Reading) -> Vec<PathBuf> {
@@ -241,7 +255,12 @@ fn is_marked(graph: &Graph, marked: &AHashSet<Node>, node: Node) -> bool {
     {
         return true;
     }
-    marked.contains(&node) || marked.contains(&Node::File(node.file()))
+    marked.contains(&node)
+        || marked.contains(&Node::File(node.file()))
+        || graph.repointed(node.file()).contains(&node)
+        || graph
+            .repointed(node.file())
+            .contains(&Node::File(node.file()))
 }
 
 fn trace_nodes(came_from: &AHashMap<Node, Option<Node>>, target: Node) -> Vec<Node> {

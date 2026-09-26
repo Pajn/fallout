@@ -731,6 +731,36 @@ byte-identical copies rebuilt against the new peer.
 A lockfile named without line information — by `--changed`, or as a binary diff
 — names every package it lists, since there is nothing to narrow with.
 
+## Changed resolution
+
+An import names a file through the rules that resolve it, and a change can move the
+file without touching the import. A tsconfig whose `paths` stop mapping
+`@reduxjs/toolkit` to a shim of the app's own, or the shim deleted from under the
+mapping, sends the same specifier to the package. The file that writes the import is
+then as changed as if the import had been rewritten, and it is treated that way:
+everything in it that reads the import is marked, along with its module
+initialisation.
+
+Two things are taken to move imports:
+
+- **A deleted file** moves every import that could have named it: a relative
+  specifier, or one a tsconfig's `paths` or `baseUrl` maps, that names the file with
+  or without its extension, or names the directory it was the index of.
+- **A changed tsconfig**, or any file one reads through `extends`, moves the imports of
+  the files it governs. A `tsconfig.json` governs the files beneath it as well, since
+  it may have been the nearest before the change or may name the nearest through
+  `references`.
+
+How far a tsconfig change reaches is read from the fields resolution uses. Against a
+base revision both versions are compared: a change to one `paths` entry moves the
+specifiers that entry matches, a change to `baseUrl` moves every specifier that is
+not relative, and a change to `extends`, `references`, `files`, `include`, `exclude`
+or `rootDirs` moves every import. A change to anything else, such as `strict`, moves
+nothing. As a line range there is no earlier version to compare with, so any change
+to a tsconfig moves every import of every file it governs.
+
+Like a changed dependency, this is found by the downstream search only.
+
 ## What counts as an import
 
 Static `import`, `export ... from`, `export * from`, dynamic `import()`, and `require()`.
@@ -859,6 +889,9 @@ app owns.
   than parsed.
 - Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer
   about its dependencies, rather than a wrong one.
+- A change to how an import resolves is followed for tsconfigs and deleted files
+  only. A change to a `package.json`'s `exports` or `imports`, or to `[aliases]` in a
+  `fallout.toml`, does not move the imports it resolves.
 
 ## License
 

@@ -335,6 +335,67 @@ fn byte_range(table: &LineTable, range: LineRange) -> (u32, u32) {
     (start, end.max(start))
 }
 
+/// Marks every node of `file` that reads one of `sources`: what an import that
+/// now resolves somewhere else changes, when the import itself is as written.
+///
+/// Module initialisation evaluates every import, so it is always among them. A
+/// factory call that reads one in any argument has every member marked, since
+/// which argument is not worth telling apart for a change this rare. An
+/// `export *` of one takes the whole file, since which names it brings is exactly
+/// what moved.
+pub fn mark_sources(
+    graph: &Graph,
+    file: FileId,
+    module: &FineModule,
+    sources: &[crate::module::SourceId],
+    out: &mut AHashSet<Node>,
+) {
+    let reads = |imports: &[crate::module::ImportRef]| {
+        imports
+            .iter()
+            .any(|import| sources.contains(&import.source))
+    };
+    out.insert(Node::ModuleInit(file));
+    if module
+        .export_stars
+        .iter()
+        .any(|source| sources.contains(source))
+    {
+        out.insert(Node::File(file));
+    }
+    for (id, decl) in module.decls.iter().enumerate() {
+        let id = id as DeclId;
+        if reads(&decl.imports) {
+            out.insert(Node::Decl(file, id));
+        }
+        for member in &decl.members {
+            if reads(&member.imports) {
+                out.insert(Node::Member(file, id, graph.name_id(&member.name)));
+            }
+        }
+        if let Some(call) = &decl.factory {
+            let read = reads(&call.frame.imports)
+                || call.args.iter().any(|(_, deps)| reads(&deps.imports));
+            if let Some(rule) = graph.made_by(file, id).filter(|_| read) {
+                for member in rule.member_names() {
+                    out.insert(Node::Member(file, id, graph.name_id(member)));
+                }
+            }
+        }
+    }
+    for export in &module.exports {
+        let forwards = match &export.target {
+            ExportTarget::Reexport { source, .. } | ExportTarget::ReexportAll { source } => {
+                sources.contains(source)
+            }
+            ExportTarget::Local(_) => false,
+        };
+        if forwards {
+            out.insert(Node::Export(file, graph.name_id(&export.name)));
+        }
+    }
+}
+
 /// Whether a file's analysis can support declaration-level marks at all.
 pub fn is_fine(graph: &Graph, file: FileId) -> bool {
     graph

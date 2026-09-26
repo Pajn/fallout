@@ -81,6 +81,9 @@ pub struct Graph {
     /// consumers that ask for it still reach, so the mark that says it has gone
     /// reaches exactly those consumers and no others.
     lost_exports: RefCell<AHashMap<FileId, AHashSet<NameId>>>,
+    /// The nodes of each file that read an import the change may have sent
+    /// somewhere else. See [`crate::repoint`].
+    repointed: RefCell<AHashMap<FileId, Rc<AHashSet<Node>>>>,
 }
 
 impl Graph {
@@ -90,6 +93,7 @@ impl Graph {
         unresolved: std::sync::Arc<crate::resolve::Unresolved>,
         root: PathBuf,
         packages: std::sync::Arc<crate::lockfile::Changed>,
+        repointing: std::sync::Arc<crate::repoint::Repointing>,
     ) -> Self {
         Self {
             resolver: Resolver::new(
@@ -97,6 +101,7 @@ impl Graph {
                 unresolved,
                 root,
                 packages,
+                repointing,
                 bundler.lookup,
             ),
             reading,
@@ -107,7 +112,43 @@ impl Graph {
             name_ids: RefCell::new(AHashMap::default()),
             analyses: RefCell::new(AHashMap::default()),
             lost_exports: RefCell::new(AHashMap::default()),
+            repointed: RefCell::new(AHashMap::default()),
         }
+    }
+
+    /// The nodes of `file` that read an import the change may have sent to another
+    /// file, which are as changed as if the import had been rewritten.
+    pub fn repointed(&self, file: FileId) -> Rc<AHashSet<Node>> {
+        if let Some(known) = self.repointed.borrow().get(&file) {
+            return known.clone();
+        }
+        let mut nodes = AHashSet::default();
+        if self.resolver.may_repoint()
+            && let Some(analysed) = self.analysis(file)
+        {
+            let path = self.path(file);
+            let moved: Vec<crate::module::SourceId> = analysed
+                .analysis
+                .sources()
+                .iter()
+                .enumerate()
+                .filter(|(_, specifier)| self.resolver.may_have_moved(&path, specifier))
+                .map(|(source, _)| source as crate::module::SourceId)
+                .collect();
+            if !moved.is_empty() {
+                match analysed.analysis.as_fine() {
+                    Some(module) => {
+                        crate::marks::mark_sources(self, file, module, &moved, &mut nodes)
+                    }
+                    None => {
+                        nodes.insert(Node::File(file));
+                    }
+                }
+            }
+        }
+        let nodes = Rc::new(nodes);
+        self.repointed.borrow_mut().insert(file, nodes.clone());
+        nodes
     }
 
     pub fn file_id(&self, path: &Path) -> FileId {
@@ -806,6 +847,7 @@ impl Default for Graph {
             std::sync::Arc::new(crate::resolve::Unresolved::default()),
             PathBuf::from("."),
             std::sync::Arc::new(crate::lockfile::Changed::default()),
+            std::sync::Arc::default(),
         )
     }
 }

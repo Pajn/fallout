@@ -167,6 +167,10 @@ pub struct Resolver {
     root: PathBuf,
     /// Packages a lockfile change touched. See [`crate::lockfile`].
     packages: Arc<crate::lockfile::Changed>,
+    /// What the change could have sent an import to instead. See [`crate::repoint`].
+    repointing: Arc<crate::repoint::Repointing>,
+    /// The configuration files each tsconfig reads, itself first.
+    tsconfig_reads: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
     /// Which `exports` conditions and entry fields the app's bundler reads. One per
     /// resolver: anchors whose bundlers differ get resolvers of their own.
     lookup: Lookup,
@@ -186,6 +190,7 @@ impl Resolver {
         unresolved: Arc<Unresolved>,
         root: PathBuf,
         packages: Arc<crate::lockfile::Changed>,
+        repointing: Arc<crate::repoint::Repointing>,
         lookup: Lookup,
     ) -> Self {
         Self {
@@ -193,6 +198,8 @@ impl Resolver {
             unresolved,
             root,
             packages,
+            repointing,
+            tsconfig_reads: RwLock::new(AHashMap::default()),
             lookup,
             workspace: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
@@ -466,6 +473,114 @@ impl Resolver {
         !self.packages.is_empty()
     }
 
+    /// Whether anything the change did could have moved an import, which a search
+    /// likewise cannot learn from the paths it has reached.
+    pub fn may_repoint(&self) -> bool {
+        !self.repointing.is_empty()
+    }
+
+    /// Whether `specifier`, imported from `from_file`, may have resolved to another
+    /// file before the change. See [`crate::repoint`].
+    pub fn may_have_moved(&self, from_file: &Path, specifier: &str) -> bool {
+        use crate::repoint::{is_relative, normalize};
+
+        if self.repointing.is_empty() {
+            return false;
+        }
+        let tsconfig = self
+            .module_resolver(&self.configs.chain(from_file))
+            .find_tsconfig(from_file)
+            .ok()
+            .flatten();
+
+        if self.repointing.has_deleted() {
+            let mut candidates = Vec::new();
+            if is_relative(specifier) {
+                if let Some(directory) = from_file.parent() {
+                    candidates.push(normalize(&directory.join(specifier)));
+                }
+            } else if let Some(tsconfig) = &tsconfig {
+                candidates.extend(tsconfig.resolve_path_alias_or_base_url(specifier));
+            }
+            if candidates
+                .iter()
+                .any(|candidate| self.repointing.could_name_deleted(candidate))
+            {
+                return true;
+            }
+        }
+
+        let reads = tsconfig.map(|tsconfig| self.tsconfig_reads(tsconfig.path()));
+        self.repointing.configs().iter().any(|(config, scope)| {
+            let governs = reads
+                .as_ref()
+                .is_some_and(|reads| reads.contains(config))
+                // A `tsconfig.json` above a file can govern it without being the one
+                // found for it now: it may have been the nearest before the change,
+                // or it may name the one that is through `references`.
+                || (config.file_name().is_some_and(|name| name == "tsconfig.json")
+                    && config.parent().is_some_and(|dir| from_file.starts_with(dir)));
+            governs && scope.covers(specifier)
+        })
+    }
+
+    /// Every configuration file the tsconfig at `path` reads: itself, and what it
+    /// extends, however far.
+    fn tsconfig_reads(&self, path: &Path) -> Arc<[PathBuf]> {
+        if let Some(known) = self.tsconfig_reads.read().unwrap().get(path) {
+            return known.clone();
+        }
+        let mut reads = vec![path.to_path_buf()];
+        let mut next = 0;
+        while let Some(config) = reads.get(next).cloned() {
+            next += 1;
+            let Some(parsed) = std::fs::read_to_string(&config)
+                .ok()
+                .and_then(|text| oxc_resolver::TsConfig::parse(true, &config, &config, text).ok())
+            else {
+                continue;
+            };
+            let extends = match parsed.extends {
+                Some(oxc_resolver::ExtendsField::Single(one)) => vec![one],
+                Some(oxc_resolver::ExtendsField::Multiple(many)) => many,
+                None => Vec::new(),
+            };
+            for specifier in extends {
+                let Some(extended) = self.extended_config(&config, &specifier) else {
+                    continue;
+                };
+                if !reads.contains(&extended) {
+                    reads.push(extended);
+                }
+            }
+        }
+        let reads: Arc<[PathBuf]> = reads.into();
+        self.tsconfig_reads
+            .write()
+            .unwrap()
+            .insert(path.to_path_buf(), reads.clone());
+        reads
+    }
+
+    /// The file an `extends` entry of the tsconfig at `config` names, whether or not
+    /// it is still there.
+    fn extended_config(&self, config: &Path, specifier: &str) -> Option<PathBuf> {
+        let directory = config.parent()?;
+        if crate::repoint::is_relative(specifier) {
+            let mut path = crate::repoint::normalize(&directory.join(specifier));
+            if path.extension().is_none_or(|extension| extension != "json") {
+                path.as_mut_os_string().push(".json");
+            }
+            return Some(dunce::canonicalize(&path).unwrap_or(path));
+        }
+        // A package's config, as TypeScript looks for it.
+        let resolver = self.module_resolver(&self.configs.chain(config));
+        [specifier.to_string(), format!("{specifier}/tsconfig.json")]
+            .iter()
+            .find_map(|request| resolver.resolve(directory, request).ok())
+            .map(|resolution| resolution.full_path())
+    }
+
     /// Resolves `specifier` the way Sass would.
     ///
     /// Beyond what the tuned resolver already does, two rules are applied here
@@ -563,6 +678,7 @@ impl Default for Resolver {
             Arc::new(Unresolved::default()),
             PathBuf::from("."),
             Arc::new(crate::lockfile::Changed::default()),
+            Arc::default(),
             Lookup::default(),
         )
     }
