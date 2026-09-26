@@ -1,7 +1,7 @@
 const prefix = createPrefix()
 
 function createPrefix() {
-  console.log("initializing logger")
+  globalThis.loggerReady = true
   return '[%s] '
 }
 

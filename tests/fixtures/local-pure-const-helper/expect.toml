@@ -1,0 +1,7 @@
+# Both exports are frozen literals, and `Colors` is built by a `const` arrow helper
+# with a local, an early return and a constant declared before it. None of that
+# runs anything, so neither export belongs to module initialisation, and an edit to
+# `Spacing` does not reach a page that reads only `Colors`.
+[[anchor]]
+path = "page.ts"
+affected = false

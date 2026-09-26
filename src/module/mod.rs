@@ -8,6 +8,7 @@ pub mod cjs;
 pub mod compare;
 pub mod decls;
 pub mod exports;
+mod globals;
 pub mod init;
 mod local_pure;
 mod members;

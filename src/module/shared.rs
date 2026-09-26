@@ -92,7 +92,11 @@ pub(crate) fn independent_properties(ctx: &Ctx<'_>, symbol: SymbolId) -> bool {
     if !matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
         return false;
     }
-    let Some(object) = declarator.init.as_ref().and_then(object_literal) else {
+    let Some(object) = declarator
+        .init
+        .as_ref()
+        .and_then(|init| object_literal(init, Some(scoping)))
+    else {
         return false;
     };
     // A getter or setter runs code on a read or a write that can reach any other
@@ -714,6 +718,23 @@ mod tests {
             export const read = () => state.volume;"
         );
         assert!(reaches(&source, "read", "write"));
+    }
+
+    #[test]
+    fn a_frozen_literal_has_independent_properties_too() {
+        let source =
+            "let state = Object.freeze({ theme: { name: 'light' }, volume: { level: 1 } });
+            export const write = () => { state.theme.name = 'dark'; };
+            export const read = () => state.volume.level;";
+        assert!(!reaches(source, "read", "write"), "{source}");
+
+        // A local `Object` could return anything, so the binding keeps the
+        // whole-value rule, under which any direct write reaches every read.
+        let source = "const Object = { freeze: (x) => x };
+            let state = Object.freeze({ theme: 'light', volume: 1 });
+            export const write = () => { state.theme = 'dark'; };
+            export const read = () => state.volume;";
+        assert!(reaches(source, "read", "write"), "{source}");
     }
 
     #[test]

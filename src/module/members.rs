@@ -15,12 +15,12 @@ use ahash::AHashMap;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use oxc_semantic::SymbolId;
+use oxc_semantic::{Scoping, SymbolId};
 use oxc_span::GetSpan;
 
 use super::cjs;
 use super::decls::{DeclDraft, ImportBinding};
-use super::parse::{Ctx, is_require, span_of};
+use super::parse::{Ctx, frozen, is_require, span_of};
 use super::refs::{SharedEdges, narrowed, unwritten_member_read, writes_object};
 use super::{Decl, DeclId, ImportRef, Member, Span};
 
@@ -61,7 +61,9 @@ pub(crate) fn find<'a>(
 ) -> Objects {
     let mut objects = Objects::default();
     for (index, statement) in program.body.iter().enumerate() {
-        let Some((binding, object)) = object_literal_of(statement, index, cjs) else {
+        let Some((binding, object)) =
+            object_literal_of(statement, index, cjs, Some(ctx.semantic.scoping()))
+        else {
             continue;
         };
         let decls: Vec<DeclId> = drafts
@@ -242,6 +244,7 @@ pub(crate) fn object_literal_of<'a>(
     statement: &'a Statement<'a>,
     index: usize,
     cjs: &cjs::Table,
+    scoping: Option<&Scoping>,
 ) -> Option<(Option<&'a BindingIdentifier<'a>>, &'a ObjectExpression<'a>)> {
     let variable = match statement {
         Statement::VariableDeclaration(variable) => variable,
@@ -250,7 +253,10 @@ pub(crate) fn object_literal_of<'a>(
             _ => return None,
         },
         Statement::ExportDefaultDeclaration(export) => {
-            return Some((None, object_literal(export.declaration.as_expression()?)?));
+            return Some((
+                None,
+                object_literal(export.declaration.as_expression()?, scoping)?,
+            ));
         }
         // Only an assignment standing on its own: `var _default = (exports.default
         // = { ... })` also binds the object to a name this file can reach it by.
@@ -261,7 +267,7 @@ pub(crate) fn object_literal_of<'a>(
             }
             return Some((
                 None,
-                object_literal(cjs::assigned_value(&expression.expression)?)?,
+                object_literal(cjs::assigned_value(&expression.expression)?, scoping)?,
             ));
         }
         _ => return None,
@@ -273,7 +279,10 @@ pub(crate) fn object_literal_of<'a>(
     let BindingPattern::BindingIdentifier(id) = &declarator.id else {
         return None;
     };
-    Some((Some(id), object_literal(declarator.init.as_ref()?)?))
+    Some((
+        Some(id),
+        object_literal(declarator.init.as_ref()?, scoping)?,
+    ))
 }
 
 /// Whether every assignment in a chain writes one property of the export table.
@@ -297,15 +306,19 @@ fn assigns_properties(expression: &Expression<'_>) -> bool {
     }
 }
 
-/// The object literal an initialiser is, through parentheses and `as const`.
+/// The object literal an initialiser is, through parentheses, `as const` and
+/// `Object.freeze`. Freezing stops a property being reassigned and changes nothing
+/// else about how the object is read. See [`frozen`] for what `scoping` decides.
 pub(crate) fn object_literal<'s, 'a>(
     expression: &'s Expression<'a>,
+    scoping: Option<&Scoping>,
 ) -> Option<&'s ObjectExpression<'a>> {
     match expression {
         Expression::ObjectExpression(object) => Some(object),
-        Expression::ParenthesizedExpression(inner) => object_literal(&inner.expression),
-        Expression::TSAsExpression(inner) => object_literal(&inner.expression),
-        Expression::TSSatisfiesExpression(inner) => object_literal(&inner.expression),
+        Expression::ParenthesizedExpression(inner) => object_literal(&inner.expression, scoping),
+        Expression::TSAsExpression(inner) => object_literal(&inner.expression, scoping),
+        Expression::TSSatisfiesExpression(inner) => object_literal(&inner.expression, scoping),
+        Expression::CallExpression(call) => object_literal(frozen(call, scoping)?, scoping),
         _ => None,
     }
 }
@@ -709,7 +722,6 @@ mod tests {
             "const utils = { a: () => require('./x') };",
             // Not an object literal at all.
             "const utils = make({ a: 1 });",
-            "const utils = Object.freeze({ a: 1 });",
         ] {
             assert!(members(source).is_empty(), "{source}");
         }
@@ -759,6 +771,22 @@ mod tests {
 
         // A default export of anything but the bare binding is a use of it.
         assert!(members("const utils = { a: 1 }; export default (utils);").is_empty());
+    }
+
+    #[test]
+    fn a_frozen_literal_has_members_where_object_is_the_global() {
+        assert_eq!(
+            members("function a() {} export const utils = Object.freeze({ a });"),
+            [("a".to_string(), vec!["a".to_string()])]
+        );
+        for source in [
+            "import { Object } from './fake'; export const utils = Object.freeze({ a: 1 });",
+            "const Object = { freeze: (x) => x }; export const utils = Object.freeze({ a: 1 });",
+            "export const utils = Object.seal({ a: 1 });",
+            "export const utils = Object.freeze({ a: 1 }, extra);",
+        ] {
+            assert!(members(source).is_empty(), "{source}");
+        }
     }
 
     #[test]

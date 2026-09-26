@@ -289,6 +289,36 @@ pub(crate) fn is_require(expr: &CallExpression<'_>) -> bool {
     matches!(&expr.callee, Expression::Identifier(ident) if ident.name == "require")
 }
 
+/// What `Object.freeze(x)` freezes, when `Object` is the global.
+///
+/// Without `scoping` the callee is taken by its spelling. Only a caller whose answer
+/// is checked again against the file's bindings may ask that way: the comparison
+/// against a base revision, which reports where an object changed but leaves it to
+/// the analysis of the file to decide whether the object is read by property.
+pub(crate) fn frozen<'e, 'a>(
+    call: &'e CallExpression<'a>,
+    scoping: Option<&oxc_semantic::Scoping>,
+) -> Option<&'e Expression<'a>> {
+    use oxc_semantic::IsGlobalReference;
+
+    let Expression::StaticMemberExpression(callee) = &call.callee else {
+        return None;
+    };
+    let Expression::Identifier(object) = &callee.object else {
+        return None;
+    };
+    let global = match scoping {
+        Some(scoping) => object.is_global_reference_name("Object".into(), scoping),
+        None => object.name == "Object",
+    };
+    let [argument] = call.arguments.as_slice() else {
+        return None;
+    };
+    (global && callee.property.name == "freeze")
+        .then(|| argument.as_expression())
+        .flatten()
+}
+
 /// The module a call names, when its first argument spells one as a plain string.
 pub(crate) fn static_specifier<'a>(expr: &CallExpression<'a>) -> Option<&'a str> {
     match expr.arguments.first()?.as_expression()? {

@@ -226,7 +226,7 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
         }
     }
 
-    /// Does this callee only compute a value?
+    /// Is this callee free of side effects?
     ///
     /// `annotated` is the `/* @__PURE__ */` comment, which is the author of the call
     /// site speaking. The list is the project speaking about someone else's
@@ -252,7 +252,10 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
 
 impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.local.call(expr) {
+        if !self.callee_is_pure(expr.pure, &expr.callee)
+            && !self.local.call(expr)
+            && !self.local.freezes(expr)
+        {
             self.impure = true;
         }
         // A pure callee says nothing about its arguments, which still run.
@@ -260,7 +263,7 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) {
+        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.local.constructs(expr) {
             self.impure = true;
         }
         walk::walk_new_expression(self, expr);
