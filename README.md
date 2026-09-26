@@ -747,9 +747,12 @@ Two things are taken to move imports:
   specifier, or one a tsconfig's `paths` or `baseUrl` maps, that names the file with
   or without its extension, or names the directory it was the index of.
 - **A changed tsconfig**, or any file one reads through `extends`, moves the imports of
-  the files it governs. A `tsconfig.json` governs the files beneath it as well, since
-  it may have been the nearest before the change or may name the nearest through
-  `references`.
+  the files it governs. A `tsconfig.json` that is added, deleted, or changes which
+  config owns a file reaches the files beneath it as well, since it may have been the
+  nearest before the change or may name the nearest through `references`. Its
+  `paths` and `baseUrl` do not: they apply only to the files it governs.
+- Both are read through a request's inline loaders and without its resource query,
+  so `!!file-loader!./logo.svg?url` names `logo.svg`.
 
 How far a tsconfig change reaches is read from the fields resolution uses. Against a
 base revision both versions are compared: a change to one `paths` entry moves the

@@ -514,14 +514,18 @@ impl Resolver {
             .ok()
             .flatten();
 
+        // What names a file is the request under any inline loaders, without a
+        // resource query or fragment, as `resolve` reads it.
+        let request = without_query(strip_inline_loaders(specifier).unwrap_or(specifier));
+
         if self.repointing.has_deleted() {
             let mut candidates = Vec::new();
-            if is_relative(specifier) {
+            if is_relative(request) {
                 if let Some(directory) = from_file.parent() {
-                    candidates.push(normalize(&directory.join(specifier)));
+                    candidates.push(normalize(&directory.join(request)));
                 }
             } else if let Some(tsconfig) = &tsconfig {
-                candidates.extend(tsconfig.resolve_path_alias_or_base_url(specifier));
+                candidates.extend(tsconfig.resolve_path_alias_or_base_url(request));
             }
             if candidates
                 .iter()
@@ -533,15 +537,21 @@ impl Resolver {
 
         let reads = tsconfig.map(|tsconfig| self.tsconfig_reads(tsconfig.path()));
         self.repointing.configs().iter().any(|(config, scope)| {
-            let governs = reads
-                .as_ref()
-                .is_some_and(|reads| reads.contains(config))
-                // A `tsconfig.json` above a file can govern it without being the one
-                // found for it now: it may have been the nearest before the change,
-                // or it may name the one that is through `references`.
-                || (config.file_name().is_some_and(|name| name == "tsconfig.json")
-                    && config.parent().is_some_and(|dir| from_file.starts_with(dir)));
-            governs && scope.covers(specifier)
+            if reads.as_ref().is_some_and(|reads| reads.contains(config)) {
+                return scope.covers(request);
+            }
+            // A `tsconfig.json` above a file that it does not read can still decide
+            // which config the file is resolved through: by being added or deleted,
+            // or through `references`. Its own `paths` and `baseUrl` apply to files
+            // it governs, which this one is not, so only a change that could make it
+            // govern the file reaches it.
+            *scope == crate::repoint::Scope::Everything
+                && config
+                    .file_name()
+                    .is_some_and(|name| name == "tsconfig.json")
+                && config
+                    .parent()
+                    .is_some_and(|dir| from_file.starts_with(dir))
         })
     }
 
@@ -790,6 +800,16 @@ fn declared_name(text: &str) -> Option<String> {
 ///
 /// A `?query` or `#fragment` suffix needs no such treatment: the resolver parses those
 /// itself, which is why the resolved path is read back without them.
+/// A request without its `?query` or `#fragment`. A leading `#` names a package
+/// import rather than a fragment, so it stays.
+fn without_query(request: &str) -> &str {
+    let end = request
+        .char_indices()
+        .find(|&(at, character)| character == '?' || (character == '#' && at > 0))
+        .map_or(request.len(), |(at, _)| at);
+    &request[..end]
+}
+
 fn strip_inline_loaders(specifier: &str) -> Option<&str> {
     if !specifier.contains('!') {
         return None;
@@ -806,6 +826,14 @@ fn strip_inline_loaders(specifier: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_request_names_its_file_without_a_query_or_fragment() {
+        assert_eq!(without_query("./logo.svg?url"), "./logo.svg");
+        assert_eq!(without_query("./icon.svg#sprite"), "./icon.svg");
+        assert_eq!(without_query("#app/theme"), "#app/theme");
+        assert_eq!(without_query("./plain.ts"), "./plain.ts");
+    }
 
     #[test]
     fn a_package_name_is_its_top_level_name_key() {
