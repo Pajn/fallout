@@ -7,11 +7,15 @@
 //! and a final return, built from the expressions below. A call is pure where the
 //! callee is a proven helper and every argument is itself provable.
 //!
-//! Where a call is written matters as much as what it calls. A function
-//! declaration can be called before the line that declares it; a `const` cannot,
-//! and calling one early throws, which is an effect. So every proof carries the
-//! position from which it holds — the end of the latest `const` it depends on,
-//! helper or value — and a call written before that position is not proven.
+//! A helper may throw from its body and still have no side effects. The module body
+//! may not throw: that stops the module loading, and every importer with it. So a
+//! call written there is proven only where nothing it evaluates in the module body
+//! can throw. What it converts has to convert cleanly, and where it is written
+//! matters. A function declaration can be called before the line that declares it; a
+//! `const` cannot, and neither can a `const` argument be read early. So each proof
+//! carries the position from which the helper can be called — its own declaration —
+//! and each value the position from which it can be read, and a call written before
+//! either is not proven.
 use ahash::AHashMap;
 use oxc_ast::ast::*;
 use oxc_semantic::{IsGlobalReference, SymbolId};
@@ -36,9 +40,18 @@ pub(super) struct LocalPure<'c, 'a> {
     primitives: AHashMap<SymbolId, bool>,
 }
 
-/// The locals of the body being proven, each bound once and readable anywhere
-/// after the statement that binds it.
-type Locals = AHashMap<SymbolId, ()>;
+/// Where an expression is being proven: in a helper's body, with its parameters and
+/// locals, or in the module body, with none.
+///
+/// Only the module body has to be proven not to throw. A throw there stops the
+/// module loading, and every importer with it; a helper whose body can throw is
+/// still one with no side effects.
+#[derive(Default)]
+struct Locals {
+    /// Each bound once, and readable anywhere after the statement that binds it.
+    names: AHashMap<SymbolId, ()>,
+    body: bool,
+}
 
 struct Candidate<'s, 'a> {
     symbol: SymbolId,
@@ -146,15 +159,19 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 if result.proven.contains_key(&candidate.symbol) {
                     continue;
                 }
-                let mut locals: Locals = candidate.params.iter().map(|&p| (p, ())).collect();
+                let mut locals = Locals {
+                    names: candidate.params.iter().map(|&p| (p, ())).collect(),
+                    body: true,
+                };
                 let proof = match &candidate.body {
                     Body::Expression(expr) => result.expression(expr, &locals),
                     Body::Statements(statements) => result.statements(statements, &mut locals),
                 };
-                if let Some(ready) = proof {
-                    result
-                        .proven
-                        .insert(candidate.symbol, ready.max(candidate.ready));
+                // A `const` its body reads before it is declared would throw from
+                // the body, which does not count against it. Only the call itself,
+                // written in the module body, has to come after the helper.
+                if proof.is_some() {
+                    result.proven.insert(candidate.symbol, candidate.ready);
                 }
             }
             if result.proven.len() == previous {
@@ -188,7 +205,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
     }
 
     fn call_ready(&self, call: &CallExpression<'_>, locals: &Locals) -> Option<Ready> {
-        if let Some((conversion, _)) = self.global_call(call) {
+        if let Some((conversion, _)) = self.global_call(call, locals) {
             return self.converted(&call.arguments, conversion, locals);
         }
         let mut ready = if let Some(literal) = frozen_literal(self.ctx, call) {
@@ -219,16 +236,30 @@ impl<'c, 'a> LocalPure<'c, 'a> {
     }
 
     /// A call to a global function or namespace method that has no side effects.
+    ///
+    /// In a helper's body that includes the ones that throw on some arguments.
     fn global_call(
         &self,
         call: &CallExpression<'_>,
+        locals: &Locals,
     ) -> Option<(globals::Conversion, globals::Returns)> {
-        match &call.callee {
-            Expression::StaticMemberExpression(member) => {
-                globals::method(self.global(&member.object)?, member.property.name.as_str())
-            }
-            callee => globals::function(self.global(callee)?),
-        }
+        let (object, name) = match &call.callee {
+            Expression::StaticMemberExpression(member) => (
+                Some(self.global(&member.object)?),
+                member.property.name.as_str(),
+            ),
+            callee => (None, self.global(callee)?),
+        };
+        let found = match object {
+            Some(object) => globals::method(object, name),
+            None => globals::function(name),
+        };
+        found.or_else(|| {
+            locals
+                .body
+                .then(|| globals::throwing(object, name))
+                .flatten()
+        })
     }
 
     /// Arguments proven safe to hand to a function that converts them as given.
@@ -238,18 +269,6 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         conversion: globals::Conversion,
         locals: &Locals,
     ) -> Option<Ready> {
-        // A first argument the console may read as a format string, followed by
-        // more, has to be one written out that holds no `%`: `%s` runs an object's
-        // `toString`, which is the app's code.
-        if conversion == globals::Conversion::Shown
-            && arguments.len() > 1
-            && !arguments
-                .first()
-                .and_then(Argument::as_expression)
-                .is_some_and(no_format)
-        {
-            return None;
-        }
         let mut ready = 0;
         for argument in arguments {
             let argument = argument.as_expression()?;
@@ -257,8 +276,15 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 globals::Conversion::None | globals::Conversion::Shown => {
                     self.expression(argument, locals)?
                 }
-                globals::Conversion::ToString => self.primitive(argument, locals, false)?,
-                globals::Conversion::ToNumber => self.primitive(argument, locals, true)?,
+                // `toString` and `valueOf` are taken to have no side effects, so
+                // what a conversion can do beyond reading is throw: on a BigInt made
+                // a number, and on a symbol. That is fine in a helper's body. In the
+                // module body the value has to be one that converts without: a
+                // primitive, or an object or array literal, which has no methods of
+                // its own to call.
+                _ if locals.body => self.expression(argument, locals)?,
+                globals::Conversion::ToString => self.convertible(argument, locals, false)?,
+                globals::Conversion::ToNumber => self.convertible(argument, locals, true)?,
             });
         }
         Some(ready)
@@ -277,7 +303,14 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             Constructor::Converting(conversion) => {
                 return self.converted(&new.arguments, conversion, locals);
             }
-            Constructor::Set | Constructor::Map | Constructor::Empty => {
+            // `new Array(-1)` throws, which only a helper's body may.
+            Constructor::Throwing(conversion) => {
+                if !locals.body {
+                    return None;
+                }
+                return self.converted(&new.arguments, conversion, locals);
+            }
+            Constructor::Set | Constructor::Map | Constructor::WeakSet | Constructor::WeakMap => {
                 match new.arguments.as_slice() {
                     [] => return Some(0),
                     [argument] => argument.as_expression()?,
@@ -297,10 +330,12 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         for element in &array.elements {
             let element = element.as_expression()?;
             match constructor {
-                // A primitive key throws, and nothing here can tell one apart.
-                Constructor::Empty => return None,
+                // A primitive key throws, which only a helper's body may.
+                Constructor::WeakSet | Constructor::WeakMap if !locals.body => return None,
                 // Each entry must be a pair written out, or it is read by iterating.
-                Constructor::Map if !matches!(element, Expression::ArrayExpression(_)) => {
+                Constructor::Map | Constructor::WeakMap
+                    if !matches!(element, Expression::ArrayExpression(_)) =>
+                {
                     return None;
                 }
                 _ => {}
@@ -310,6 +345,16 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             }
         }
         Some(ready)
+    }
+
+    /// A value that converts to a string, or a number, without throwing.
+    fn convertible(&self, expr: &Expression<'_>, locals: &Locals, number: bool) -> Option<Ready> {
+        match expr.get_inner_expression() {
+            Expression::ObjectExpression(_) | Expression::ArrayExpression(_) => {
+                self.expression(expr, locals)
+            }
+            _ => self.primitive(expr, locals, number),
+        }
     }
 
     /// A value proven to be a primitive a conversion can be applied to, running
@@ -360,7 +405,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 .global(&member.object)
                 .is_some_and(|object| globals::constant(object, member.property.name.as_str()))
                 .then_some(0),
-            Expression::CallExpression(call) => match self.global_call(call)? {
+            Expression::CallExpression(call) => match self.global_call(call, locals)? {
                 (conversion, globals::Returns::Primitive) => {
                     self.converted(&call.arguments, conversion, locals)
                 }
@@ -401,7 +446,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                         return None;
                     };
                     ready = ready.max(self.expression(declarator.init.as_ref()?, locals)?);
-                    locals.insert(id.symbol_id.get()?, ());
+                    locals.names.insert(id.symbol_id.get()?, ());
                 }
                 Some(ready)
             }
@@ -437,7 +482,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 let Some(symbol) = self.symbol(id) else {
                     return self.primitive(expr, locals, false);
                 };
-                if locals.contains_key(&symbol) {
+                if locals.names.contains_key(&symbol) {
                     Some(0)
                 } else {
                     self.values.get(&symbol).copied()
@@ -544,22 +589,6 @@ fn simple_params(params: &FormalParameters<'_>) -> Option<Vec<SymbolId>> {
             id.symbol_id.get()
         })
         .collect()
-}
-
-/// A literal the console cannot read as a format string: anything but a string, or
-/// a string with no `%` in it.
-fn no_format(expr: &Expression<'_>) -> bool {
-    match expr {
-        Expression::StringLiteral(literal) => !literal.value.contains('%'),
-        Expression::TemplateLiteral(template) => {
-            template.expressions.is_empty()
-                && template
-                    .quasis
-                    .iter()
-                    .all(|quasi| !quasi.value.raw.contains('%'))
-        }
-        expr => is_primitive(expr),
-    }
 }
 
 /// A BigInt literal, which a conversion to a number throws on.
@@ -697,15 +726,21 @@ mod tests {
     fn a_call_before_what_it_depends_on_is_ready_stays_in_initialisation() {
         for source in [
             // A `const` is not initialised until its declaration runs, and calling
-            // or reading one before then throws.
+            // or reading one before then throws, in the module body.
             "const result = make(); const make = () => 1;",
             "const result = make(); const make = function () { return 1; };",
             "const result = make(LABEL); function make(x) { return x; } const LABEL = 'a';",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+        for source in [
+            // The same read from inside a helper throws from its body, which does
+            // not make the helper one with side effects.
             "function make() { return LABEL; } const result = make(); const LABEL = 'a';",
             "const make = () => inner(); const result = make(); const inner = () => 1;",
             "function make() { return inner(); } const result = make(); const inner = () => 1;",
         ] {
-            assert!(init(source).contains(&"result".to_string()), "{source}");
+            assert!(init(source).is_empty(), "{source}");
         }
     }
 
@@ -770,14 +805,41 @@ mod tests {
     }
 
     #[test]
-    fn a_conversion_that_could_run_code_or_throw_stays_in_initialisation() {
+    fn a_helper_that_may_throw_still_has_no_side_effects() {
         for source in [
-            // `valueOf` and `toString` of an object, and of a parameter that may be one.
-            "export const result = Math.max({ valueOf() { return 1; } });",
+            // `toString` and `valueOf` are taken to have none.
             "export const result = String({});",
+            "export const result = Math.max([1], { a: 1 });",
+            // A conversion of a parameter may throw, from the helper's body.
             "function make(x) { return Math.abs(x); } export const result = make(1);",
             "function make(x) { return String(x); } export const result = make(1);",
-            // Converting a BigInt, or a symbol, to a number throws.
+            "function make(x) { return parseInt(x, x); } export const result = make('1');",
+            // So may a function that throws on some arguments.
+            "function make(x) { return decodeURIComponent(x); } export const result = make('a');",
+            "function make(x) { return String.fromCodePoint(x); } export const result = make(65);",
+            "function make(n) { return new Array(n); } export const result = make(2);",
+            "function make(key) { return new WeakMap([[key, 1]]); } export const result = make({});",
+            "function make(key) { return new WeakSet([key]); } export const result = make({});",
+        ] {
+            assert!(init(source).is_empty(), "{source}");
+        }
+        for source in [
+            // The same calls, made in the module body, where a throw stops the module.
+            "export const result = decodeURIComponent('%');",
+            "export const result = new Array(-1);",
+            "export const result = new WeakSet([1]);",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_conversion_that_could_run_code_or_throw_stays_in_initialisation() {
+        for source in [
+            // An object with a method of its own is not a literal the proof reads.
+            "export const result = Math.max({ valueOf() { return 1; } });",
+            // Converting a BigInt, or a symbol, to a number throws, and the module
+            // body may not.
             "export const result = Math.abs(1n);",
             "const BIG = 1n; export const result = Math.abs(BIG);",
             "export const result = isNaN(-1n);",
@@ -814,6 +876,9 @@ mod tests {
     fn writing_to_the_console_is_not_a_side_effect_the_app_reads() {
         for source in [
             "export const ready = console.log('ready');",
+            // A format string's `%s` runs `toString`, which has no side effects.
+            "export const ready = console.log('%s ready', {});",
+            "function make(format, x) { console.log(format, x); return x; } export const result = make('a', 1);",
             "export const ready = console.info('ready', 1, null);",
             "function make(x) { console.log('made', x); return { x }; } export const result = make(1);",
             "const make = (x) => { console.warn(x); return x; }; export const result = make('a');",
@@ -822,10 +887,6 @@ mod tests {
             assert!(init(source).is_empty(), "{source}");
         }
         for source in [
-            // A format string's `%s` runs an object's `toString`, and a first
-            // argument nobody wrote out could be one.
-            "export const result = console.log('%s', {});",
-            "function make(format, x) { console.log(format, x); return x; } export const result = make('a', 1);",
             // What the arguments do is still theirs.
             "export const result = console.log(register());",
             // Not the console, and not one of its methods that only writes.

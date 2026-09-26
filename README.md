@@ -172,17 +172,12 @@ Six things take a call back out of initialisation:
 - the language's own functions that have no side effects: `new Map()` and `new Set()`
   (empty, or filled from an array literal), `Math.*`, `Number.is*`, `parseInt`,
   `String()`, `Array.isArray`, `Object.is`, `Date.now()`, `new Error("…")`,
-  `console.log()` and a few more, taken from oxc's side-effect analysis. An argument such a function converts to
-  a string or a number must be a primitive written out, since converting an object
-  runs its `toString` or `valueOf`, and one converted to a number must not be a
-  BigInt, which throws. Functions that throw on some literals — `decodeURI`,
-  `String.fromCodePoint`, `new Array(n)` — are not included, and nor is `Symbol.for`,
-  which adds to the global symbol registry. A side effect here means a change other
-  code in the app could read back: a result read from the clock or a random source is
-  fine, since nothing requires the call to return the same thing every time, and so is
-  writing to the console, which the app never reads. A `console` call given several
-  arguments must start with a literal holding no `%`, since a format string's `%s`
-  runs an object's `toString`;
+  `console.log()` and a few more, taken from oxc's side-effect analysis. A side effect
+  here means a change other code in the app could read back. So a result read from the
+  clock or a random source is fine, since nothing requires the call to return the same
+  thing every time, and so is writing to the console, which the app never reads.
+  `toString` and `valueOf` are taken to have none either. `Symbol.for`, which adds to
+  the global symbol registry, is not included;
 - entries in the project's `fallout.toml`;
 - a proof for a small local helper.
 
@@ -198,18 +193,26 @@ global functions above, and calls to other proven helpers. For example, `const m
 (value) => ({ value })` makes `const item = make("item")` independent of unrelated
 exports. Consumers of `item` still depend on `make` and any helpers it calls.
 
-The proof also checks argument evaluation. Literals, top-level `const` primitives
-and calls to proven helpers qualify; other variable arguments remain conservative. It
-also checks order. A `const` does not exist until its declaration runs, and calling
-or reading one earlier throws. So a call written before a `const` helper, or before a
-`const` a helper reads, stays in initialisation. Function declarations are hoisted
-and can be called from anywhere. Reads of other captured values, property reads
-(which may invoke getters), coercing arithmetic, interpolated templates, writes,
-loops, unknown calls, recursion, defaults, destructuring, spread, `this`, `arguments`,
-async and generator functions, and default-exported declarations keep the existing
-broad behaviour. No annotation or configuration is needed for an inferred helper. Use
-`--base` to detect an effect removed from a helper: line-only analysis sees its
-current body, not the previous side effect.
+The proof also checks argument evaluation. Literals, top-level `const` primitives and
+calls to proven helpers qualify; other variable arguments remain conservative. A
+helper may throw from its body and still have no side effects, since a throw is not a
+change anything reads back. The module body may not: a throw there stops the module
+loading, and every importer with it. So a call written in the module body must
+evaluate nothing there that can throw. An argument converted to a number must not be a
+BigInt, the functions that throw on some arguments — `decodeURI("%")`,
+`String.fromCodePoint(-1)`, `new Array(-1)`, a `WeakMap` or `WeakSet` given a
+primitive key — are proven only inside a helper, and order matters. A `const` does not
+exist until its declaration runs, and calling or reading one earlier throws, so a call
+written before its `const` helper, or before a `const` it is given, stays in
+initialisation. A helper reading a `const` declared later throws from its body
+instead, which is fine. Function declarations are hoisted and can be called from
+anywhere. Reads of other captured values, property reads (which may invoke getters),
+coercing arithmetic, interpolated templates, writes, loops, unknown calls, recursion,
+defaults, destructuring, spread, `this`, `arguments`, async and generator functions,
+and default-exported declarations keep the existing broad behaviour. No annotation or
+configuration is needed for an inferred helper. Use `--base` to detect an effect
+removed from a helper: line-only analysis sees its current body, not the previous side
+effect.
 
 ```toml
 # fallout.toml

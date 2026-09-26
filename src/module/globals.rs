@@ -10,22 +10,28 @@
 //!
 //! The lists are taken from `oxc_ecmascript`'s side-effect analysis, which keeps
 //! them private to itself; its own tables are ported in turn from Rolldown, Rollup
-//! and closure-compiler. That analysis assumes `toString` and `valueOf` never run
-//! code of their own. This one does not, so each function here is listed with the
-//! conversion it applies to its arguments, and a caller may accept a call only where
-//! that conversion cannot reach user code or throw.
+//! and closure-compiler. Like that analysis, this takes `toString` and `valueOf` to
+//! have no side effects.
 //!
-//! Entries the source lists but a plain literal argument can still make throw are
-//! left out: `decodeURI("%")`, `encodeURI` of a lone surrogate, `escape`,
-//! `String.fromCodePoint(-1)`, and `WeakMap` or `WeakSet` given entries, which
-//! throw on a primitive key. So is `Symbol.for`, which does have an effect: it adds
-//! its key to the global symbol registry every module shares.
+//! What matters beyond that is throwing, and only in the module body: a throw there
+//! stops the module loading, and every importer with it. A throw from a helper's
+//! body does not make the helper one with side effects. So each function is listed
+//! with the conversion it applies to its arguments, which in the module body has to
+//! be one that cannot throw — converting a BigInt to a number, or a symbol, does —
+//! and the functions that throw on some arguments are listed apart, for a helper's
+//! body only: `decodeURI("%")`, `encodeURI` of a lone surrogate,
+//! `String.fromCodePoint(-1)`, `new Array(-1)`, and `WeakMap` or `WeakSet` given a
+//! primitive key.
+//!
+//! `Symbol.for` is left out. It adds its key to the global symbol registry every
+//! module shares.
 //!
 //! Every name is the global's only if the reference has no binding in the file,
 //! which the caller checks. The environment's own globals are assumed to be as the
 //! language defines them, which is what the source assumes too.
 
-/// What a global function does to its arguments before it looks at them.
+/// What a global function does to its arguments before it looks at them, which in
+/// the module body decides whether it can throw.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Conversion {
     /// Nothing: any argument is read as it is.
@@ -35,8 +41,8 @@ pub(crate) enum Conversion {
     /// `ToNumber`, which runs an object's `valueOf` and throws on a BigInt or a
     /// symbol.
     ToNumber,
-    /// Shown as they are, the way the console shows a value, except where the first
-    /// of several is a format string: `%s` and the rest convert what follows it.
+    /// Shown as they are, the way the console shows a value. A format string's `%s`
+    /// and the rest convert what follows it, which runs `toString` at most.
     Shown,
 }
 
@@ -102,13 +108,16 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
 pub(crate) enum Constructor {
     /// Arguments are converted, as for a function call.
     Converting(Conversion),
+    /// The same, but some arguments make it throw: `new Array(-1)`.
+    Throwing(Conversion),
     /// `Set`: iterates an array literal, if given one.
     Set,
     /// `Map`: iterates an array literal of array-literal entries, if given one.
     Map,
-    /// `WeakMap` and `WeakSet`: nothing but `null` or no argument, since an entry
+    /// `WeakSet` and `WeakMap`, read like `Set` and `Map`, except that an entry
     /// with a primitive key throws.
-    Empty,
+    WeakSet,
+    WeakMap,
 }
 
 #[rustfmt::skip]
@@ -117,11 +126,31 @@ pub(crate) fn constructor(name: &str) -> Option<Constructor> {
     Some(match name {
         "Set" => Set,
         "Map" => Map,
-        "WeakMap" | "WeakSet" => Empty,
+        "WeakSet" => WeakSet,
+        "WeakMap" => WeakMap,
+        "Array" => Throwing(Conversion::None),
         "Object" | "Boolean" => Converting(Conversion::None),
         "String" | "Error" | "EvalError" | "RangeError" | "ReferenceError" | "SyntaxError"
         | "TypeError" | "URIError" => Converting(Conversion::ToString),
         "Date" | "Number" => Converting(Conversion::ToNumber),
+        _ => return Option::None,
+    })
+}
+
+/// A call with no side effects that throws on some arguments, which a helper's
+/// body may make and the module body may not.
+#[rustfmt::skip]
+pub(crate) fn throwing(object: Option<&str>, name: &str) -> Option<(Conversion, Returns)> {
+    use Conversion::*;
+    use Returns::*;
+    Some(match (object, name) {
+        // A malformed escape, or a lone surrogate.
+        (Option::None, "decodeURI" | "decodeURIComponent" | "encodeURI" | "encodeURIComponent") => {
+            (ToString, Primitive)
+        }
+        (Option::None, "escape" | "unescape") => (ToString, Primitive),
+        // A code point that is not an integer in range.
+        (Some("String"), "fromCodePoint") => (ToNumber, Primitive),
         _ => return Option::None,
     })
 }
