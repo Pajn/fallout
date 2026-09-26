@@ -28,8 +28,8 @@
 //! - **`pure` accumulates** the same way, and an entry applies only below the file
 //!   that wrote it. A package calling its own factory pure cannot quiet a call in an
 //!   app that never made the claim.
-//! - **`builtin-pure` and `inline-requires` are single answers**, so the nearest one
-//!   wins.
+//! - **`builtin-pure`, `inline-requires` and each `[resolve]` key are single
+//!   answers**, so the nearest one wins.
 //!
 //! # Which file asks
 //!
@@ -44,8 +44,10 @@
 //! `inline-requires` is not a property of a file at all. It is a property of the
 //! bundler, and the bundler is chosen by the app being asked about — the same shared
 //! module is inlined when a mobile bundler pulls it in and is not when a web bundler
-//! does. So it is read from the chain above the *anchor*, and with several anchors it
-//! holds only if every one of them claims it, since it is the setting that narrows.
+//! does. So it is read from the chain above the *anchor*. So is `[resolve]`, which
+//! says which `package.json` fields and `exports` conditions the bundler reads: Metro
+//! takes `react-native` before `main`, a web bundler takes `browser`. Anchors whose
+//! bundlers differ are answered on graphs of their own; see [`Bundler`].
 //!
 //! # When a file is read
 //!
@@ -75,6 +77,8 @@ pub enum Error {
     BadAlias { path: String, name: String },
     /// A setting that is either on or off was written as something else.
     NotABoolean { path: String, key: String },
+    /// A setting that is a list of names was written as something else.
+    NotAList { path: String, key: String },
     /// Something wrong with this file's `pure` list.
     Pure(crate::pure::Error),
 }
@@ -91,6 +95,9 @@ impl fmt::Display for Error {
             ),
             Error::NotABoolean { path, key } => {
                 write!(f, "{path}: `{key}` must be true or false")
+            }
+            Error::NotAList { path, key } => {
+                write!(f, "{path}: `{key}` must be a list of strings")
             }
             Error::Pure(error) => write!(f, "{error}"),
         }
@@ -111,6 +118,40 @@ struct Declared {
     pure: Vec<PureCall>,
     builtin_pure: Option<bool>,
     inline_requires: Option<bool>,
+    conditions: Option<Vec<String>>,
+    main_fields: Option<Vec<String>>,
+}
+
+/// How the bundler of an app finds a file for a package specifier.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Lookup {
+    /// The `exports` conditions it matches, in the order it tries them.
+    pub conditions: Vec<String>,
+    /// The `package.json` fields it reads for a package's entry point, in order.
+    pub main_fields: Vec<String>,
+}
+
+impl Default for Lookup {
+    /// A package whose `exports` offers only `import` and `require` is still found,
+    /// which is what every bundler does with it. Without a condition to match, only
+    /// a `default` entry would be, and such a package would resolve to nothing.
+    fn default() -> Self {
+        Self {
+            conditions: vec!["import".to_string(), "require".to_string()],
+            main_fields: vec!["main".to_string()],
+        }
+    }
+}
+
+/// What the bundler of the app an anchor belongs to does, as far as this tool asks.
+///
+/// Two anchors with equal answers can share one graph. Two with different ones
+/// cannot: the same import resolves to a different file, or is evaluated at a
+/// different time, depending on which bundler pulls it in.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct Bundler {
+    pub inline_requires: bool,
+    pub lookup: Lookup,
 }
 
 /// What the files above one directory add up to.
@@ -125,6 +166,7 @@ pub struct Chain {
     style_aliases: Alias,
     pure: PureList,
     inline_requires: bool,
+    lookup: Lookup,
 }
 
 impl Chain {
@@ -156,6 +198,10 @@ impl Chain {
 
     pub fn inline_requires(&self) -> bool {
         self.inline_requires
+    }
+
+    pub fn lookup(&self) -> &Lookup {
+        &self.lookup
     }
 }
 
@@ -228,6 +274,19 @@ impl Configs {
                 .iter()
                 .find_map(|one| one.inline_requires)
                 .unwrap_or(false),
+            lookup: {
+                let default = Lookup::default();
+                Lookup {
+                    conditions: declared
+                        .iter()
+                        .find_map(|one| one.conditions.clone())
+                        .unwrap_or(default.conditions),
+                    main_fields: declared
+                        .iter()
+                        .find_map(|one| one.main_fields.clone())
+                        .unwrap_or(default.main_fields),
+                }
+            },
             dirs,
         });
 
@@ -246,6 +305,15 @@ impl Configs {
             && anchors
                 .iter()
                 .all(|anchor| self.chain(anchor).inline_requires())
+    }
+
+    /// What the bundler of `anchor`'s app does, from the chain above it.
+    pub fn bundler(&self, anchor: &Path) -> Bundler {
+        let chain = self.chain(anchor);
+        Bundler {
+            inline_requires: chain.inline_requires(),
+            lookup: chain.lookup().clone(),
+        }
     }
 
     /// The first file that could not be read, if any.
@@ -319,7 +387,38 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
         pure,
         builtin_pure,
         inline_requires: flag(&document, "inline-requires", &shown)?,
+        conditions: resolve_list(&document, "conditions", &shown)?,
+        main_fields: resolve_list(&document, "main-fields", &shown)?,
     }))
+}
+
+/// A list under `[resolve]`, written as the bundler's own option would be.
+fn resolve_list(
+    document: &toml::Table,
+    key: &str,
+    shown: &str,
+) -> Result<Option<Vec<String>>, Error> {
+    let Some(resolve) = document.get("resolve") else {
+        return Ok(None);
+    };
+    let resolve = resolve.as_table().ok_or_else(|| Error::NotATable {
+        path: shown.to_string(),
+        key: "resolve".to_string(),
+    })?;
+    let Some(value) = resolve.get(key) else {
+        return Ok(None);
+    };
+    let not_a_list = || Error::NotAList {
+        path: shown.to_string(),
+        key: format!("resolve.{key}"),
+    };
+    value
+        .as_array()
+        .ok_or_else(not_a_list)?
+        .iter()
+        .map(|item| item.as_str().map(str::to_string).ok_or_else(not_a_list))
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
 }
 
 /// The `[style.aliases]` table, with each target made absolute.
@@ -638,6 +737,54 @@ mod tests {
             configs.chain(&dir.path().join("a.scss"));
             assert!(
                 matches!(configs.failure(), Some(Error::NotATable { .. })),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_resolve_key_is_answered_by_the_nearest_file_that_says() {
+        let (dir, configs) = tree(&[
+            (
+                "",
+                "[resolve]\nconditions = [\"browser\"]\nmain-fields = [\"browser\", \"main\"]\n",
+            ),
+            (
+                "apps/mobile",
+                "[resolve]\nmain-fields = [\"react-native\", \"main\"]\n",
+            ),
+        ]);
+        let mobile = configs.bundler(&dir.path().join("apps/mobile/page.tsx"));
+        assert_eq!(mobile.lookup.conditions, ["browser"]);
+        assert_eq!(mobile.lookup.main_fields, ["react-native", "main"]);
+
+        let web = configs.bundler(&dir.path().join("apps/web/page.tsx"));
+        assert_eq!(web.lookup.main_fields, ["browser", "main"]);
+        assert_ne!(mobile, web, "two bundlers, two graphs");
+    }
+
+    #[test]
+    fn without_resolve_a_package_is_entered_by_import_require_and_main() {
+        let (dir, configs) = tree(&[]);
+        let bundler = configs.bundler(&dir.path().join("page.tsx"));
+        assert_eq!(bundler.lookup.conditions, ["import", "require"]);
+        assert_eq!(bundler.lookup.main_fields, ["main"]);
+    }
+
+    #[test]
+    fn a_resolve_setting_that_is_not_a_list_of_strings_is_a_failure() {
+        for body in [
+            "[resolve]\nconditions = \"react-native\"\n",
+            "[resolve]\nmain-fields = [1]\n",
+            "resolve = 1\n",
+        ] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.tsx"));
+            assert!(
+                matches!(
+                    configs.failure(),
+                    Some(Error::NotAList { .. } | Error::NotATable { .. })
+                ),
                 "{body}"
             );
         }

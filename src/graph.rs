@@ -86,15 +86,21 @@ pub struct Graph {
 impl Graph {
     pub fn new(
         reading: Reading,
-        inline_requires: bool,
+        bundler: crate::config::Bundler,
         unresolved: std::sync::Arc<crate::resolve::Unresolved>,
         root: PathBuf,
         packages: std::sync::Arc<crate::lockfile::Changed>,
     ) -> Self {
         Self {
-            resolver: Resolver::new(reading.configs.clone(), unresolved, root, packages),
+            resolver: Resolver::new(
+                reading.configs.clone(),
+                unresolved,
+                root,
+                packages,
+                bundler.lookup,
+            ),
             reading,
-            inline_requires,
+            inline_requires: bundler.inline_requires,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -606,7 +612,7 @@ impl Default for Graph {
     fn default() -> Self {
         Self::new(
             Reading::default(),
-            false,
+            crate::config::Bundler::default(),
             std::sync::Arc::new(crate::resolve::Unresolved::default()),
             PathBuf::from("."),
             std::sync::Arc::new(crate::lockfile::Changed::default()),

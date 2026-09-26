@@ -123,151 +123,331 @@ pub fn canonical_root(root: &Path) -> PathBuf {
 }
 
 pub fn analyse(options: &Options) -> Result<Outcome, Error> {
-    let unresolved = std::sync::Arc::new(Unresolved::default());
-    let verdict = analysed(options, &unresolved)?;
+    let run = Run::new(options)?;
+    // The set is affected if any one of its anchors is. Anchors whose bundlers agree
+    // are asked together, on one graph; the first group affected is the answer.
+    let mut verdict = Verdict::NotAffected;
+    for (bundler, anchors) in run.groups() {
+        let engine = run.engine(bundler);
+        let judged = engine.judge(&run, &anchors);
+        if judged.verdict.is_affected() {
+            verdict = judged.verdict;
+            break;
+        }
+    }
+    run.finish()?;
     Ok(Outcome {
         verdict,
-        unresolved: unresolved.sorted(),
+        unresolved: run.unresolved.sorted(),
     })
 }
 
-fn analysed(options: &Options, unresolved: &std::sync::Arc<Unresolved>) -> Result<Verdict, Error> {
-    if options.anchors.is_empty() {
-        return Err(Error::NoAnchors);
-    }
+/// One anchor's answer, as [`analyse_each`] gives it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchorOutcome {
+    pub anchor: PathBuf,
+    pub verdict: Verdict,
+    /// Specifiers the searches for this anchor reached and could not place on disk,
+    /// each with the files that wrote it and what kind of name it is.
+    ///
+    /// For an anchor found not affected this covers everything its searches could
+    /// reach, which is every place a missing edge could have hidden a change from it.
+    /// For one found affected it covers what the search saw before it stopped.
+    pub unresolved: Vec<UnresolvedImport>,
+}
 
-    let root = canonical_root(&options.root);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedImport {
+    pub specifier: String,
+    pub from: Vec<PathBuf>,
+    pub kind: resolve::UnresolvedKind,
+}
 
-    let mut anchors = Vec::new();
-    let mut missing = Vec::new();
-    for anchor in &options.anchors {
-        let path = if anchor.is_relative() {
-            root.join(anchor)
-        } else {
-            anchor.clone()
-        };
-        let path = dunce::canonicalize(&path).unwrap_or(path);
-        if path.exists() {
-            anchors.push(path);
-        } else {
-            missing.push(path.display().to_string());
+/// Answers each anchor on its own, in one run.
+///
+/// Every anchor sharing a bundler is answered on the same graph, so each module is
+/// read and resolved once however many anchors reach it.
+pub fn analyse_each(options: &Options) -> Result<Vec<AnchorOutcome>, Error> {
+    let run = Run::new(options)?;
+    let mut answers: Vec<AnchorOutcome> = Vec::with_capacity(run.anchors.len());
+    for (bundler, anchors) in run.groups() {
+        let engine = run.engine(bundler);
+        for anchor in anchors {
+            let judged = engine.judge(&run, std::slice::from_ref(&anchor));
+            let unresolved = run
+                .unresolved
+                .sorted()
+                .into_iter()
+                .filter_map(|(specifier, from)| {
+                    let from: Vec<PathBuf> = from
+                        .into_iter()
+                        .filter(|file| judged.visited.contains(file))
+                        .collect();
+                    let kind = engine.resolver().unresolved_kind(from.first()?, &specifier);
+                    Some(UnresolvedImport {
+                        specifier,
+                        from,
+                        kind,
+                    })
+                })
+                .collect();
+            answers.push(AnchorOutcome {
+                anchor,
+                verdict: judged.verdict,
+                unresolved,
+            });
         }
     }
-    if !missing.is_empty() {
-        return Err(Error::MissingAnchors(missing));
-    }
+    run.finish()?;
+    // In the order the anchors were given, whichever group each fell in.
+    answers.sort_by_key(|answer| {
+        run.anchors
+            .iter()
+            .position(|anchor| *anchor == answer.anchor)
+    });
+    Ok(answers)
+}
 
-    let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
+/// What every question in one run shares: the anchors, the change, and the
+/// project's own settings.
+struct Run<'o> {
+    options: &'o Options,
+    root: PathBuf,
+    anchors: Vec<PathBuf>,
+    change_set: diff::ChangeSet,
+    configs: std::sync::Arc<config::Configs>,
+    reading: module::Reading,
+    packages: std::sync::Arc<lockfile::Changed>,
+    base: Option<base::Base>,
+    unresolved: std::sync::Arc<Unresolved>,
+    /// The files the change marks, for the searches that work file by file: every
+    /// file-level search, and the upstream one at any granularity. Worked out once,
+    /// since nothing about it depends on the bundler.
+    changed: std::cell::OnceCell<ahash::AHashSet<PathBuf>>,
+}
 
-    // Every `fallout.toml` at or below the root, read as the run reaches the files
-    // each one speaks for. A run that analyses no module reads none of them.
-    let configs = std::sync::Arc::new(config::Configs::new(&root));
-    let reading = module::Reading {
-        configs: configs.clone(),
-        ignore_types: !options.include_types,
-    };
-    // A changed lockfile entry is a change to code this repository does not hold.
-    // Read before the granularity split, because both searches ask one resolver and
-    // it is the resolver that gives a changed package a node.
-    let packages = std::sync::Arc::new(lockfile::changed(&root, &change_set, &options.changed));
+impl<'o> Run<'o> {
+    fn new(options: &'o Options) -> Result<Self, Error> {
+        if options.anchors.is_empty() {
+            return Err(Error::NoAnchors);
+        }
 
-    // Whether imports are deferred describes the bundler, and the anchors are what
-    // pick one. Decided here, once, because the graph has no anchors of its own.
-    let inline_requires = configs.inline_requires(&anchors);
-    let base = options
-        .base
-        .as_deref()
-        .map(|reference| base::Base::new(reference, reading.clone()));
+        let root = canonical_root(&options.root);
 
-    if options.granularity == Granularity::Symbol {
-        let graph = graph::Graph::new(
-            reading,
-            inline_requires,
-            unresolved.clone(),
-            root.clone(),
-            packages.clone(),
-        );
-        let verdict = analyse_symbols(&anchors, &root, &change_set, options, &graph, base.as_ref());
-        return match configs.failure() {
-            Some(error) => Err(Error::Config(error)),
-            None => Ok(verdict),
+        let mut anchors = Vec::new();
+        let mut missing = Vec::new();
+        for anchor in &options.anchors {
+            let path = if anchor.is_relative() {
+                root.join(anchor)
+            } else {
+                anchor.clone()
+            };
+            let path = dunce::canonicalize(&path).unwrap_or(path);
+            if path.exists() {
+                if !anchors.contains(&path) {
+                    anchors.push(path);
+                }
+            } else {
+                missing.push(path.display().to_string());
+            }
+        }
+        if !missing.is_empty() {
+            return Err(Error::MissingAnchors(missing));
+        }
+
+        let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
+
+        // Every `fallout.toml` at or below the root, read as the run reaches the
+        // files each one speaks for. A run that analyses no module reads none of them.
+        let configs = std::sync::Arc::new(config::Configs::new(&root));
+        let reading = module::Reading {
+            configs: configs.clone(),
+            ignore_types: !options.include_types,
         };
+        // A changed lockfile entry is a change to code this repository does not
+        // hold. Read before any search, because every search asks a resolver and it
+        // is the resolver that gives a changed package a node.
+        let packages = std::sync::Arc::new(lockfile::changed(&root, &change_set, &options.changed));
+        let base = options
+            .base
+            .as_deref()
+            .map(|reference| base::Base::new(reference, reading.clone()));
+
+        Ok(Self {
+            options,
+            root,
+            anchors,
+            change_set,
+            configs,
+            reading,
+            packages,
+            base,
+            unresolved: std::sync::Arc::new(Unresolved::default()),
+            changed: std::cell::OnceCell::new(),
+        })
     }
 
-    let changed = changes::marked_files(
-        &root,
-        &change_set,
-        &options.changed,
-        base.as_ref(),
-        &reading,
-    );
-
-    if changed.is_empty() && packages.is_empty() {
-        return Ok(Verdict::NotAffected);
+    /// The anchors grouped by what their apps' bundlers do, in the order each group's
+    /// first anchor was given.
+    ///
+    /// The bundler is a property of the app an anchor belongs to rather than of any
+    /// file, so it is read from the chain above the anchor. See [`config`].
+    fn groups(&self) -> Vec<(config::Bundler, Vec<PathBuf>)> {
+        let mut groups: Vec<(config::Bundler, Vec<PathBuf>)> = Vec::new();
+        for anchor in &self.anchors {
+            let bundler = self.configs.bundler(anchor);
+            match groups.iter_mut().find(|(known, _)| *known == bundler) {
+                Some((_, members)) => members.push(anchor.clone()),
+                None => groups.push((bundler, vec![anchor.clone()])),
+            }
+        }
+        groups
     }
 
-    let resolver = Resolver::new(
-        configs.clone(),
-        unresolved.clone(),
-        root.clone(),
-        packages.clone(),
-    );
-
-    let mut verdict = Verdict::NotAffected;
-    if options.only != Some(Direction::Upstream)
-        && let Some(hit) = query::downstream(&anchors, &changed, &resolver, &reading)
-    {
-        verdict = Verdict::Affected(hit);
-    }
-    if verdict == Verdict::NotAffected
-        && options.only != Some(Direction::Downstream)
-        && let Some(hit) = query::upstream(&anchors, &changed, &resolver, &reading)
-    {
-        verdict = Verdict::Affected(hit);
+    fn changed(&self, reading: &module::Reading) -> &ahash::AHashSet<PathBuf> {
+        self.changed.get_or_init(|| {
+            changes::marked_files(
+                &self.root,
+                &self.change_set,
+                &self.options.changed,
+                self.base.as_ref(),
+                reading,
+            )
+        })
     }
 
-    // A file that could not be read replaces the answer rather than shaping it.
-    match configs.failure() {
-        Some(error) => Err(Error::Config(error)),
-        None => Ok(verdict),
+    fn engine(&self, bundler: config::Bundler) -> Engine {
+        match self.options.granularity {
+            Granularity::File => Engine::File(Box::new(Resolver::new(
+                self.configs.clone(),
+                self.unresolved.clone(),
+                self.root.clone(),
+                self.packages.clone(),
+                bundler.lookup,
+            ))),
+            Granularity::Symbol => {
+                let graph = graph::Graph::new(
+                    self.reading.clone(),
+                    bundler,
+                    self.unresolved.clone(),
+                    self.root.clone(),
+                    self.packages.clone(),
+                );
+                let marked = marks::marked_nodes(
+                    &graph,
+                    &self.change_set,
+                    &self.root,
+                    &self.options.changed,
+                    self.base.as_ref(),
+                );
+                Engine::Symbol(Box::new((graph, marked)))
+            }
+        }
+    }
+
+    /// A file that could not be read replaces the answer rather than shaping it.
+    fn finish(&self) -> Result<(), Error> {
+        match self.configs.failure() {
+            Some(error) => Err(Error::Config(error)),
+            None => Ok(()),
+        }
     }
 }
 
-/// Declaration granularity. Only the downstream search narrows; upstream keeps its
-/// file-level answer, so a symbol run is never *less* sensitive than a file run.
-fn analyse_symbols(
-    anchors: &[PathBuf],
-    root: &Path,
-    change_set: &diff::ChangeSet,
-    options: &Options,
-    graph: &graph::Graph,
-    base: Option<&base::Base>,
-) -> Verdict {
-    let marked = marks::marked_nodes(graph, change_set, root, &options.changed, base);
+/// What answers the anchors of one bundler: a resolver for a file-level run, a node
+/// graph and what the change marks in it for a declaration-level one.
+enum Engine {
+    File(Box<Resolver>),
+    Symbol(Box<(graph::Graph, ahash::AHashSet<graph::Node>)>),
+}
 
-    if marked.is_empty() && !graph.resolver().has_changed_packages() {
-        return Verdict::NotAffected;
-    }
+struct Judged {
+    verdict: Verdict,
+    /// Every file the searches looked at.
+    visited: ahash::AHashSet<PathBuf>,
+}
 
-    if options.only != Some(Direction::Upstream)
-        && let Some(nodes) = query::downstream_symbols(anchors, &marked, graph)
-    {
-        let path = nodes.iter().map(|node| graph.path(node.file())).collect();
-        let rendered = nodes.iter().map(|node| graph.render(*node, root)).collect();
-        return Verdict::Affected(Hit {
-            direction: Direction::Downstream,
-            rendered: Some(rendered),
-            path,
-        });
-    }
-
-    if options.only != Some(Direction::Downstream) {
-        let changed =
-            changes::marked_files(root, change_set, &options.changed, base, graph.reading());
-        if let Some(hit) = query::upstream(anchors, &changed, graph.resolver(), graph.reading()) {
-            return Verdict::Affected(hit);
+impl Engine {
+    fn resolver(&self) -> &Resolver {
+        match self {
+            Engine::File(resolver) => resolver,
+            Engine::Symbol(symbol) => symbol.0.resolver(),
         }
     }
 
-    Verdict::NotAffected
+    fn judge(&self, run: &Run<'_>, anchors: &[PathBuf]) -> Judged {
+        let only = run.options.only;
+        let mut visited = ahash::AHashSet::default();
+        let affected = |hit: Hit, visited| Judged {
+            verdict: Verdict::Affected(hit),
+            visited,
+        };
+
+        match self {
+            Engine::File(resolver) => {
+                let changed = run.changed(&run.reading);
+                if changed.is_empty() && run.packages.is_empty() {
+                    return Judged {
+                        verdict: Verdict::NotAffected,
+                        visited,
+                    };
+                }
+                if only != Some(Direction::Upstream) {
+                    let search = query::downstream(anchors, changed, resolver, &run.reading);
+                    visited.extend(search.visited);
+                    if let Some(hit) = search.hit {
+                        return affected(hit, visited);
+                    }
+                }
+                if only != Some(Direction::Downstream) {
+                    let search = query::upstream(anchors, changed, resolver, &run.reading);
+                    visited.extend(search.visited);
+                    if let Some(hit) = search.hit {
+                        return affected(hit, visited);
+                    }
+                }
+            }
+            // Only the downstream search narrows; upstream keeps its file-level
+            // answer, so a declaration run is never *less* sensitive than a file run.
+            Engine::Symbol(symbol) => {
+                let (graph, marked) = symbol.as_ref();
+                if marked.is_empty() && !graph.resolver().has_changed_packages() {
+                    return Judged {
+                        verdict: Verdict::NotAffected,
+                        visited,
+                    };
+                }
+                if only != Some(Direction::Upstream) {
+                    let search = query::downstream_symbols(anchors, marked, graph);
+                    visited.extend(search.visited);
+                    if let Some(nodes) = search.hit {
+                        let path = nodes.iter().map(|node| graph.path(node.file())).collect();
+                        let rendered = nodes
+                            .iter()
+                            .map(|node| graph.render(*node, &run.root))
+                            .collect();
+                        let hit = Hit {
+                            direction: Direction::Downstream,
+                            rendered: Some(rendered),
+                            path,
+                        };
+                        return affected(hit, visited);
+                    }
+                }
+                if only != Some(Direction::Downstream) {
+                    let changed = run.changed(graph.reading());
+                    let search =
+                        query::upstream(anchors, changed, graph.resolver(), graph.reading());
+                    visited.extend(search.visited);
+                    if let Some(hit) = search.hit {
+                        return affected(hit, visited);
+                    }
+                }
+            }
+        }
+        Judged {
+            verdict: Verdict::NotAffected,
+            visited,
+        }
+    }
 }

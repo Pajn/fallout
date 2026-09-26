@@ -47,14 +47,53 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
 | `-e, --explain` | Print the chain of imports that produced the verdict. |
 | `--unresolved` | List the specifiers this run reached and could not place on disk. See below. |
+| `--json` | Answer each anchor on its own, in one run, as JSON. See below. |
 
 `--diff` and `--changed` may be combined; their file sets are unioned. A diff is read
 as text rather than by shelling out, so the tool needs no git checkout at runtime;
 `--base` is the one flag that does ask git, and only for the files already named.
 Files the change deletes are dropped: they have no after version to reach.
 
-Exit codes: `0` — affected, run the tests. `1` — not affected, or the arguments were
-invalid. Errors are written to stderr.
+Exit codes: `0` — affected, run the tests. `1` — not affected. `2` — no answer: the
+arguments were invalid, an anchor is not there, a diff or a `fallout.toml` could not
+be read. Errors are written to stderr. With `--json` the answers are in the output,
+so the exit code is `0` for any answer and `2` for none.
+
+### One answer per anchor
+
+`--json` answers every anchor on its own rather than the set as a whole, in one run.
+Anchors whose apps share a bundler share one graph, so a module is read and resolved
+once however many anchors reach it.
+
+```sh
+git diff -U3 main... | fallout --diff - --granularity symbol --json \
+  --anchor src/pages/CheckoutPage.tsx --anchor src/pages/SettingsPage.tsx
+```
+
+```json
+{"anchors": [
+  {"anchor": "src/pages/CheckoutPage.tsx", "affected": true, "direction": "downstream",
+   "changed": "src/components/Button.tsx", "path": ["File(src/pages/CheckoutPage.tsx)", "…"],
+   "granularity": "symbol", "unresolved": []},
+  {"anchor": "src/pages/SettingsPage.tsx", "affected": false, "granularity": "symbol",
+   "unresolved": [{"specifier": "~/theme", "kind": "alias", "in_repo": true,
+                   "from": ["src/pages/SettingsPage.tsx"]}]}
+]}
+```
+
+Each answer lists the specifiers its own search reached and could not place on disk
+(see [Unresolved imports](#unresolved-imports)). For an anchor found not affected that
+is every place a missing edge could have hidden a change from it, so a caller can treat
+an in-repo gap as a reason to run the anchor anyway. Each specifier is classed:
+
+- `path` — a relative or absolute path to a file that is not there;
+- `alias` — a name the project maps to its own files: a `fallout.toml` alias, a
+  `package.json` `#import`, or a `tsconfig.json` `paths` entry or `baseUrl`;
+- `package` — a package that is installed, where nothing it offers matches the
+  bundler's [`[resolve]`](#package-entry-points) settings;
+- `missing-package` — a package that is not installed.
+
+`in_repo` is true for the first three.
 
 ### Direction
 
@@ -265,6 +304,7 @@ app's directories.
 ```
 fallout.toml               pure = [...]            # everywhere
 apps/mobile/fallout.toml   inline-requires = true  # this app's bundler
+                           [resolve]               # and how it enters packages
 apps/web/fallout.toml      [aliases]               # what this app's config maps
 ```
 
@@ -275,7 +315,7 @@ wrong in:
 |---------|---------------|
 | `[aliases]`, `[style.aliases]` | accumulate, nearest first — a name gets every directory claimed for it, tried in order |
 | `pure` | accumulate, and an entry only ever applies below the file that wrote it |
-| `builtin-pure`, `inline-requires` | one answer, so the nearest wins |
+| `builtin-pure`, `inline-requires`, each `[resolve]` key | one answer, so the nearest wins |
 
 Aliases and pure entries accumulate rather than override because a name that resolves
 to nothing loses an edge: the chain must never offer fewer candidates than the root
@@ -332,7 +372,8 @@ inline-requires = true
 Written beside the app it describes, not at the root, unless every app in the tree is
 bundled the same way. It is read from the chain above the anchor, so it is the page
 being asked about that decides — see [Where a claim
-applies](#where-a-claim-applies).
+applies](#where-a-claim-applies). Anchors in apps that disagree are each answered with
+their own app's setting, on a graph of their own.
 
 Then importing no longer evaluates, and reaching a name does. `ModuleInit(g)` hangs
 off `Export(g, name)` instead of off `ModuleInit(f)`, which is the same work
@@ -566,6 +607,26 @@ and neither ever will.
 The report covers what the run **reached**. A search that stops at the first change it
 finds has not looked at the rest of the graph and does not report on it, so the widest
 report comes from a run that finds nothing.
+
+### Package entry points
+
+Which file a package specifier names depends on the bundler: the `exports` conditions
+it matches, and the `package.json` fields it reads for a package without `exports`.
+Metro reads `react-native` before `main`, a web bundler reads `browser`. An app says
+which it uses:
+
+```toml
+# apps/mobile/fallout.toml
+[resolve]
+conditions = ["react-native", "import", "require"]
+main-fields = ["react-native", "main"]
+```
+
+Without it, the conditions are `import` and `require`, so a package whose `exports`
+offers nothing else still resolves, and the only field is `main`. A `default` entry
+always matches. Like `inline-requires`, `[resolve]` is read from the chain above the
+anchor, the nearest file wins for each key, and anchors in apps that disagree are each
+answered on a graph of their own.
 
 ## Changed dependencies
 

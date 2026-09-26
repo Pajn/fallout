@@ -1,4 +1,9 @@
 //! Argument parsing, result rendering and exit codes.
+//!
+//! The exit code is the verdict: 0 when a change reaches the anchors, 1 when it
+//! does not, 2 when there is no answer — a bad argument, an anchor that is not there,
+//! a `fallout.toml` that cannot be read. With `--json` it says only whether there
+//! was an answer, since the answers are in the output: 0 or 2.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -7,7 +12,9 @@ use std::process::ExitCode;
 use clap::Parser as ClapParser;
 
 use crate::query::{Direction, Hit};
-use crate::{Granularity, Options, Outcome, Verdict, analyse, canonical_root};
+use crate::{
+    AnchorOutcome, Granularity, Options, Outcome, Verdict, analyse, analyse_each, canonical_root,
+};
 
 #[derive(ClapParser)]
 #[command(about = "Decide whether a change can reach a page, by walking the import graph")]
@@ -59,6 +66,20 @@ pub struct Cli {
     /// finds has not looked at the rest of the graph, and does not report on it.
     #[arg(long)]
     pub unresolved: bool,
+
+    /// Answer each anchor on its own, in one run, and print the answers as JSON
+    ///
+    /// Each answer carries the chain that produced it and the specifiers its search
+    /// could not place, each classed as `path`, `alias`, `package` (installed, but
+    /// nothing it offers matches `[resolve]`) or `missing-package`. The first three
+    /// name something in this repository.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Exit code 2: no answer.
+fn failure() -> ExitCode {
+    ExitCode::from(2)
 }
 
 pub fn run() -> ExitCode {
@@ -68,12 +89,12 @@ pub fn run() -> ExitCode {
         Some(Ok(text)) => Some(text),
         Some(Err(message)) => {
             eprintln!("Error: {}", message);
-            return ExitCode::FAILURE;
+            return failure();
         }
         None => None,
     };
 
-    let (explain, list_unresolved) = (cli.explain, cli.unresolved);
+    let (explain, list_unresolved, json) = (cli.explain, cli.unresolved, cli.json);
     let root = cli.root.unwrap_or_else(|| PathBuf::from("."));
     let options = Options {
         anchors: cli.anchor,
@@ -86,6 +107,22 @@ pub fn run() -> ExitCode {
         include_types: cli.include_types,
     };
 
+    if json {
+        return match analyse_each(&options) {
+            Ok(answers) => {
+                println!(
+                    "{}",
+                    render_json(&answers, &canonical_root(&root), options.granularity)
+                );
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("Error: {}", error);
+                failure()
+            }
+        };
+    }
+
     match analyse(&options) {
         Ok(outcome) => {
             let code = report(&outcome, explain, &root, options.granularity);
@@ -96,9 +133,101 @@ pub fn run() -> ExitCode {
         }
         Err(error) => {
             eprintln!("Error: {}", error);
-            ExitCode::FAILURE
+            failure()
         }
     }
+}
+
+/// The answers as one JSON document, anchors in the order they were given.
+///
+/// ```json
+/// {"anchors": [{"anchor": "src/pages/A.tsx", "affected": true,
+///   "direction": "downstream", "changed": "src/lib/x.ts", "path": ["File(...)", ...],
+///   "unresolved": [{"specifier": "./gone", "kind": "path", "in_repo": true,
+///                   "from": ["src/pages/A.tsx"]}]}]}
+/// ```
+fn render_json(answers: &[AnchorOutcome], root: &Path, granularity: Granularity) -> String {
+    let mut out = String::from("{\"anchors\":[");
+    for (index, answer) in answers.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"anchor\":");
+        push_string(&mut out, &display_path(&answer.anchor, root));
+        match &answer.verdict {
+            Verdict::Affected(hit) => {
+                out.push_str(",\"affected\":true,\"direction\":");
+                push_string(&mut out, hit.direction.as_str());
+                out.push_str(",\"changed\":");
+                push_string(&mut out, &display_path(hit.changed_file(), root));
+                out.push_str(",\"path\":[");
+                let nodes: Vec<String> = match &hit.rendered {
+                    Some(nodes) => nodes.clone(),
+                    None => hit
+                        .path
+                        .iter()
+                        .map(|file| format!("File({})", display_path(file, root)))
+                        .collect(),
+                };
+                for (index, node) in nodes.iter().enumerate() {
+                    if index > 0 {
+                        out.push(',');
+                    }
+                    push_string(&mut out, node);
+                }
+                out.push(']');
+            }
+            Verdict::NotAffected => out.push_str(",\"affected\":false"),
+        }
+        out.push_str(",\"granularity\":");
+        push_string(&mut out, granularity.as_str());
+        out.push_str(",\"unresolved\":[");
+        for (index, import) in answer.unresolved.iter().enumerate() {
+            if index > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"specifier\":");
+            push_string(&mut out, &import.specifier);
+            out.push_str(",\"kind\":");
+            push_string(&mut out, import.kind.as_str());
+            out.push_str(",\"in_repo\":");
+            out.push_str(if import.kind.in_repo() {
+                "true"
+            } else {
+                "false"
+            });
+            out.push_str(",\"from\":[");
+            for (index, file) in import.from.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                push_string(&mut out, &display_path(file, root));
+            }
+            out.push_str("]}");
+        }
+        out.push_str("]}");
+    }
+    out.push_str("]}");
+    out
+}
+
+/// A JSON string literal.
+fn push_string(out: &mut String, text: &str) {
+    out.push('"');
+    for character in text.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            character if (character as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", character as u32));
+            }
+            character => out.push(character),
+        }
+    }
+    out.push('"');
 }
 
 fn report(outcome: &Outcome, explain: bool, root: &Path, granularity: Granularity) -> ExitCode {

@@ -18,7 +18,7 @@ use oxc_resolver::{
     SideEffects as Declared, TsconfigDiscovery,
 };
 
-use crate::config::{Chain, Configs};
+use crate::config::{Chain, Configs, Lookup};
 
 use crate::module::is_style_file;
 
@@ -83,6 +83,46 @@ impl Unresolved {
     }
 }
 
+/// What kind of name a specifier that resolved to nothing was.
+///
+/// The first three name something in this repository — a file, or a name the
+/// project declared for one — so nothing resolving is a gap in the graph a caller may
+/// want to be told about. The last names a package nobody installed here, which is
+/// usually not a fault in the tree at all.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum UnresolvedKind {
+    /// A relative or absolute path to a file that is not there.
+    Path,
+    /// A name the project maps to its own files: a `fallout.toml` alias, a
+    /// `package.json` `#import`, or a `tsconfig.json` `paths` entry or `baseUrl`.
+    Alias,
+    /// A package that is installed, with no entry the bundler's `[resolve]` settings
+    /// select: an `exports` condition it does not match, or a subpath it does not
+    /// export.
+    Package,
+    /// A package that is not installed.
+    MissingPackage,
+}
+
+impl UnresolvedKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UnresolvedKind::Path => "path",
+            UnresolvedKind::Alias => "alias",
+            UnresolvedKind::Package => "package",
+            UnresolvedKind::MissingPackage => "missing-package",
+        }
+    }
+
+    /// Whether the name is one this repository answers for.
+    pub fn in_repo(self) -> bool {
+        matches!(
+            self,
+            UnresolvedKind::Path | UnresolvedKind::Alias | UnresolvedKind::Package
+        )
+    }
+}
+
 /// What importing a file can do beyond defining its exports.
 ///
 /// This is the `sideEffects` field of the nearest `package.json`: a claim the author
@@ -118,6 +158,9 @@ pub struct Resolver {
     root: PathBuf,
     /// Packages a lockfile change touched. See [`crate::lockfile`].
     packages: Arc<crate::lockfile::Changed>,
+    /// Which `exports` conditions and entry fields the app's bundler reads. One per
+    /// resolver: anchors whose bundlers differ get resolvers of their own.
+    lookup: Lookup,
 }
 
 impl Resolver {
@@ -128,12 +171,14 @@ impl Resolver {
         unresolved: Arc<Unresolved>,
         root: PathBuf,
         packages: Arc<crate::lockfile::Changed>,
+        lookup: Lookup,
     ) -> Self {
         Self {
             configs,
             unresolved,
             root,
             packages,
+            lookup,
             modules: RwLock::new(AHashMap::default()),
             style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
@@ -161,6 +206,8 @@ impl Resolver {
             ],
             tsconfig: Some(TsconfigDiscovery::Auto),
             alias: chain.aliases().clone(),
+            condition_names: self.lookup.conditions.clone(),
+            main_fields: self.lookup.main_fields.clone(),
             // So that `fs` and `node:fs` come back as themselves rather than as a
             // package nobody installed. They name no file, and saying so is what
             // keeps them out of the unresolved report.
@@ -221,6 +268,45 @@ impl Resolver {
         }));
         self.style.write().unwrap().insert(key, resolver.clone());
         resolver
+    }
+
+    /// What kind of name `specifier`, written in `from_file`, is. Asked only of one
+    /// that resolved to nothing.
+    pub fn unresolved_kind(&self, from_file: &Path, specifier: &str) -> UnresolvedKind {
+        let specifier = strip_inline_loaders(specifier).unwrap_or(specifier);
+        if specifier.starts_with('.') || specifier.starts_with('/') {
+            return UnresolvedKind::Path;
+        }
+        if specifier.starts_with('#') {
+            return UnresolvedKind::Alias;
+        }
+        let chain = self.configs.chain(from_file);
+        let aliased = chain
+            .aliases()
+            .iter()
+            .chain(chain.style_aliases().iter())
+            .any(|(name, _)| alias_matches(name, specifier));
+        if aliased {
+            return UnresolvedKind::Alias;
+        }
+        if package_installed(from_file, specifier) {
+            return UnresolvedKind::Package;
+        }
+        let mapped = self
+            .module_resolver(&chain)
+            .find_tsconfig(from_file)
+            .ok()
+            .flatten()
+            .is_some_and(|tsconfig| {
+                !tsconfig
+                    .resolve_path_alias_or_base_url(specifier)
+                    .is_empty()
+            });
+        if mapped {
+            UnresolvedKind::Alias
+        } else {
+            UnresolvedKind::MissingPackage
+        }
     }
 
     /// Resolves `specifier` as written in `from_file`, or `None` if it does not
@@ -398,8 +484,43 @@ impl Default for Resolver {
             Arc::new(Unresolved::default()),
             PathBuf::from("."),
             Arc::new(crate::lockfile::Changed::default()),
+            Lookup::default(),
         )
     }
+}
+
+/// Whether an alias written as `name` covers `specifier`, read the way the resolver
+/// reads it: `name$` only exactly, `name*` by what comes before the star, and a
+/// plain name exactly or as a directory.
+fn alias_matches(name: &str, specifier: &str) -> bool {
+    if let Some(exact) = name.strip_suffix('$') {
+        return specifier == exact;
+    }
+    if let Some((prefix, _)) = name.split_once('*') {
+        return specifier.starts_with(prefix);
+    }
+    specifier == name
+        || specifier
+            .strip_prefix(name)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// Whether the package a bare specifier names is installed where Node would look
+/// for it from `from_file`: a `node_modules` in its directory or any above it.
+fn package_installed(from_file: &Path, specifier: &str) -> bool {
+    let mut segments = specifier.split('/');
+    let name = match segments.next() {
+        Some(scope) if scope.starts_with('@') => match segments.next() {
+            Some(package) => format!("{scope}/{package}"),
+            None => return false,
+        },
+        Some(package) if !package.is_empty() => package.to_string(),
+        _ => return false,
+    };
+    from_file
+        .ancestors()
+        .skip(1)
+        .any(|dir| dir.join("node_modules").join(&name).is_dir())
 }
 
 /// Webpack lets an import name its loaders inline, as in `!!file-loader!./logo.png`.

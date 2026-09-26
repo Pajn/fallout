@@ -372,10 +372,10 @@ fn test_no_anchor_error() {
 
     let output = cmd.output().expect("Failed to execute is_affected");
 
-    assert_ne!(
+    assert_eq!(
         output.status.code(),
-        Some(0),
-        "Expected non-zero exit code when no anchor provided"
+        Some(2),
+        "no anchor is no answer, which is exit code 2"
     );
 }
 
@@ -394,9 +394,9 @@ fn test_invalid_anchor_error() {
         &["src/components/Button.tsx"],
     );
 
-    assert_ne!(
-        code, 0,
-        "Expected non-zero exit code for invalid anchor, got {}. stdout: {} stderr: {}",
+    assert_eq!(
+        code, 2,
+        "a missing anchor is no answer, which is exit code 2, got {}. stdout: {} stderr: {}",
         code, stdout, stderr
     );
     assert!(
@@ -885,8 +885,8 @@ fn test_unreadable_config_is_reported_rather_than_ignored() {
     );
 
     let said = format!("{stdout}{stderr}");
-    assert_ne!(
-        code, 0,
+    assert_eq!(
+        code, 2,
         "a config that cannot be read is not a verdict: {said}"
     );
     assert!(
@@ -1035,5 +1035,291 @@ fn test_unresolved_does_not_change_the_verdict() {
         "the verdict is untouched and the report follows it:\n{}\n---\n{}",
         plain.1,
         listed.1
+    );
+}
+
+#[test]
+fn test_exit_code_tells_not_affected_from_no_answer() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+
+    let affected = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+    );
+    assert_eq!(affected.0, 0, "affected: {affected:?}");
+
+    let unaffected = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/SettingsPage.tsx"],
+        &["src/utils/helpers.ts"],
+    );
+    assert_eq!(unaffected.0, 1, "not affected: {unaffected:?}");
+
+    let missing = run_is_affected(&binary, &root, &["src/pages/Nope.tsx"], &[]);
+    assert_eq!(missing.0, 2, "no answer: {missing:?}");
+
+    let unreadable = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--diff", "no-such.diff"],
+    );
+    assert_eq!(unreadable.0, 2, "no answer: {unreadable:?}");
+}
+
+/// A package whose entry depends on which bundler reads it: `exports` offers a
+/// `react-native` build, and `package.json` a `react-native` field, each of which
+/// imports something the other entries do not.
+fn setup_bundler_package(root: &Path) {
+    let package = root.join("node_modules/dual");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(root.join("src/native")).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{
+  "name": "dual",
+  "main": "./main.js",
+  "react-native": "./native-field.js",
+  "exports": {
+    "./conditioned": { "react-native": "./native-export.js", "default": "./main.js" },
+    ".": { "import": "./esm.js", "require": "./main.js" }
+  }
+}"#,
+    )
+    .unwrap();
+    fs::write(package.join("main.js"), "export const dual = 1;\n").unwrap();
+    fs::write(package.join("esm.js"), "export const dual = 1;\n").unwrap();
+    fs::write(
+        package.join("native-export.js"),
+        "import '../../src/native/exported.ts';\nexport const dual = 2;\n",
+    )
+    .unwrap();
+    fs::write(
+        package.join("native-field.js"),
+        "import '../../src/native/field.ts';\nexport const dual = 3;\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/native/exported.ts"), "export const a = 1;\n").unwrap();
+    fs::write(root.join("src/native/field.ts"), "export const b = 1;\n").unwrap();
+}
+
+#[test]
+fn test_resolve_conditions_and_main_fields_come_from_fallout_toml() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    setup_bundler_package(&root);
+    fs::write(
+        root.join("src/pages/ConditionPage.tsx"),
+        "import { dual } from 'dual/conditioned';\nexport const ConditionPage = () => dual;\n",
+    )
+    .unwrap();
+
+    // Without the setting the `default` entry is what resolves, which imports
+    // nothing of the app's.
+    let (code, stdout, _) = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/ConditionPage.tsx"],
+        &["src/native/exported.ts"],
+    );
+    assert_eq!(code, 1, "{stdout}");
+
+    fs::write(
+        root.join("fallout.toml"),
+        "[resolve]\nconditions = [\"react-native\", \"import\", \"require\"]\nmain-fields = [\"react-native\", \"main\"]\n",
+    )
+    .unwrap();
+    let (code, stdout, _) = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/ConditionPage.tsx"],
+        &["src/native/exported.ts"],
+    );
+    assert_eq!(code, 0, "the react-native export: {stdout}");
+
+    // `dual` itself has an `exports` entry, so the main fields are not consulted for
+    // it; a package without one is where they matter.
+    let plain = root.join("node_modules/plain");
+    fs::create_dir_all(&plain).unwrap();
+    fs::write(
+        plain.join("package.json"),
+        r#"{ "name": "plain", "main": "./main.js", "react-native": "./native.js" }"#,
+    )
+    .unwrap();
+    fs::write(plain.join("main.js"), "export const plain = 1;\n").unwrap();
+    fs::write(
+        plain.join("native.js"),
+        "import '../../src/native/field.ts';\nexport const plain = 2;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/FieldPage.tsx"),
+        "import { plain } from 'plain';\nexport const FieldPage = () => plain;\n",
+    )
+    .unwrap();
+    let (code, stdout, _) = run_is_affected(
+        &binary,
+        &root,
+        &["src/pages/FieldPage.tsx"],
+        &["src/native/field.ts"],
+    );
+    assert_eq!(code, 0, "the react-native field: {stdout}");
+}
+
+#[test]
+fn test_a_package_exporting_only_import_and_require_resolves_by_default() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    setup_bundler_package(&root);
+    fs::write(
+        root.join("src/pages/DualPage.tsx"),
+        "import { dual } from 'dual';\nexport const DualPage = () => dual;\n",
+    )
+    .unwrap();
+
+    let (_, stdout, _) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/DualPage.tsx"],
+        &["src/utils/helpers.ts"],
+        &["--unresolved"],
+    );
+    assert!(
+        !stdout.contains("  dual"),
+        "`dual` offers only import and require, and resolves: {stdout}"
+    );
+}
+
+#[test]
+fn test_each_app_is_answered_with_its_own_bundler() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    setup_bundler_package(&root);
+    let plain = root.join("node_modules/plain");
+    fs::create_dir_all(&plain).unwrap();
+    fs::write(
+        plain.join("package.json"),
+        r#"{ "name": "plain", "main": "./main.js", "react-native": "./native.js" }"#,
+    )
+    .unwrap();
+    fs::write(plain.join("main.js"), "export const plain = 1;\n").unwrap();
+    fs::write(
+        plain.join("native.js"),
+        "import '../../src/native/field.ts';\nexport const plain = 2;\n",
+    )
+    .unwrap();
+    for app in ["apps/mobile", "apps/web"] {
+        fs::create_dir_all(root.join(app)).unwrap();
+        fs::write(
+            root.join(app).join("Page.tsx"),
+            "import { plain } from 'plain';\nexport const Page = () => plain;\n",
+        )
+        .unwrap();
+    }
+    fs::write(
+        root.join("apps/mobile/fallout.toml"),
+        "[resolve]\nmain-fields = [\"react-native\", \"main\"]\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["apps/mobile/Page.tsx", "apps/web/Page.tsx"],
+        &["src/native/field.ts"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains(r#"{"anchor":"apps/mobile/Page.tsx","affected":true"#),
+        "Metro reads the react-native field: {stdout}"
+    );
+    assert!(
+        stdout.contains(r#"{"anchor":"apps/web/Page.tsx","affected":false"#),
+        "a web bundler reads main: {stdout}"
+    );
+
+    // Asked together, the set is affected, which the mobile app is.
+    let (code, stdout, _) = run_is_affected(
+        &binary,
+        &root,
+        &["apps/web/Page.tsx", "apps/mobile/Page.tsx"],
+        &["src/native/field.ts"],
+    );
+    assert_eq!(code, 0, "{stdout}");
+}
+
+#[test]
+fn test_json_answers_each_anchor_and_classes_what_it_could_not_place() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    setup_bundler_package(&root);
+    fs::create_dir_all(root.join("src/app")).unwrap();
+    fs::write(
+        root.join("fallout.toml"),
+        "[aliases]\n\"@app\" = \"src/app\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "compilerOptions": { "paths": { "~/*": ["./src/*"] } } }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/GapPage.tsx"),
+        r##"import "./gone";
+import "@app/gone";
+import "~/gone";
+import "#internal";
+import "dual/unexported";
+import "not-installed";
+export const GapPage = () => 1;
+"##,
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &binary,
+        &root,
+        &["src/pages/GapPage.tsx", "src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.starts_with(r#"{"anchors":[{"anchor":"src/pages/GapPage.tsx","affected":false"#),
+        "anchors come back in the order given: {stdout}"
+    );
+    for (specifier, kind, in_repo) in [
+        ("./gone", "path", true),
+        ("@app/gone", "alias", true),
+        ("~/gone", "alias", true),
+        ("#internal", "alias", true),
+        ("dual/unexported", "package", true),
+        ("not-installed", "missing-package", false),
+    ] {
+        let entry = format!(
+            r#"{{"specifier":"{specifier}","kind":"{kind}","in_repo":{in_repo},"from":["src/pages/GapPage.tsx"]}}"#
+        );
+        assert!(stdout.contains(&entry), "{entry} in {stdout}");
+    }
+    assert!(
+        stdout.contains(r#"{"anchor":"src/pages/CheckoutPage.tsx","affected":true,"direction":"downstream","changed":"src/components/Button.tsx""#),
+        "{stdout}"
     );
 }
