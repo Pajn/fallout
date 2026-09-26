@@ -38,8 +38,11 @@ pub struct Repointing {
 /// Which imports of the files a changed tsconfig governs the change can move.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
-    /// Any of them. Which config governs a file, what it extends, or `rootDirs`,
-    /// which relative specifiers go through as well, may have changed.
+    /// Any of them, and those of files it does not govern too: which config
+    /// governs a file may have changed. So may anything else about it.
+    Owners,
+    /// Any of them: what it extends may have changed, or `rootDirs`, which relative
+    /// specifiers go through as well.
     Everything,
     /// Every specifier that is not relative: `baseUrl` may have changed.
     Mapped,
@@ -80,10 +83,16 @@ impl Repointing {
 }
 
 impl Scope {
+    /// Whether the change can decide which config governs a file, which reaches
+    /// files the config does not read.
+    pub fn changes_owners(&self) -> bool {
+        *self == Scope::Owners
+    }
+
     /// Whether the change can move `specifier`.
     pub fn covers(&self, specifier: &str) -> bool {
         match self {
-            Scope::Everything => true,
+            Scope::Owners | Scope::Everything => true,
             Scope::Mapped => !is_relative(specifier),
             Scope::Keys(keys) => {
                 !is_relative(specifier) && keys.iter().any(|key| key_matches(key, specifier))
@@ -164,18 +173,18 @@ fn is_config(path: &Path) -> bool {
 /// resolve through instead may map nothing the same way.
 fn scope(path: &Path, deleted: bool, base: Option<&Base>) -> Option<Scope> {
     let Some(base) = base else {
-        return Some(Scope::Everything);
+        return Some(Scope::Owners);
     };
     let (Some(old), false) = (base.text(path), deleted) else {
-        return Some(Scope::Everything);
+        return Some(Scope::Owners);
     };
     let Ok(current) = std::fs::read_to_string(path) else {
-        return Some(Scope::Everything);
+        return Some(Scope::Owners);
     };
     let read = |text: String| TsConfig::parse(true, path, path, text).ok();
     let (Some(old), Some(new)) = (read(old), read(current)) else {
         // A version that does not parse as a tsconfig may still be read as one.
-        return Some(Scope::Everything);
+        return Some(Scope::Owners);
     };
     compare(&old, &new)
 }
@@ -187,16 +196,23 @@ pub fn compare(old: &TsConfig, new: &TsConfig) -> Option<Scope> {
         format!(
             "{:?}",
             (
-                &config.extends,
                 &config.references,
                 &config.files,
                 &config.include,
                 &config.exclude,
-                &config.compiler_options.root_dirs,
             )
         )
     };
     if owning(old) != owning(new) {
+        return Some(Scope::Owners);
+    }
+    let governing = |config: &TsConfig| {
+        format!(
+            "{:?}",
+            (&config.extends, &config.compiler_options.root_dirs)
+        )
+    };
+    if governing(old) != governing(new) {
         return Some(Scope::Everything);
     }
     if was.base_url != is.base_url {
@@ -294,9 +310,15 @@ mod tests {
     }
 
     #[test]
-    fn what_decides_which_config_applies_reaches_everything() {
+    fn what_decides_which_config_applies_reaches_further_than_what_it_maps() {
+        let old = config(r#"{ "references": [{ "path": "./app" }] }"#);
+        let new = config(r#"{ "references": [{ "path": "./site" }] }"#);
+        assert_eq!(compare(&old, &new), Some(Scope::Owners));
         let old = config(r#"{ "extends": "./base.json" }"#);
         let new = config(r#"{ "extends": "./other.json" }"#);
+        assert_eq!(compare(&old, &new), Some(Scope::Everything));
+        let old = config(r#"{ "compilerOptions": { "rootDirs": ["./src"] } }"#);
+        let new = config(r#"{ "compilerOptions": { "rootDirs": ["./src", "./generated"] } }"#);
         assert_eq!(compare(&old, &new), Some(Scope::Everything));
         let old = config(r#"{ "compilerOptions": { "baseUrl": "." } }"#);
         let new = config(r#"{ "compilerOptions": { "baseUrl": "./src" } }"#);

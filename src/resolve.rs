@@ -176,6 +176,8 @@ pub struct Resolver {
     lookup: Lookup,
     /// The names of the repository's own packages, read when first asked.
     workspace: std::sync::OnceLock<ahash::AHashSet<String>>,
+    /// Finds the config a package `extends` entry names, built on first use.
+    extends: std::sync::OnceLock<OxcResolver>,
     /// What each file imports, resolved, for the searches that walk file by file.
     /// Several anchors' searches walk the same files, and reading one means parsing
     /// it.
@@ -205,6 +207,7 @@ impl Resolver {
             tsconfig_reads: RwLock::new(AHashMap::default()),
             lookup,
             workspace: std::sync::OnceLock::new(),
+            extends: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
             repointed_files: RwLock::new(AHashMap::default()),
             modules: RwLock::new(AHashMap::default()),
@@ -522,7 +525,18 @@ impl Resolver {
             let mut candidates = Vec::new();
             if is_relative(request) {
                 if let Some(directory) = from_file.parent() {
-                    candidates.push(normalize(&directory.join(request)));
+                    let named = normalize(&directory.join(request));
+                    // Under `rootDirs` the same request is looked for in every
+                    // other root, at the same place relative to it.
+                    let roots = tsconfig
+                        .as_ref()
+                        .and_then(|tsconfig| tsconfig.compiler_options.root_dirs.clone())
+                        .unwrap_or_default();
+                    if let Some(rest) = roots.iter().find_map(|root| named.strip_prefix(root).ok())
+                    {
+                        candidates.extend(roots.iter().map(|root| root.join(rest)));
+                    }
+                    candidates.push(named);
                 }
             } else if let Some(tsconfig) = &tsconfig {
                 candidates.extend(tsconfig.resolve_path_alias_or_base_url(request));
@@ -545,7 +559,7 @@ impl Resolver {
             // or through `references`. Its own `paths` and `baseUrl` apply to files
             // it governs, which this one is not, so only a change that could make it
             // govern the file reaches it.
-            *scope == crate::repoint::Scope::Everything
+            scope.changes_owners()
                 && config
                     .file_name()
                     .is_some_and(|name| name == "tsconfig.json")
@@ -604,11 +618,21 @@ impl Resolver {
             }
             return Some(dunce::canonicalize(&path).unwrap_or(path));
         }
-        // A package's config, as TypeScript looks for it.
-        let resolver = self.module_resolver(&self.configs.chain(config));
-        [specifier.to_string(), format!("{specifier}/tsconfig.json")]
-            .iter()
-            .find_map(|request| resolver.resolve(directory, request).ok())
+        // A package's config, looked for the way oxc_resolver looks for it when it
+        // follows `extends`: a JSON file, and a package's `tsconfig.json` where
+        // the entry names only the package. A module resolver would find the
+        // package's code instead.
+        let resolver = self.extends.get_or_init(|| {
+            OxcResolver::new(ResolveOptions {
+                condition_names: vec!["node".to_string(), "import".to_string()],
+                extensions: vec![".json".to_string()],
+                main_files: vec!["tsconfig".to_string()],
+                ..ResolveOptions::default()
+            })
+        });
+        resolver
+            .resolve(directory, specifier)
+            .ok()
             .map(|resolution| resolution.full_path())
     }
 

@@ -1,0 +1,6 @@
+# The tsconfig's `rootDirs` let `./template` in `src/views` name the generated file
+# at the same place under `generated`. That file is deleted, and the import is left
+# as it was, so the page no longer reads what it did.
+[[anchor]]
+path = "src/views/page.ts"
+affected = true

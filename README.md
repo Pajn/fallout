@@ -744,22 +744,26 @@ initialisation.
 Two things are taken to move imports:
 
 - **A deleted file** moves every import that could have named it: a relative
-  specifier, or one a tsconfig's `paths` or `baseUrl` maps, that names the file with
-  or without its extension, or names the directory it was the index of.
+  specifier, the same request in another of the tsconfig's `rootDirs`, or one its
+  `paths` or `baseUrl` maps, that names the file with or without its extension, or
+  names the directory it was the index of.
 - **A changed tsconfig**, or any file one reads through `extends`, moves the imports of
-  the files it governs. A `tsconfig.json` that is added, deleted, or changes which
-  config owns a file reaches the files beneath it as well, since it may have been the
-  nearest before the change or may name the nearest through `references`. Its
-  `paths` and `baseUrl` do not: they apply only to the files it governs.
+  the files it governs. An `extends` entry that names a package is followed to the
+  package's `tsconfig.json`, as TypeScript follows it. A `tsconfig.json` that is added,
+  deleted, or changes which config owns a file reaches the files beneath it as well,
+  since it may have been the nearest before the change or may name the nearest
+  through `references`. Its other fields do not: they apply only to the files it
+  governs.
 - Both are read through a request's inline loaders and without its resource query,
   so `!!file-loader!./logo.svg?url` names `logo.svg`.
 
 How far a tsconfig change reaches is read from the fields resolution uses. Against a
 base revision both versions are compared: a change to one `paths` entry moves the
 specifiers that entry matches, a change to `baseUrl` moves every specifier that is
-not relative, and a change to `extends`, `references`, `files`, `include`, `exclude`
-or `rootDirs` moves every import, and so does adding or deleting a tsconfig, which
-changes which one is the nearest. A change to anything else, such as `strict`, moves
+not relative, and a change to `extends` or `rootDirs` moves every import of the files
+it governs. A change to `references`, `files`, `include` or `exclude`, or adding or
+deleting a tsconfig, can change which config governs a file, and moves every import
+beneath it. A change to anything else, such as `strict`, moves
 nothing. As a line range there is no earlier version to compare with, so any change
 to a tsconfig moves every import of every file it governs.
 

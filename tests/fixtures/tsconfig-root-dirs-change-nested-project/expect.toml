@@ -1,0 +1,7 @@
+# The root tsconfig adds a root directory. That moves relative imports of the files
+# it governs, but not which config governs a file, so a page under a project with a
+# tsconfig of its own resolves as it did, which a base revision can tell.
+[[anchor]]
+path = "packages/app/page.ts"
+affected = false
+from = "base"
