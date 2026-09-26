@@ -100,12 +100,12 @@ method on it, passing it anywhere, a computed key, `__proto__`, an exported or
 reassignable alias, destructuring it, and aliases nested more than four deep. A write
 through one of those aliases still counts in the declaration where it is written.
 
-A declaration whose initialiser may run something — a
-call, a `new`, an `await`, a tagged template, an assignment to a member — belongs to
-module initialisation, so importing anything from that file reaches it. A bare
-`import "./theme.css"` is a side effect of loading the module and reaches every
-importer, while `import logo from "./logo.png"` reaches only the declarations using
-`logo`.
+A declaration whose initialiser may run something — a call, a `new`, an `await`, a
+tagged template, an assignment to a member — belongs to module initialisation, so
+importing anything from that file reaches it. It reaches that declaration and what it
+reads, not the rest of the file. A bare `import "./theme.css"` is a side effect of
+loading the module and reaches every importer, while `import logo from "./logo.png"`
+reaches only the declarations using `logo`.
 
 A `require("./x")` is an ordinary dependency of the declaration that contains it. It
 yields the whole export object, but static member reads such as
@@ -158,8 +158,12 @@ that property and leaves the object as it was.
 ### Pure calls
 
 A declaration whose initialiser runs something belongs to module initialisation, so
-importing anything from its file reaches it. In React-shaped code that catches nearly
-every top-level declaration, because nearly every one of them is a call.
+importing anything from its file reaches it. What that costs is the declaration and
+what it reads, not the rest of the file: an importer is affected by an edit to the
+declaration or to something feeding it, which is what could change what running it
+does, and not by an edit anywhere else in the module. In React-shaped code that
+catches nearly every top-level declaration, because nearly every one of them is a
+call, and so everything each of them reads.
 
 Six things take a call back out of initialisation:
 
@@ -204,15 +208,16 @@ BigInt, the functions that throw on some arguments — `decodeURI("%")`,
 primitive key — are proven only inside a helper, and order matters. A `const` does not
 exist until its declaration runs, and calling or reading one earlier throws, so a call
 written before its `const` helper, or before a `const` it is given, stays in
-initialisation. A helper reading a `const` declared later throws from its body
-instead, which is fine. Function declarations are hoisted and can be called from
-anywhere. Reads of other captured values, property reads (which may invoke getters),
-coercing arithmetic, interpolated templates, writes, loops, unknown calls, recursion,
-defaults, destructuring, spread, `this`, `arguments`, async and generator functions,
-and default-exported declarations keep the existing broad behaviour. No annotation or
-configuration is needed for an inferred helper. Use `--base` to detect an effect
-removed from a helper: line-only analysis sees its current body, not the previous side
-effect.
+initialisation. That puts the call and what it reads in front of every importer, which
+is what could change whether it throws, and nothing else in the module. A helper
+reading a `const` declared later throws from its body instead, which is fine. Function
+declarations are hoisted and can be called from anywhere. Reads of other captured
+values, property reads (which may invoke getters), coercing arithmetic, interpolated
+templates, writes, loops, unknown calls, recursion, defaults, destructuring, spread,
+`this`, `arguments`, async and generator functions, and default-exported declarations
+keep the existing broad behaviour. No annotation or configuration is needed for an
+inferred helper. Use `--base` to detect an effect removed from a helper: line-only
+analysis sees its current body, not the previous side effect.
 
 ```toml
 # fallout.toml
