@@ -217,7 +217,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         }
     }
 
-    /// A call to a global function or namespace method that only computes a value.
+    /// A call to a global function or namespace method that has no side effects.
     fn global_call(
         &self,
         call: &CallExpression<'_>,
@@ -260,12 +260,6 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         let constructor = globals::constructor(self.global(&new.callee)?)?;
         let entries = match constructor {
             Constructor::Converting(conversion) => {
-                return self.converted(&new.arguments, conversion, locals);
-            }
-            Constructor::Given(conversion) => {
-                if new.arguments.is_empty() {
-                    return None;
-                }
                 return self.converted(&new.arguments, conversion, locals);
             }
             Constructor::Set | Constructor::Map | Constructor::Empty => {
@@ -711,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn global_functions_that_only_compute_a_value_are_proven() {
+    fn global_functions_without_side_effects_are_proven() {
         for source in [
             "export const cache = new Map();",
             "export const seen = new Set(['a', 'b']);",
@@ -726,6 +720,10 @@ mod tests {
             "function make(x) { return Boolean(x); } export const on = make({});",
             "export const list = Array.of(1, 2);",
             "export const same = Object.is(NaN, NaN);",
+            // Read from the clock or a random source, and changing nothing.
+            "export const at = Date.now();",
+            "export const now = new Date();",
+            "export const seed = Math.random();",
             "export const error = new Error('broken');",
             "export const when = new Date('2024-01-01');",
             "function clamp(x) { return Math.min(Math.max(x === null ? 0 : 1, 0), 1); } export const result = clamp(1);",
@@ -754,11 +752,6 @@ mod tests {
             // The global symbol registry is state every module shares.
             "export const result = Symbol.for('key');",
             "export const result = new Date(1n);",
-            // Made from the clock or the generator rather than from the arguments.
-            "export const result = Date.now();",
-            "export const result = Date();",
-            "export const result = new Date();",
-            "export const result = Math.random();",
             // Entries a weak collection throws on, and entries nothing wrote out.
             "export const result = new WeakSet([1]);",
             "export const result = new WeakMap([[1, 2]]);",

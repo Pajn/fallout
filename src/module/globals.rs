@@ -1,4 +1,11 @@
-//! Globals whose calls only compute a value.
+//! Globals whose calls have no side effects.
+//!
+//! A side effect here means a change other code in the app could read back and
+//! behave differently for. That is what leaving a call out of module initialisation
+//! needs, and it is all it needs: the call does not have to give the same answer
+//! every time, or keep to itself. So `Date.now()` and `Math.random()` are here —
+//! each reads the clock or a random source, and changes nothing the app reads. A
+//! declaration holding the result is reached by whatever reads it, like any other.
 //!
 //! The lists are taken from `oxc_ecmascript`'s side-effect analysis, which keeps
 //! them private to itself; its own tables are ported in turn from Rolldown, Rollup
@@ -10,10 +17,8 @@
 //! Entries the source lists but a plain literal argument can still make throw are
 //! left out: `decodeURI("%")`, `encodeURI` of a lone surrogate, `escape`,
 //! `String.fromCodePoint(-1)`, and `WeakMap` or `WeakSet` given entries, which
-//! throw on a primitive key. So is `Symbol.for`, which puts its key in the global
-//! symbol registry, and so is anything whose result is not made from its arguments
-//! alone: `Date()`, `Date.now()` and `new Date()` read the clock, and `Math.random()`
-//! the generator's state.
+//! throw on a primitive key. So is `Symbol.for`, which does have an effect: it adds
+//! its key to the global symbol registry every module shares.
 //!
 //! Every name is the global's only if the reference has no binding in the file,
 //! which the caller checks. The environment's own globals are assumed to be as the
@@ -41,7 +46,7 @@ pub(crate) enum Returns {
     Other,
 }
 
-/// A call to a global function, `name(...)`, that only computes a value.
+/// A call to a global function, `name(...)`, that has no side effects.
 #[rustfmt::skip]
 pub(crate) fn function(name: &str) -> Option<(Conversion, Returns)> {
     use Conversion::*;
@@ -57,12 +62,14 @@ pub(crate) fn function(name: &str) -> Option<(Conversion, Returns)> {
         "String" => (ToString, Primitive),
         "Boolean" => (None, Primitive),
         "Object" => (None, Other),
+        // `Date()` called as a function ignores its arguments.
+        "Date" => (None, Primitive),
         _ => return Option::None,
     })
 }
 
 /// A call to a method of a global namespace or constructor, `object.method(...)`,
-/// that only computes a value.
+/// that has no side effects.
 #[rustfmt::skip]
 pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)> {
     use Conversion::*;
@@ -76,6 +83,7 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
         ("Array", "of") => (None, Other),
         ("ArrayBuffer", "isView") => (None, Primitive),
         ("Object", "is") => (None, Primitive),
+        ("Date", "now") => (None, Primitive),
         ("Date", "parse") => (ToString, Primitive),
         ("Date", "UTC") => (ToNumber, Primitive),
         ("String", "fromCharCode") => (ToNumber, Primitive),
@@ -83,13 +91,11 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
     })
 }
 
-/// A constructor, `new name(...)`, that only builds a value.
+/// A constructor, `new name(...)`, that has no side effects.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Constructor {
     /// Arguments are converted, as for a function call.
     Converting(Conversion),
-    /// The same, given at least one argument: `new Date()` reads the clock.
-    Given(Conversion),
     /// `Set`: iterates an array literal, if given one.
     Set,
     /// `Map`: iterates an array literal of array-literal entries, if given one.
@@ -109,8 +115,7 @@ pub(crate) fn constructor(name: &str) -> Option<Constructor> {
         "Object" | "Boolean" => Converting(Conversion::None),
         "String" | "Error" | "EvalError" | "RangeError" | "ReferenceError" | "SyntaxError"
         | "TypeError" | "URIError" => Converting(Conversion::ToString),
-        "Number" => Converting(Conversion::ToNumber),
-        "Date" => Given(Conversion::ToNumber),
+        "Date" | "Number" => Converting(Conversion::ToNumber),
         _ => return Option::None,
     })
 }
@@ -139,7 +144,7 @@ fn is_math_method(method: &str) -> bool {
         "abs" | "acos" | "acosh" | "asin" | "asinh" | "atan" | "atan2" | "atanh"
         | "cbrt" | "ceil" | "clz32" | "cos" | "cosh" | "exp" | "expm1" | "floor"
         | "fround" | "hypot" | "imul" | "log" | "log10" | "log1p" | "log2" | "max"
-        | "min" | "pow" | "round" | "sign" | "sin" | "sinh" | "sqrt"
+        | "min" | "pow" | "random" | "round" | "sign" | "sin" | "sinh" | "sqrt"
         | "tan" | "tanh" | "trunc"
     )
 }

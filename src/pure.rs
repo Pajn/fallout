@@ -1,4 +1,4 @@
-//! Calls that only compute a value.
+//! Calls that have no side effects.
 //!
 //! A declaration whose initialiser runs something belongs to module initialisation,
 //! so importing anything from its file reaches it. In React-shaped code nearly every

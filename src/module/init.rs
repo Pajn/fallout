@@ -226,7 +226,7 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
         }
     }
 
-    /// Does this callee only compute a value?
+    /// Is this callee free of side effects?
     ///
     /// `annotated` is the `/* @__PURE__ */` comment, which is the author of the call
     /// site speaking. The list is the project speaking about someone else's
