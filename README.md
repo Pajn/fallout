@@ -331,8 +331,8 @@ importing — `packages/ui/card.scss` means one thing by `settings` whoever bund
 so they are read from the chain above that file. `inline-requires` is not a property
 of a file at all but of the bundler, and the bundler is picked by the app being asked
 about: the same shared module is inlined when a mobile bundler pulls it in and is not
-when a web bundler does. So it is read from the chain above the **anchor**, and with
-several anchors it holds only if every one of them claims it.
+when a web bundler does. So it is read from the chain above the **anchor**, and each
+anchor is answered with its own app's setting.
 
 Files are read as the run reaches what they speak for. A malformed file in a subtree
 the run never enters is not reported, and could not have changed the answer.
@@ -393,7 +393,7 @@ to hang its evaluation on.
 
 The setting is a claim about the build, and a wrong one under-reports: it would put
 every top-level side effect behind a name nobody reads. It is off unless the project
-turns it on, several anchors have to agree before it applies, and it only affects
+turns it on, it applies only to anchors whose app claims it, and it only affects
 `--granularity symbol`, since a whole-file verdict has no separate node for module
 initialisation.
 

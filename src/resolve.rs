@@ -632,9 +632,15 @@ fn declared_name(text: &str) -> Option<String> {
                 if depth != 1 || &text[start..end] != "name" {
                     continue;
                 }
-                let rest = text[end + 1..].trim_start().strip_prefix(':')?.trim_start();
-                let value = rest.strip_prefix('"')?;
-                return Some(value[..value.find('"')?].to_string());
+                // A `"name"` that is a value, or a key whose value is not a string,
+                // is not the package's name, which may still come later.
+                let value = text[end + 1..]
+                    .trim_start()
+                    .strip_prefix(':')
+                    .and_then(|rest| rest.trim_start().strip_prefix('"'));
+                if let Some(name) = value.and_then(|value| Some(&value[..value.find('"')?])) {
+                    return Some(name.to_string());
+                }
             }
             _ => {}
         }
@@ -663,6 +669,25 @@ fn strip_inline_loaders(specifier: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_package_name_is_its_top_level_name_key() {
+        let name = |text: &str| declared_name(text);
+        assert_eq!(
+            name(r#"{ "name": "@acme/ui" }"#).as_deref(),
+            Some("@acme/ui")
+        );
+        // A `"name"` that is a value, or nested, or a key with no string, is not it.
+        assert_eq!(
+            name(r#"{ "description": "name", "name": "@acme/ui" }"#).as_deref(),
+            Some("@acme/ui")
+        );
+        assert_eq!(
+            name(r#"{ "exports": { "name": "x" }, "name": "@acme/ui" }"#).as_deref(),
+            Some("@acme/ui")
+        );
+        assert_eq!(name(r#"{ "name": null }"#), None);
+    }
 
     #[test]
     fn a_bare_pattern_matches_at_any_depth() {
