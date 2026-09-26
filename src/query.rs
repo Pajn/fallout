@@ -52,13 +52,25 @@ impl Hit {
     }
 }
 
+/// What a search found, and every file it looked at on the way.
+///
+/// A search that found nothing has looked at everything it could reach, so the
+/// files it visited are all the places an import it could not place might have
+/// hidden an edge. One that found something stopped early, and says so only about
+/// what it saw.
+#[derive(Debug, Default)]
+pub struct Search<T> {
+    pub hit: Option<T>,
+    pub visited: AHashSet<PathBuf>,
+}
+
 /// Walks forward from every anchor, looking for a changed file.
 pub fn downstream(
     anchors: &[PathBuf],
     changed: &AHashSet<PathBuf>,
     resolver: &Resolver,
     reading: &Reading,
-) -> Option<Hit> {
+) -> Search<Hit> {
     let mut came_from: AHashMap<PathBuf, Option<PathBuf>> = AHashMap::default();
     let mut queue = VecDeque::new();
 
@@ -70,11 +82,15 @@ pub fn downstream(
 
     while let Some(current) = queue.pop_front() {
         if changed.contains(&current) || resolver.marks_changed_package(&current) {
-            return Some(Hit {
+            let hit = Hit {
                 direction: Direction::Downstream,
                 rendered: None,
                 path: trace(&came_from, &current),
-            });
+            };
+            return Search {
+                hit: Some(hit),
+                visited: came_from.into_keys().collect(),
+            };
         }
 
         for next in edges_from(&current, resolver, reading) {
@@ -85,7 +101,10 @@ pub fn downstream(
         }
     }
 
-    None
+    Search {
+        hit: None,
+        visited: came_from.into_keys().collect(),
+    }
 }
 
 /// Walks forward from every changed file, looking for an anchor.
@@ -97,12 +116,13 @@ pub fn upstream(
     changed: &AHashSet<PathBuf>,
     resolver: &Resolver,
     reading: &Reading,
-) -> Option<Hit> {
+) -> Search<Hit> {
     let anchor_set: AHashSet<&PathBuf> = anchors.iter().collect();
 
     let mut roots: Vec<&PathBuf> = changed.iter().collect();
     roots.sort();
 
+    let mut visited = AHashSet::default();
     for root in roots {
         let mut came_from: AHashMap<PathBuf, Option<PathBuf>> = AHashMap::default();
         let mut queue = VecDeque::new();
@@ -111,11 +131,16 @@ pub fn upstream(
 
         while let Some(current) = queue.pop_front() {
             if anchor_set.contains(&current) {
-                return Some(Hit {
+                let hit = Hit {
                     direction: Direction::Upstream,
                     rendered: None,
                     path: trace(&came_from, &current),
-                });
+                };
+                visited.extend(came_from.into_keys());
+                return Search {
+                    hit: Some(hit),
+                    visited,
+                };
             }
 
             for next in edges_from(&current, resolver, reading) {
@@ -125,20 +150,24 @@ pub fn upstream(
                 }
             }
         }
+        visited.extend(came_from.into_keys());
     }
 
-    None
+    Search { hit: None, visited }
 }
 
 fn edges_from(file: &Path, resolver: &Resolver, reading: &Reading) -> Vec<PathBuf> {
-    let Some(specifiers) = imported_specifiers(file, reading) else {
-        return Vec::new();
-    };
-
-    specifiers
-        .iter()
-        .filter_map(|specifier| resolver.resolve(file, specifier))
-        .collect()
+    resolver
+        .imports_of(file, || {
+            let Some(specifiers) = imported_specifiers(file, reading) else {
+                return Vec::new();
+            };
+            specifiers
+                .iter()
+                .filter_map(|specifier| resolver.resolve(file, specifier))
+                .collect()
+        })
+        .to_vec()
 }
 
 /// Rebuilds the chain from a root to `target`, root first.
@@ -165,7 +194,7 @@ pub fn downstream_symbols(
     anchors: &[PathBuf],
     marked: &AHashSet<Node>,
     graph: &Graph,
-) -> Option<Vec<Node>> {
+) -> Search<Vec<Node>> {
     let mut came_from: AHashMap<Node, Option<Node>> = AHashMap::default();
     let mut queue = VecDeque::new();
 
@@ -176,9 +205,16 @@ pub fn downstream_symbols(
         }
     }
 
+    let visited = |came_from: &AHashMap<Node, Option<Node>>| {
+        let files: AHashSet<_> = came_from.keys().map(Node::file).collect();
+        files.into_iter().map(|file| graph.path(file)).collect()
+    };
     while let Some(current) = queue.pop_front() {
         if is_marked(graph, marked, current) {
-            return Some(trace_nodes(&came_from, current));
+            return Search {
+                hit: Some(trace_nodes(&came_from, current)),
+                visited: visited(&came_from),
+            };
         }
 
         for next in graph.edges(current) {
@@ -189,7 +225,10 @@ pub fn downstream_symbols(
         }
     }
 
-    None
+    Search {
+        hit: None,
+        visited: visited(&came_from),
+    }
 }
 
 /// `File(f)` is the umbrella node: marking it says "something in f changed, and we

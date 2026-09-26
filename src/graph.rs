@@ -86,15 +86,21 @@ pub struct Graph {
 impl Graph {
     pub fn new(
         reading: Reading,
-        inline_requires: bool,
+        bundler: crate::config::Bundler,
         unresolved: std::sync::Arc<crate::resolve::Unresolved>,
         root: PathBuf,
         packages: std::sync::Arc<crate::lockfile::Changed>,
     ) -> Self {
         Self {
-            resolver: Resolver::new(reading.configs.clone(), unresolved, root, packages),
+            resolver: Resolver::new(
+                reading.configs.clone(),
+                unresolved,
+                root,
+                packages,
+                bundler.lookup,
+            ),
             reading,
-            inline_requires,
+            inline_requires: bundler.inline_requires,
             paths: RefCell::new(Vec::new()),
             path_ids: RefCell::new(AHashMap::default()),
             names: RefCell::new(Vec::new()),
@@ -486,9 +492,15 @@ impl Graph {
             return Node::Export(file, id);
         }
 
+        // A name that arrives through `export *` is still read through this module,
+        // which evaluates it when imports are deferred to first use. Its own export
+        // node says so, and goes on through the star from there.
         let mut seen = AHashSet::default();
-        self.through_stars(file, name, &mut seen)
-            .unwrap_or(Node::File(file))
+        match self.through_stars(file, name, &mut seen) {
+            Some(Node::Export(..)) => Node::Export(file, id),
+            Some(node) => node,
+            None => Node::File(file),
+        }
     }
 
     /// Follows `export * from` chains looking for `name`, with a cycle guard.
@@ -512,8 +524,12 @@ impl Graph {
                     if target_module.export_named(name).is_some() || self.has_lost(target, id) {
                         return Some(Node::Export(target, id));
                     }
-                    if let Some(node) = self.through_stars(target, name, seen) {
-                        return Some(node);
+                    // One star further on: the next module is a hop in its own
+                    // right, which its export node reaches on from.
+                    match self.through_stars(target, name, seen) {
+                        Some(Node::Export(..)) => return Some(Node::Export(target, id)),
+                        Some(node) => return Some(node),
+                        None => {}
                     }
                 }
                 // A coarse module in the chain means the unknown names could be
@@ -606,7 +622,7 @@ impl Default for Graph {
     fn default() -> Self {
         Self::new(
             Reading::default(),
-            false,
+            crate::config::Bundler::default(),
             std::sync::Arc::new(crate::resolve::Unresolved::default()),
             PathBuf::from("."),
             std::sync::Arc::new(crate::lockfile::Changed::default()),
