@@ -299,9 +299,9 @@ fn changed_members(
     let framing = |text: &str, statement: oxc_span::Span, object: oxc_span::Span| {
         (
             text.get(statement.start as usize..object.start as usize)
-                .map(str::to_string),
+                .map(lines),
             text.get(object.end as usize..statement.end as usize)
-                .map(str::to_string),
+                .map(lines),
         )
     };
     if framing(before, old.span(), old_object.span) != framing(after, new.span(), new_object.span)
@@ -355,10 +355,10 @@ fn changed_arguments(
         let mut at = statement.start;
         for argument in &call.arguments {
             let span = argument.span();
-            pieces.push(text.get(at as usize..span.start as usize)?.to_string());
+            pieces.push(lines(text.get(at as usize..span.start as usize)?));
             at = span.end;
         }
-        pieces.push(text.get(at as usize..statement.end as usize)?.to_string());
+        pieces.push(lines(text.get(at as usize..statement.end as usize)?));
         Some(pieces)
     };
     if framing(before, old.span(), old_call)? != framing(after, new.span(), new_call)? {
@@ -376,13 +376,13 @@ fn changed_arguments(
 
 /// What evaluating `module` does with a statement.
 #[derive(Debug, PartialEq, Eq)]
-enum Evaluation<'s> {
+enum Evaluation {
     Nothing,
     /// Runs the statement's initialisers.
     Runs,
     /// Runs a call that may be a factory's, written up to its arguments as this.
     /// Whether it did anything is a question about another module.
-    Call(&'s str),
+    Call(String),
 }
 
 /// What evaluating `module`, whose text is `source`, does with this statement.
@@ -390,7 +390,7 @@ enum Evaluation<'s> {
 /// Only a statement that binds values has to ask; every other kind says so for
 /// itself. What the answer turns on is whether the initialiser may do anything, and
 /// that is a judgement the module analysis has already made.
-fn evaluation<'s>(module: &FineModule, statement: &Keyed<'_>, source: &'s str) -> Evaluation<'s> {
+fn evaluation(module: &FineModule, statement: &Keyed<'_>, source: &str) -> Evaluation {
     if !matches!(statement.key, Key::Declares(_)) {
         return Evaluation::Nothing;
     }
@@ -410,7 +410,17 @@ fn evaluation<'s>(module: &FineModule, statement: &Keyed<'_>, source: &'s str) -
         .factory
         .as_ref()
         .map_or(statement.span.end, |call| call.interior.start);
-    Evaluation::Call(&source[statement.span.start as usize..head as usize])
+    Evaluation::Call(lines(&source[statement.span.start as usize..head as usize]))
+}
+
+/// Text to compare with its counterpart in the other version, with each line break
+/// written as `\n`.
+///
+/// Git may hand the base version back with other line breaks than the working tree
+/// has. A line break outside a string means the same whichever it is, and one
+/// inside a template literal is read as `\n` either way.
+fn lines(text: &str) -> String {
+    text.replace("\r\n", "\n")
 }
 
 /// How a top-level statement is matched to its counterpart in the base version.
@@ -619,6 +629,14 @@ mod tests {
         let before = "// adds one\nexport const inc = (n) => n + 1;\n";
         let after = "// Adds one to its argument.\nexport const inc = (n) => n + 1;\n";
         assert!(compared(before, after).expect("comparable").is_empty());
+    }
+
+    #[test]
+    fn line_breaks_written_another_way_leave_an_argument_edit_to_the_argument() {
+        let before = "export const t = make(\n  'a/b',\n  async () => 1,\n);\n";
+        let after = before.replace('1', "2").replace('\n', "\r\n");
+        let comparison = compared(before, &after).expect("comparable");
+        assert_eq!(changed(&after, &comparison), ["async () => 2"]);
     }
 
     #[test]
