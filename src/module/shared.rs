@@ -17,6 +17,7 @@
 //! what it aliases, and each of its own uses as a use of the whole of it, credited
 //! where that use is written.
 
+use ahash::AHashSet;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_semantic::{AstNodes, NodeId, SymbolId};
@@ -363,12 +364,18 @@ fn followed_alias(
 /// `export let view = state` is still a name for `state`, and a write through it
 /// elsewhere in the file is a write to `state` made there, whatever else may
 /// happen to `view`. Past the depth aliases are followed to, every use is taken as
-/// a write without looking further.
+/// a write, and aliases declared from it are still followed; see [`writes_through`].
 fn untracked_uses(ctx: &Ctx<'_>, value: NodeId, depth: usize) -> Vec<(u32, bool)> {
     let nodes = ctx.semantic.nodes();
     let AstKind::VariableDeclarator(declarator) = nodes.kind(nodes.parent_id(value)) else {
         return Vec::new();
     };
+    if depth >= ALIAS_DEPTH {
+        let mut visited = AHashSet::default();
+        let mut uses = Vec::new();
+        writes_through(ctx, declarator, &mut visited, &mut uses);
+        return uses;
+    }
     let scoping = ctx.semantic.scoping();
     let mut uses = Vec::new();
     for binding in declarator.id.get_binding_identifiers() {
@@ -377,18 +384,77 @@ fn untracked_uses(ctx: &Ctx<'_>, value: NodeId, depth: usize) -> Vec<(u32, bool)
         };
         for reference_id in scoping.get_resolved_reference_ids(symbol) {
             let node_id = scoping.get_reference(*reference_id).node_id();
-            if depth < ALIAS_DEPTH {
-                uses.extend(
-                    reference_accesses(ctx, node_id, Mode::Properties, depth + 1)
-                        .into_iter()
-                        .map(|(offset, access)| (offset, access.write)),
-                );
-            } else {
-                uses.push((nodes.get_node(node_id).kind().span().start, true));
-            }
+            uses.extend(
+                reference_accesses(ctx, node_id, Mode::Properties, depth + 1)
+                    .into_iter()
+                    .map(|(offset, access)| (offset, access.write)),
+            );
         }
     }
     uses
+}
+
+/// Every use of the bindings a declarator introduces, each taken as a write, and
+/// the uses of every alias declared from one of them in turn, however far the chain
+/// goes.
+///
+/// A declaration that names a binding is not one of its users, so nothing else
+/// connects a write through `const f = e` to the readers of what `e` aliases. An
+/// assignment is different: `g = e` uses `g`, and the shared-state rule already
+/// connects whoever does to whoever writes through `g`.
+fn writes_through(
+    ctx: &Ctx<'_>,
+    declarator: &VariableDeclarator<'_>,
+    visited: &mut AHashSet<SymbolId>,
+    uses: &mut Vec<(u32, bool)>,
+) {
+    let nodes = ctx.semantic.nodes();
+    let scoping = ctx.semantic.scoping();
+    for binding in declarator.id.get_binding_identifiers() {
+        let Some(symbol) = binding.symbol_id.get() else {
+            continue;
+        };
+        if !visited.insert(symbol) {
+            continue;
+        }
+        for reference_id in scoping.get_resolved_reference_ids(symbol) {
+            let node_id = scoping.get_reference(*reference_id).node_id();
+            uses.push((nodes.get_node(node_id).kind().span().start, true));
+            if let Some(next) = declared_from(nodes, node_id) {
+                writes_through(ctx, next, visited, uses);
+            }
+        }
+    }
+}
+
+/// The declarator whose initialiser is this reference, or a property read off it:
+/// `const f = e` and `const list = e.list` both declare an alias of what `e` holds.
+fn declared_from<'n, 'a>(
+    nodes: &'n AstNodes<'a>,
+    node_id: NodeId,
+) -> Option<&'n VariableDeclarator<'a>> {
+    let mut current = node_id;
+    loop {
+        let (outer, span) = through_wrappers(nodes, current);
+        match nodes.parent_kind(outer) {
+            AstKind::StaticMemberExpression(member) if member.object.span() == span => {
+                current = nodes.parent_id(outer);
+            }
+            AstKind::ComputedMemberExpression(member) if member.object.span() == span => {
+                current = nodes.parent_id(outer);
+            }
+            AstKind::ChainExpression(_) => current = nodes.parent_id(outer),
+            AstKind::VariableDeclarator(declarator)
+                if declarator
+                    .init
+                    .as_ref()
+                    .is_some_and(|init| init.span() == span) =>
+            {
+                return Some(declarator);
+            }
+            _ => return None,
+        }
+    }
 }
 
 /// Walks out through parentheses and type-only wrappers, which leave the value as
@@ -573,6 +639,24 @@ mod tests {
                 "{STATE}{alias}
                 export const write = () => {{ {writer} }};
                 export const read = () => [state.volume, state.list];"
+            );
+            assert!(reaches(&source, "read", "write"), "{source}");
+        }
+    }
+
+    #[test]
+    fn aliases_declared_past_the_depth_limit_are_still_followed() {
+        const CHAIN: &str = "const a = state; const b = a; const c = b; const d = c; const e = d;";
+        for (alias, writer) in [
+            ("const f = e;", "f.volume = 2;"),
+            ("const f = e; const g = f;", "g.volume = 2;"),
+            ("const list = e.list;", "list.push(1);"),
+            ("const f = e; export let g = f;", "g.volume = 2;"),
+        ] {
+            let source = format!(
+                "{STATE}{CHAIN} {alias}
+                export const write = () => {{ {writer} }};
+                export const read = () => state.volume;"
             );
             assert!(reaches(&source, "read", "write"), "{source}");
         }
