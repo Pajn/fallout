@@ -4,8 +4,9 @@
 //! behave differently for. That is what leaving a call out of module initialisation
 //! needs, and it is all it needs: the call does not have to give the same answer
 //! every time, or keep to itself. So `Date.now()` and `Math.random()` are here —
-//! each reads the clock or a random source, and changes nothing the app reads. A
-//! declaration holding the result is reached by whatever reads it, like any other.
+//! each reads the clock or a random source, and changes nothing the app reads — and
+//! so is `console.log()`, which writes somewhere the app never reads from. A
+//! declaration holding a result is reached by whatever reads it, like any other.
 //!
 //! The lists are taken from `oxc_ecmascript`'s side-effect analysis, which keeps
 //! them private to itself; its own tables are ported in turn from Rolldown, Rollup
@@ -34,6 +35,9 @@ pub(crate) enum Conversion {
     /// `ToNumber`, which runs an object's `valueOf` and throws on a BigInt or a
     /// symbol.
     ToNumber,
+    /// Shown as they are, the way the console shows a value, except where the first
+    /// of several is a format string: `%s` and the rest convert what follows it.
+    Shown,
 }
 
 /// What a pure global function returns, for a caller that needs to know whether
@@ -87,6 +91,8 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
         ("Date", "parse") => (ToString, Primitive),
         ("Date", "UTC") => (ToNumber, Primitive),
         ("String", "fromCharCode") => (ToNumber, Primitive),
+        // Writes to the console, which nothing in the app reads back.
+        ("console", method) if is_console_method(method) => (Shown, Primitive),
         _ => return Option::None,
     })
 }
@@ -136,6 +142,15 @@ pub(crate) fn constant(object: &str, property: &str) -> bool {
 /// A global that holds a primitive: `undefined`, `NaN`, `Infinity`.
 pub(crate) fn primitive_global(name: &str) -> bool {
     matches!(name, "undefined" | "NaN" | "Infinity")
+}
+
+#[rustfmt::skip]
+fn is_console_method(method: &str) -> bool {
+    matches!(method,
+        "assert" | "count" | "countReset" | "debug" | "dir" | "dirxml" | "error"
+        | "group" | "groupCollapsed" | "groupEnd" | "info" | "log" | "table" | "time"
+        | "timeEnd" | "timeLog" | "trace" | "warn"
+    )
 }
 
 #[rustfmt::skip]

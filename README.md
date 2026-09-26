@@ -171,30 +171,32 @@ Six things take a call back out of initialisation:
   and constant tables are usually written, provided `Object` is the global;
 - the language's own functions that have no side effects: `new Map()` and `new Set()`
   (empty, or filled from an array literal), `Math.*`, `Number.is*`, `parseInt`,
-  `String()`, `Array.isArray`, `Object.is`, `Date.now()`, `new Error("…")` and a few
-  more, taken from oxc's side-effect analysis. An argument such a function converts to
+  `String()`, `Array.isArray`, `Object.is`, `Date.now()`, `new Error("…")`,
+  `console.log()` and a few more, taken from oxc's side-effect analysis. An argument such a function converts to
   a string or a number must be a primitive written out, since converting an object
   runs its `toString` or `valueOf`, and one converted to a number must not be a
   BigInt, which throws. Functions that throw on some literals — `decodeURI`,
   `String.fromCodePoint`, `new Array(n)` — are not included, and nor is `Symbol.for`,
   which adds to the global symbol registry. A side effect here means a change other
   code in the app could read back: a result read from the clock or a random source is
-  fine, since nothing requires the call to return the same thing every time;
+  fine, since nothing requires the call to return the same thing every time, and so is
+  writing to the console, which the app never reads. A `console` call given several
+  arguments must start with a literal holding no `%`, since a format string's `%s`
+  runs an object's `toString`;
 - entries in the project's `fallout.toml`;
 - a proof for a small local helper.
 
 Local inference covers top-level function declarations whose binding is never
 reassigned or redeclared, and `const` bindings of arrows and function expressions,
 with simple parameters. A body is a run of `const` locals, `if` statements that
-return, and a final return. It accepts
-literals (including negative numbers and templates with no interpolation), reads of
-parameters and locals, reads of top-level `const` primitives and of functions,
-plain array and object construction, conditionals, logical operators, strict
-equality, `Object.freeze` of a literal, the global functions above, and calls to
-other proven helpers. For
-example, `const make = (value) => ({ value })` makes `const item = make("item")`
-independent of unrelated exports. Consumers of `item` still depend on `make` and any
-helpers it calls.
+return, statements such as `console.log(value);` that are one of the expressions
+below, and a final return. It accepts literals (including negative numbers and
+templates with no interpolation), reads of parameters and locals, reads of top-level
+`const` primitives and of functions, plain array and object construction,
+conditionals, logical operators, strict equality, `Object.freeze` of a literal, the
+global functions above, and calls to other proven helpers. For example, `const make =
+(value) => ({ value })` makes `const item = make("item")` independent of unrelated
+exports. Consumers of `item` still depend on `make` and any helpers it calls.
 
 The proof also checks argument evaluation. Literals, top-level `const` primitives
 and calls to proven helpers qualify; other variable arguments remain conservative. It

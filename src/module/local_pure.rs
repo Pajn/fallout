@@ -3,6 +3,7 @@
 //!
 //! A helper is a top-level function declaration, or a `const` bound to an arrow or
 //! a function expression. Its body is a run of `const` locals, `if`s that return,
+//! statements such as `console.log(value);` whose expression is itself provable,
 //! and a final return, built from the expressions below. A call is pure where the
 //! callee is a proven helper and every argument is itself provable.
 //!
@@ -237,11 +238,25 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         conversion: globals::Conversion,
         locals: &Locals,
     ) -> Option<Ready> {
+        // A first argument the console may read as a format string, followed by
+        // more, has to be one written out that holds no `%`: `%s` runs an object's
+        // `toString`, which is the app's code.
+        if conversion == globals::Conversion::Shown
+            && arguments.len() > 1
+            && !arguments
+                .first()
+                .and_then(Argument::as_expression)
+                .is_some_and(no_format)
+        {
+            return None;
+        }
         let mut ready = 0;
         for argument in arguments {
             let argument = argument.as_expression()?;
             ready = ready.max(match conversion {
-                globals::Conversion::None => self.expression(argument, locals)?,
+                globals::Conversion::None | globals::Conversion::Shown => {
+                    self.expression(argument, locals)?
+                }
                 globals::Conversion::ToString => self.primitive(argument, locals, false)?,
                 globals::Conversion::ToNumber => self.primitive(argument, locals, true)?,
             });
@@ -400,6 +415,11 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             }
             Statement::BlockStatement(block) => self.statements(&block.body, locals),
             Statement::EmptyStatement(_) => Some(0),
+            // An expression run for nothing but its effects, where it has none that
+            // anything reads back: `console.log(value);`.
+            Statement::ExpressionStatement(statement) => {
+                self.expression(&statement.expression, locals)
+            }
             _ => None,
         }
     }
@@ -524,6 +544,22 @@ fn simple_params(params: &FormalParameters<'_>) -> Option<Vec<SymbolId>> {
             id.symbol_id.get()
         })
         .collect()
+}
+
+/// A literal the console cannot read as a format string: anything but a string, or
+/// a string with no `%` in it.
+fn no_format(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::StringLiteral(literal) => !literal.value.contains('%'),
+        Expression::TemplateLiteral(template) => {
+            template.expressions.is_empty()
+                && template
+                    .quasis
+                    .iter()
+                    .all(|quasi| !quasi.value.raw.contains('%'))
+        }
+        expr => is_primitive(expr),
+    }
 }
 
 /// A BigInt literal, which a conversion to a number throws on.
@@ -680,7 +716,6 @@ mod tests {
             "function make() { const a = b; const b = 1; return a; } const result = make();",
             "function make() { let a = 1; return a; } const result = make();",
             "function make(x) { for (const y of x) {} return 1; } const result = make([]);",
-            "function make(x) { x; return 1; } const result = make(1);",
             "function make() { throw 1; } const result = make();",
             "const make = async () => 1; const result = make();",
             "const make = (...xs) => xs; const result = make(1);",
@@ -770,6 +805,34 @@ mod tests {
             "const Math = { max: () => sideEffect() }; export const result = Math.max(1);",
             "import { Map } from './map'; export const result = new Map();",
             "export const result = Math.max(...[1, 2]);",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+    }
+
+    #[test]
+    fn writing_to_the_console_is_not_a_side_effect_the_app_reads() {
+        for source in [
+            "export const ready = console.log('ready');",
+            "export const ready = console.info('ready', 1, null);",
+            "function make(x) { console.log('made', x); return { x }; } export const result = make(1);",
+            "const make = (x) => { console.warn(x); return x; }; export const result = make('a');",
+            "function make(x) { if (x === null) { console.error({ x }); return null; } return x; } export const result = make(1);",
+        ] {
+            assert!(init(source).is_empty(), "{source}");
+        }
+        for source in [
+            // A format string's `%s` runs an object's `toString`, and a first
+            // argument nobody wrote out could be one.
+            "export const result = console.log('%s', {});",
+            "function make(format, x) { console.log(format, x); return x; } export const result = make('a', 1);",
+            // What the arguments do is still theirs.
+            "export const result = console.log(register());",
+            // Not the console, and not one of its methods that only writes.
+            "const console = { log: () => register() }; export const result = console.log(1);",
+            "export const result = console.profile('a');",
+            // A statement in a helper body is still held to the subset.
+            "function make(x) { register(x); return x; } export const result = make(1);",
         ] {
             assert!(init(source).contains(&"result".to_string()), "{source}");
         }
