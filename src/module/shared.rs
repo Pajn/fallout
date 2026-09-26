@@ -423,11 +423,19 @@ fn writes_through(ctx: &Ctx<'_>, declarator: &VariableDeclarator<'_>) -> Vec<(u3
         }
         for reference_id in scoping.get_resolved_reference_ids(symbol) {
             let node_id = scoping.get_reference(*reference_id).node_id();
+            let at = nodes.get_node(node_id).kind().span().start;
             // Declaring another alias does nothing to the object; what that alias
-            // is used for is followed in its place.
+            // is used for is followed in its place. One that is exported, or can be
+            // reassigned, also hands the object on where it is declared, as it
+            // does short of the limit.
             match declared_from(nodes, node_id) {
-                Some(next) => pending.extend(bindings(next)),
-                None => uses.push((nodes.get_node(node_id).kind().span().start, true)),
+                Some((next, hands_on)) => {
+                    if hands_on {
+                        uses.push((at, true));
+                    }
+                    pending.extend(bindings(next));
+                }
+                None => uses.push((at, true)),
             }
         }
     }
@@ -436,10 +444,12 @@ fn writes_through(ctx: &Ctx<'_>, declarator: &VariableDeclarator<'_>) -> Vec<(u3
 
 /// The declarator whose initialiser is this reference, or a property read off it:
 /// `const f = e` and `const list = e.list` both declare an alias of what `e` holds.
+/// Paired with whether the declaration hands the alias to code this cannot follow:
+/// it is exported, or it is not a `const`.
 fn declared_from<'n, 'a>(
     nodes: &'n AstNodes<'a>,
     node_id: NodeId,
-) -> Option<&'n VariableDeclarator<'a>> {
+) -> Option<(&'n VariableDeclarator<'a>, bool)> {
     let mut current = node_id;
     loop {
         let (outer, span) = through_wrappers(nodes, current);
@@ -457,7 +467,16 @@ fn declared_from<'n, 'a>(
                     .as_ref()
                     .is_some_and(|init| init.span() == span) =>
             {
-                return Some(declarator);
+                let declaration = nodes.parent_id(nodes.parent_id(outer));
+                let hands_on = !matches!(
+                    nodes.kind(declaration),
+                    AstKind::VariableDeclaration(variable)
+                        if variable.kind == VariableDeclarationKind::Const
+                ) || matches!(
+                    nodes.parent_kind(declaration),
+                    AstKind::ExportDeclaration(_)
+                );
+                return Some((declarator, hands_on));
             }
             _ => return None,
         }
@@ -666,6 +685,19 @@ mod tests {
                 export const read = () => state.volume;"
             );
             assert!(reaches(&source, "read", "write"), "{source}");
+        }
+    }
+
+    #[test]
+    fn an_alias_exported_past_the_depth_limit_still_hands_the_object_on() {
+        const CHAIN: &str = "const a = state; const b = a; const c = b; const d = c; const e = d;";
+        for alias in ["export const view = e;", "let view = e;"] {
+            let source = format!(
+                "{STATE}{CHAIN}
+                {alias}
+                export const read = () => state.volume;"
+            );
+            assert!(reaches(&source, "read", "view"), "{source}");
         }
     }
 
