@@ -180,6 +180,9 @@ pub struct Resolver {
     /// Several anchors' searches walk the same files, and reading one means parsing
     /// it.
     imports: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
+    /// Whether each file imports something the change may have moved, for the
+    /// same searches, which would otherwise read the file again to ask.
+    repointed_files: RwLock<AHashMap<PathBuf, bool>>,
 }
 
 impl Resolver {
@@ -203,6 +206,7 @@ impl Resolver {
             lookup,
             workspace: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
+            repointed_files: RwLock::new(AHashMap::default()),
             modules: RwLock::new(AHashMap::default()),
             style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
@@ -292,6 +296,23 @@ impl Resolver {
         }));
         self.style.write().unwrap().insert(key, resolver.clone());
         resolver
+    }
+
+    /// Whether `file` imports something the change may have moved, worked out by
+    /// `read` the first time it is asked.
+    pub fn repoints(&self, file: &Path, read: impl FnOnce() -> bool) -> bool {
+        if !self.may_repoint() {
+            return false;
+        }
+        if let Some(&known) = self.repointed_files.read().unwrap().get(file) {
+            return known;
+        }
+        let repoints = read();
+        self.repointed_files
+            .write()
+            .unwrap()
+            .insert(file.to_path_buf(), repoints);
+        repoints
     }
 
     /// The files `file` imports, worked out by `read` the first time it is asked.

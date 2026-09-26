@@ -115,8 +115,7 @@ pub fn repointing(
         }));
     let mut repointing = Repointing::default();
     for (path, deleted) in named {
-        let path = normalize(&path);
-        let path = dunce::canonicalize(&path).unwrap_or(path);
+        let path = canonical(&path);
         if deleted && !repointing.deleted.contains(&path) {
             repointing.deleted.push(path.clone());
         }
@@ -130,6 +129,25 @@ pub fn repointing(
     repointing
 }
 
+/// `path` as the resolver spells it, whether or not it is still there: the nearest
+/// directory above it that is, canonicalised, and the rest as written. Where the
+/// working directory is spelled another way than its canonical path, as a short
+/// name on Windows can be, a deleted file named from it would otherwise match no
+/// path the resolver produces.
+fn canonical(path: &Path) -> PathBuf {
+    let path = normalize(path);
+    for ancestor in path.ancestors() {
+        if let (Ok(real), Ok(rest)) = (dunce::canonicalize(ancestor), path.strip_prefix(ancestor)) {
+            return if rest.as_os_str().is_empty() {
+                real
+            } else {
+                real.join(rest)
+            };
+        }
+    }
+    path
+}
+
 fn is_config(path: &Path) -> bool {
     path.extension()
         .is_some_and(|extension| extension == "json")
@@ -140,21 +158,22 @@ fn is_config(path: &Path) -> bool {
 
 /// How far a change to the configuration at `path` reaches, or `None` when it
 /// reaches no import at all.
+///
+/// A config that was added or deleted reaches everything it governs: it changes
+/// which config is the nearest for every file beneath it, and the one those files
+/// resolve through instead may map nothing the same way.
 fn scope(path: &Path, deleted: bool, base: Option<&Base>) -> Option<Scope> {
     let Some(base) = base else {
         return Some(Scope::Everything);
     };
-    let read = |text: Option<String>| match text {
-        Some(text) => TsConfig::parse(true, path, path, text).ok(),
-        // A version that is not there reads as a config that says nothing.
-        None => Some(TsConfig::default()),
+    let (Some(old), false) = (base.text(path), deleted) else {
+        return Some(Scope::Everything);
     };
-    let current = if deleted {
-        None
-    } else {
-        Some(std::fs::read_to_string(path).ok()?)
+    let Ok(current) = std::fs::read_to_string(path) else {
+        return Some(Scope::Everything);
     };
-    let (Some(old), Some(new)) = (read(base.text(path)), read(current)) else {
+    let read = |text: String| TsConfig::parse(true, path, path, text).ok();
+    let (Some(old), Some(new)) = (read(old), read(current)) else {
         // A version that does not parse as a tsconfig may still be read as one.
         return Some(Scope::Everything);
     };
@@ -291,6 +310,17 @@ mod tests {
         assert!(!key_matches("@/*", "@acme/ui"));
         assert!(key_matches("lodash", "lodash"));
         assert!(!key_matches("lodash", "lodash/fp"));
+    }
+
+    #[test]
+    fn a_deleted_file_is_spelled_the_way_the_resolver_spells_its_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dunce::canonicalize(dir.path()).unwrap();
+        let gone = dir.path().join("src/shims/../shims/toolkit.ts");
+        assert_eq!(
+            canonical(&gone),
+            real.join("src").join("shims").join("toolkit.ts")
+        );
     }
 
     #[test]

@@ -755,7 +755,8 @@ How far a tsconfig change reaches is read from the fields resolution uses. Again
 base revision both versions are compared: a change to one `paths` entry moves the
 specifiers that entry matches, a change to `baseUrl` moves every specifier that is
 not relative, and a change to `extends`, `references`, `files`, `include`, `exclude`
-or `rootDirs` moves every import. A change to anything else, such as `strict`, moves
+or `rootDirs` moves every import, and so does adding or deleting a tsconfig, which
+changes which one is the nearest. A change to anything else, such as `strict`, moves
 nothing. As a line range there is no earlier version to compare with, so any change
 to a tsconfig moves every import of every file it governs.
 

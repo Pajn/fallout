@@ -1,5 +1,6 @@
 //! Graph traversal in both directions, capturing the path that produced a hit.
 
+use std::cell::OnceCell;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
@@ -81,9 +82,20 @@ pub fn downstream(
     }
 
     while let Some(current) = queue.pop_front() {
+        // Read once, for both questions that need them, and only if one does.
+        let specifiers = OnceCell::new();
+        let specifiers = || {
+            specifiers
+                .get_or_init(|| imported_specifiers(&current, reading).unwrap_or_default())
+                .as_slice()
+        };
         if changed.contains(&current)
             || resolver.marks_changed_package(&current)
-            || repointed(&current, resolver, reading)
+            || resolver.repoints(&current, || {
+                specifiers()
+                    .iter()
+                    .any(|specifier| resolver.may_have_moved(&current, specifier))
+            })
         {
             let hit = Hit {
                 direction: Direction::Downstream,
@@ -96,7 +108,7 @@ pub fn downstream(
             };
         }
 
-        for next in edges_from(&current, resolver, reading) {
+        for next in edges_from(&current, resolver, specifiers) {
             if !came_from.contains_key(&next) {
                 came_from.insert(next.clone(), Some(current.clone()));
                 queue.push_back(next);
@@ -146,7 +158,8 @@ pub fn upstream(
                 };
             }
 
-            for next in edges_from(&current, resolver, reading) {
+            let specifiers = || imported_specifiers(&current, reading).unwrap_or_default();
+            for next in edges_from(&current, resolver, specifiers) {
                 if !came_from.contains_key(&next) {
                     came_from.insert(next.clone(), Some(current.clone()));
                     queue.push_back(next);
@@ -159,24 +172,15 @@ pub fn upstream(
     Search { hit: None, visited }
 }
 
-/// Whether an import of `file` may have gone to another file before the change,
-/// which changes the file as much as rewriting the import would.
-fn repointed(file: &Path, resolver: &Resolver, reading: &Reading) -> bool {
-    resolver.may_repoint()
-        && imported_specifiers(file, reading).is_some_and(|specifiers| {
-            specifiers
-                .iter()
-                .any(|specifier| resolver.may_have_moved(file, specifier))
-        })
-}
-
-fn edges_from(file: &Path, resolver: &Resolver, reading: &Reading) -> Vec<PathBuf> {
+fn edges_from<S: AsRef<[String]>>(
+    file: &Path,
+    resolver: &Resolver,
+    specifiers: impl FnOnce() -> S,
+) -> Vec<PathBuf> {
     resolver
         .imports_of(file, || {
-            let Some(specifiers) = imported_specifiers(file, reading) else {
-                return Vec::new();
-            };
-            specifiers
+            specifiers()
+                .as_ref()
                 .iter()
                 .filter_map(|specifier| resolver.resolve(file, specifier))
                 .collect()
