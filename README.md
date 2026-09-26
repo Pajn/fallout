@@ -180,8 +180,13 @@ Six things take a call back out of initialisation:
   here means a change other code in the app could read back. So a result read from the
   clock or a random source is fine, since nothing requires the call to return the same
   thing every time, and so is writing to the console, which the app never reads.
-  `toString` and `valueOf` are taken to have none either. `Symbol.for`, which adds to
-  the global symbol registry, is not included;
+  `toString` and `valueOf` are taken to have none either. What such a call must not do
+  is throw, since it runs in the module body: an argument converted to a number must
+  not be a BigInt, functions that throw on some literals — `decodeURI`,
+  `String.fromCodePoint`, `new Array(n)` — are not included, and a `console` call given
+  several arguments must start with a literal holding no `%`, since a format string
+  can convert what follows in ways that throw. `Symbol.for`, which adds to the global
+  symbol registry, is not included either;
 - entries in the project's `fallout.toml`;
 - a proof for a small local helper.
 
@@ -198,26 +203,26 @@ global functions above, and calls to other proven helpers. For example, `const m
 exports. Consumers of `item` still depend on `make` and any helpers it calls.
 
 The proof also checks argument evaluation. Literals, top-level `const` primitives and
-calls to proven helpers qualify; other variable arguments remain conservative. A
-helper may throw from its body and still have no side effects, since a throw is not a
-change anything reads back. The module body may not: a throw there stops the module
-loading, and every importer with it. So a call written in the module body must
-evaluate nothing there that can throw. An argument converted to a number must not be a
-BigInt, the functions that throw on some arguments — `decodeURI("%")`,
-`String.fromCodePoint(-1)`, `new Array(-1)`, a `WeakMap` or `WeakSet` given a
-primitive key — are proven only inside a helper, and order matters. A `const` does not
-exist until its declaration runs, and calling or reading one earlier throws, so a call
-written before its `const` helper, or before a `const` it is given, stays in
-initialisation. That puts the call and what it reads in front of every importer, which
-is what could change whether it throws, and nothing else in the module. A helper
-reading a `const` declared later throws from its body instead, which is fine. Function
-declarations are hoisted and can be called from anywhere. Reads of other captured
-values, property reads (which may invoke getters), coercing arithmetic, interpolated
-templates, writes, loops, unknown calls, recursion, defaults, destructuring, spread,
-`this`, `arguments`, async and generator functions, and default-exported declarations
-keep the existing broad behaviour. No annotation or configuration is needed for an
-inferred helper. Use `--base` to detect an effect removed from a helper: line-only
-analysis sees its current body, not the previous side effect.
+calls to proven helpers qualify; other variable arguments remain conservative. A throw
+is not a side effect, but a throw in the module body stops the module loading, and
+every importer with it. A helper is only ever proven on behalf of a call written in
+the module body, which runs its body there, so nothing the call evaluates may throw,
+in the helper or out of it. A value converted to a number must not be a BigInt, and a
+parameter may not be converted at all, since it could be one, or a symbol. Functions
+that throw on some arguments — `decodeURI("%")`, `String.fromCodePoint(-1)`,
+`new Array(-1)`, a `WeakMap` or `WeakSet` given a primitive key — are not proven. And
+order matters: a `const` does not exist until its declaration runs, and calling or
+reading one earlier throws, so a call written before a `const` helper, or before a
+`const` it or a helper reads, stays in initialisation. That puts the call and what it
+reads in front of every importer, which is what could change whether it throws, and
+nothing else in the module. Function declarations are hoisted and can be called from
+anywhere. Reads of other captured values, property reads (which may invoke getters),
+coercing arithmetic, interpolated templates, writes, loops, unknown calls, recursion,
+defaults, destructuring, spread, `this`, `arguments`, async and generator functions,
+and default-exported declarations keep the existing broad behaviour. No annotation or
+configuration is needed for an inferred helper. Use `--base` to detect an effect
+removed from a helper: line-only analysis sees its current body, not the previous side
+effect.
 
 ```toml
 # fallout.toml
