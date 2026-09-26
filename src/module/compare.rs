@@ -173,12 +173,10 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             let old_object =
                 members::object_literal_of(old_statements[index].node, index, &old_cjs, None);
             let new_object = members::object_literal_of(statement.node, new_index, &new_cjs, None);
-            match changed_members(
-                old_object,
-                new_object,
-                (old_statements[index].node, statement.node),
-                (&before, &after),
-            ) {
+            let pair = (old_statements[index].node, statement.node);
+            match changed_members(old_object, new_object, pair, (&before, &after))
+                .or_else(|| changed_arguments(pair, (&before, &after)))
+            {
                 Some(spans) => changed.extend(spans),
                 None => changed.push(statement.span),
             }
@@ -326,6 +324,48 @@ fn changed_members(
     (!spans.is_empty()).then_some(spans)
 }
 
+/// The arguments that differ between two versions of `const x = f(…)`, where
+/// nothing else about the declaration does.
+///
+/// The result of a known factory is read by property, and each property depends on
+/// some of the arguments only; see [`crate::factories`]. An edit to one argument is
+/// an edit to what depends on it. Anything else — the callee, the binding, the
+/// number of arguments, a comment between them — is `None`.
+fn changed_arguments(
+    (old, new): (&Statement<'_>, &Statement<'_>),
+    (before, after): (&str, &str),
+) -> Option<Vec<Span>> {
+    let (_, old_call) = super::factories::call_of(old)?;
+    let (_, new_call) = super::factories::call_of(new)?;
+    if old_call.arguments.len() != new_call.arguments.len() || old_call.arguments.is_empty() {
+        return None;
+    }
+    // The text between the arguments, and around them: everything but the
+    // arguments themselves.
+    let framing = |text: &str, statement: oxc_span::Span, call: &CallExpression<'_>| {
+        let mut pieces = Vec::with_capacity(call.arguments.len() + 1);
+        let mut at = statement.start;
+        for argument in &call.arguments {
+            let span = argument.span();
+            pieces.push(text.get(at as usize..span.start as usize)?.to_string());
+            at = span.end;
+        }
+        pieces.push(text.get(at as usize..statement.end as usize)?.to_string());
+        Some(pieces)
+    };
+    if framing(before, old.span(), old_call)? != framing(after, new.span(), new_call)? {
+        return None;
+    }
+    let spans: Vec<Span> = old_call
+        .arguments
+        .iter()
+        .zip(&new_call.arguments)
+        .filter(|(old, new)| old.content_ne(new))
+        .map(|(_, new)| span_of(new.span()))
+        .collect();
+    (!spans.is_empty()).then_some(spans)
+}
+
 /// Did evaluating the base version do this statement's work?
 ///
 /// Only a statement that binds values has to ask; every other kind says so for
@@ -335,9 +375,12 @@ fn ran_on_evaluation(module: &FineModule, statement: &Keyed<'_>) -> bool {
     if !matches!(statement.key, Key::Declares(_)) {
         return false;
     }
+    // A call that may be a factory's is taken to have run: whether it did is a
+    // question about another module, and this answer only ever widens.
     module
         .init_decls
         .iter()
+        .chain(&module.conditional_init)
         .filter_map(|&decl| module.decls.get(decl as usize))
         .any(|decl| decl.span == statement.span)
 }

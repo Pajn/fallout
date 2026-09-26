@@ -293,6 +293,46 @@ An entry is a claim about someone else's function. It says nothing about the
 arguments, which still run, and nothing about the exports of the file it sits in,
 which are reached by name however the declaration was built.
 
+### Known factories
+
+A Redux Toolkit app makes its async actions with `createAsyncThunk`, and its slices
+name them in their reducers:
+
+```ts
+export const refreshPlan = createAsyncThunk("session/refreshPlan", async (id: string) =>
+  (await fetchPlan(id)).plan,
+);
+
+export const sessionSlice = createSlice({
+  // …
+  extraReducers: (builder) => {
+    builder.addCase(refreshPlan.fulfilled, (state, action) => {
+      state.plan = action.payload;
+    });
+  },
+});
+```
+
+Read as a plain call, `refreshPlan.fulfilled` reaches the whole declaration: the
+payload creator, and everything it calls. But `fulfilled` is an action creator made
+from the type string alone. So is `pending`, `rejected`, `settled` and `typePrefix`.
+Each depends on the first argument only, and creating the thunk runs nothing, so it
+is not module initialisation. A reducer, and every case or page built from it, is
+reached by an edit to the type string and not by one to the payload creator. Calling
+the thunk, as `dispatch(refreshPlan(id))` does, still reaches all of it.
+
+The factory is matched however an app reaches it: imported from `@reduxjs/toolkit`
+directly or through a namespace, typed with `createAsyncThunk.withTypes<…>()`, and
+through modules of the app's own that export or re-export any of those. The usual
+shape is a store module that exports the typed factory, imported by every slice.
+A function merely called `createAsyncThunk` is not matched.
+
+As with an object literal, this holds only while nothing can change what a property
+of the thunk holds: in its own file, its binding must only be read for a property,
+called, or exported. An edit inside the payload creator marks the thunk's members
+neither as a line range nor against a base revision. An edit to the type string, to
+the call around the arguments, or to the binding marks all of them.
+
 ### Where a claim applies
 
 A `fallout.toml` is read from `--root`, and from any directory beneath it. A file in

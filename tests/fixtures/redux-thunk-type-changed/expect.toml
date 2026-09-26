@@ -1,0 +1,14 @@
+# The thunk's type string is what `fulfilled` and the rest are made from, so the
+# case built from the slice's reducer reaches an edit to it.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/plan-badge.cases.tsx)",
+    "Decl(src/cases/plan-badge.cases.tsx, cases)",
+    "Export(src/store/session.ts, sessionSlice)",
+    "Decl(src/store/session.ts, sessionSlice)",
+    "Member(src/store/session.ts, refreshPlan.pending)",
+]

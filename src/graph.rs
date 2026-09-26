@@ -323,6 +323,18 @@ impl Graph {
             return vec![Node::File(file)];
         };
         let member = self.name(member);
+        if member_of(module, decl, &member).is_none()
+            && let Some(deps) = self.factory_member(file, module, decl, &member)
+        {
+            return self.reference_edges(
+                file,
+                &analysed,
+                module,
+                &deps.refs,
+                &deps.member_refs,
+                &deps.imports,
+            );
+        }
         match member_of(module, decl, &member) {
             Some(entry) => {
                 let mut edges = self.reference_edges(
@@ -349,9 +361,154 @@ impl Graph {
     /// A read of `member` off the declaration `decl` of the same file: that member
     /// where the object has it, and the whole declaration otherwise.
     fn local_member(&self, file: FileId, module: &FineModule, decl: DeclId, member: &str) -> Node {
-        match member_of(module, decl, member) {
-            Some(_) => Node::Member(file, decl, self.name_id(member)),
-            None => Node::Decl(file, decl),
+        if self.has_member(file, module, decl, member) {
+            Node::Member(file, decl, self.name_id(member))
+        } else {
+            Node::Decl(file, decl)
+        }
+    }
+
+    /// Whether `member` of `decl` can be read on its own: a property of an object
+    /// literal, or one a known factory's rule lists.
+    fn has_member(&self, file: FileId, module: &FineModule, decl: DeclId, member: &str) -> bool {
+        member_of(module, decl, member).is_some()
+            || self.factory_member(file, module, decl, member).is_some()
+    }
+
+    /// What `member` of a factory call's result depends on, where the callee is a
+    /// factory with a rule that lists it: the arguments the rule names, and what
+    /// the declaration depends on outside every argument.
+    fn factory_member(
+        &self,
+        file: FileId,
+        module: &FineModule,
+        decl: DeclId,
+        member: &str,
+    ) -> Option<crate::module::Deps> {
+        let call = module.decls.get(decl as usize)?.factory.as_ref()?;
+        let rule = self.made_by(file, decl)?;
+        if !rule.has_member(member) {
+            return None;
+        }
+        let mut deps = call.frame.clone();
+        for &index in rule.args {
+            let Some((_, argument)) = call.args.get(index) else {
+                continue;
+            };
+            deps.refs.extend(argument.refs.iter().copied());
+            deps.member_refs
+                .extend(argument.member_refs.iter().cloned());
+            deps.imports.extend(argument.imports.iter().cloned());
+        }
+        Some(deps)
+    }
+
+    /// The rule of the factory `decl` of `file` is the result of calling, if the
+    /// callee is one.
+    pub fn made_by(&self, file: FileId, decl: DeclId) -> Option<&'static crate::factories::Rule> {
+        let analysed = self.analysis(file)?;
+        let module = analysed.analysis.as_fine()?;
+        let call = module.decls.get(decl as usize)?.factory.as_ref()?;
+        self.callee_rule(file, &call.callee, 0)
+    }
+
+    /// The rule of the factory `decl` of `file` is another name for, if it is one.
+    fn names_factory(&self, file: FileId, decl: DeclId) -> bool {
+        let Some(analysed) = self.analysis(file) else {
+            return false;
+        };
+        let Some(module) = analysed.analysis.as_fine() else {
+            return false;
+        };
+        module
+            .decls
+            .get(decl as usize)
+            .and_then(|entry| entry.derived.as_ref())
+            .is_some_and(|derived| self.callee_rule(file, derived, 0).is_some())
+    }
+
+    /// The rule of the factory a callee written in `file` names, followed through
+    /// declarations that are other names for it and through the exports of the
+    /// modules it is imported from.
+    fn callee_rule(
+        &self,
+        file: FileId,
+        callee: &crate::module::Callee,
+        depth: usize,
+    ) -> Option<&'static crate::factories::Rule> {
+        use crate::module::Callee;
+
+        // A cycle of re-exports names nothing.
+        if depth > 32 {
+            return None;
+        }
+        let analysed = self.analysis(file)?;
+        let module = analysed.analysis.as_fine()?;
+        match callee {
+            Callee::Local { decl, path } => {
+                let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
+                self.callee_rule(file, &extended(derived, path), depth + 1)
+            }
+            Callee::Import { source, name, path } => {
+                let specifier = module.sources.get(*source as usize)?;
+                if path.is_empty()
+                    && let Some(rule) = crate::factories::rule(specifier, name)
+                {
+                    return Some(rule);
+                }
+                let target = self.target_of(&analysed, *source)?;
+                if !is_source_file(&self.path(target)) {
+                    return None;
+                }
+                self.export_rule(target, name, path, depth + 1)
+            }
+        }
+    }
+
+    /// The rule of the factory `file` exports as `name`, read through `path`.
+    fn export_rule(
+        &self,
+        file: FileId,
+        name: &str,
+        path: &[String],
+        depth: usize,
+    ) -> Option<&'static crate::factories::Rule> {
+        use crate::module::Callee;
+
+        let analysed = self.analysis(file)?;
+        let module = analysed.analysis.as_fine()?;
+        // `import * as store from "./store"; store.createAsyncThunk(…)`.
+        let (name, path) = match (name, path) {
+            ("*", [first, rest @ ..]) => (first.as_str(), rest),
+            ("*", []) => return None,
+            (name, path) => (name, path),
+        };
+        match &module.export_named(name)?.target {
+            ExportTarget::Local(decl) => {
+                let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
+                self.callee_rule(file, &extended(derived, path), depth + 1)
+            }
+            ExportTarget::Reexport { source, name } => self.callee_rule(
+                file,
+                &Callee::Import {
+                    source: *source,
+                    name: name.clone(),
+                    path: path.to_vec(),
+                },
+                depth + 1,
+            ),
+            ExportTarget::ReexportAll { source } => {
+                let (first, rest) = path.split_first()?;
+                self.callee_rule(
+                    file,
+                    &Callee::Import {
+                        source: *source,
+                        name: first.clone(),
+                        path: rest.to_vec(),
+                    },
+                    depth + 1,
+                )
+            }
         }
     }
 
@@ -367,7 +524,7 @@ impl Graph {
             && let Some(analysed) = self.analysis(file)
             && let Some(module) = analysed.analysis.as_fine()
             && let Some(ExportTarget::Local(decl)) = module.export_named(export).map(|e| &e.target)
-            && member_of(module, *decl, member).is_some()
+            && self.has_member(file, module, *decl, member)
         {
             return Node::Member(file, *decl, self.name_id(member));
         }
@@ -432,6 +589,13 @@ impl Graph {
         if self.runs_on_import(file) {
             for &decl in &module.init_decls {
                 edges.push(Node::Decl(file, decl));
+            }
+            // A call that may be a factory's runs something unless the callee is a
+            // factory that only builds values, or `withTypes` of one.
+            for &decl in &module.conditional_init {
+                if self.made_by(file, decl).is_none() && !self.names_factory(file, decl) {
+                    edges.push(Node::Decl(file, decl));
+                }
             }
         }
         // Importing a module runs its initialisation, in any form — unless the
@@ -650,4 +814,24 @@ fn member_of<'m>(module: &'m FineModule, decl: DeclId, member: &str) -> Option<&
         .members
         .iter()
         .find(|entry| entry.name == member)
+}
+
+/// `callee` read further, through `path`.
+fn extended(callee: &crate::module::Callee, path: &[String]) -> crate::module::Callee {
+    use crate::module::Callee;
+    match callee {
+        Callee::Import {
+            source,
+            name,
+            path: base,
+        } => Callee::Import {
+            source: *source,
+            name: name.clone(),
+            path: base.iter().chain(path).cloned().collect(),
+        },
+        Callee::Local { decl, path: base } => Callee::Local {
+            decl: *decl,
+            path: base.iter().chain(path).cloned().collect(),
+        },
+    }
 }

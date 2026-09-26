@@ -37,6 +37,7 @@ pub(crate) struct Objects {
 }
 
 /// An object declaration as a reader in its own file sees it.
+#[derive(Clone)]
 pub(crate) struct ObjectRef {
     pub decl: DeclId,
     /// The members a call through the object, `utils.fn()`, cannot reach the

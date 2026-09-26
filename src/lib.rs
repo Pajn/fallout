@@ -11,6 +11,7 @@ pub mod changes;
 pub mod cli;
 pub mod config;
 pub mod diff;
+pub mod factories;
 pub mod graph;
 pub mod lockfile;
 pub mod marks;

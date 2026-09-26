@@ -8,7 +8,7 @@ use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 
 use super::cjs;
 use super::decls::{DeclDraft, ImportBinding};
@@ -19,11 +19,11 @@ use crate::pure::PureList;
 
 /// Where a name in this file comes from, for deciding whether a call on it is one
 /// the project has declared pure.
-type Origins<'a> = AHashMap<&'a str, (&'a str, &'a str)>;
+pub(crate) type Origins<'a> = AHashMap<&'a str, (&'a str, &'a str)>;
 
 /// Each imported binding as `local name -> (module specifier, exported name)`, with
 /// `default` and `*` standing for the two unnamed import forms.
-fn origins<'a>(imports: &'a [ImportBinding], sources: &'a [String]) -> Origins<'a> {
+pub(crate) fn origins<'a>(imports: &'a [ImportBinding], sources: &'a [String]) -> Origins<'a> {
     let mut map = Origins::default();
     for binding in imports {
         let Some(source) = sources.get(binding.reference.source as usize) else {
@@ -44,13 +44,13 @@ pub(crate) fn collect(
     program: &Program<'_>,
     drafts: &[DeclDraft],
     decls: &[Decl],
-    imports: &[ImportBinding],
-    sources: &[String],
+    origins: &Origins<'_>,
     pure: &PureList,
-) -> Vec<DeclId> {
-    let origins = origins(imports, sources);
+    conditional: &AHashSet<usize>,
+) -> (Vec<DeclId>, Vec<DeclId>) {
     let local = LocalPure::infer(ctx, program);
     let mut init: Vec<DeclId> = Vec::new();
+    let mut maybe: Vec<DeclId> = Vec::new();
 
     for (index, statement) in program.body.iter().enumerate() {
         let declares = drafts.iter().any(|draft| draft.statement == index);
@@ -65,12 +65,34 @@ pub(crate) fn collect(
         }
 
         // An initialiser that may have side effects runs at import time whether or
-        // not anyone reads the binding.
-        if statement_has_impure_initialiser(statement, &origins, pure, &local) {
+        // not anyone reads the binding. One this module can clear is not asked about
+        // again below.
+        if !statement_has_impure_initialiser(statement, origins, pure, &local) {
+            continue;
+        }
+
+        // A call that may be a factory's runs nothing else if its arguments do not:
+        // whether the call itself does is the graph's to say, once it knows the
+        // callee. See [`super::factories`].
+        if conditional.contains(&index)
+            && let Some((_, call)) = super::factories::call_of(statement)
+            && !call.arguments.iter().any(|argument| {
+                argument
+                    .as_expression()
+                    .is_none_or(|argument| argument.check_impurity(origins, pure, &local))
+            })
+        {
             for (id, draft) in drafts.iter().enumerate() {
                 if draft.statement == index {
-                    push_unique(&mut init, id as DeclId);
+                    push_unique(&mut maybe, id as DeclId);
                 }
+            }
+            continue;
+        }
+
+        for (id, draft) in drafts.iter().enumerate() {
+            if draft.statement == index {
+                push_unique(&mut init, id as DeclId);
             }
         }
     }
@@ -89,8 +111,10 @@ pub(crate) fn collect(
         }
     }
 
+    // A conditional declaration an effectful one reads is part of initialisation
+    // either way, so it may be in both lists.
     init.sort_unstable();
-    init
+    (init, maybe)
 }
 
 /// Top-level declarations named anywhere inside `statement`.

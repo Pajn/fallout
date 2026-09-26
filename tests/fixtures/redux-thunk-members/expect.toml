@@ -1,0 +1,21 @@
+# A Redux Toolkit store in an app bundled with inline requires. The slice names its
+# thunk's `pending`, `fulfilled` and `rejected`, which are made from the type string
+# alone, so a case built from the slice's reducer does not reach the payload
+# creator, or the API it calls. A case that dispatches the thunk does. The factory
+# is the app's own `createAsyncThunk.withTypes<…>()`, exported from another module.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/refresh-button.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/refresh-button.cases.tsx)",
+    "Decl(src/cases/refresh-button.cases.tsx, RefreshButton)",
+    "Export(src/store/session.ts, refreshPlan)",
+    "Decl(src/store/session.ts, refreshPlan)",
+    "Export(src/api/subscriptions.ts, fetchPlan)",
+]

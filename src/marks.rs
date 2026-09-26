@@ -234,6 +234,24 @@ fn mark_members(
             out.insert(Node::Member(file, id, graph.name_id(&member.name)));
         }
     }
+
+    // A factory's members depend on the arguments its rule names and on the call
+    // around them, and on nothing in the other arguments.
+    if let Some(call) = &decl.factory
+        && let Some(rule) = graph.made_by(file, id)
+    {
+        let framing = !within(call.interior, decl.span, start, end);
+        let named = rule.args.iter().any(|&index| {
+            call.args
+                .get(index)
+                .is_some_and(|(span, _)| span.intersects(start, end))
+        });
+        if framing || named {
+            for member in rule.members {
+                out.insert(Node::Member(file, id, graph.name_id(member)));
+            }
+        }
+    }
 }
 
 /// Marks every member of an object that a separate export statement names, when
@@ -259,6 +277,13 @@ fn mark_forwarded(
     }
     for member in &decl.members {
         out.insert(Node::Member(file, id, graph.name_id(&member.name)));
+    }
+    if decl.factory.is_some()
+        && let Some(rule) = graph.made_by(file, id)
+    {
+        for member in rule.members {
+            out.insert(Node::Member(file, id, graph.name_id(member)));
+        }
     }
 }
 
