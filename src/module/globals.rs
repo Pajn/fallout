@@ -10,7 +10,8 @@
 //! Entries the source lists but a plain literal argument can still make throw are
 //! left out: `decodeURI("%")`, `encodeURI` of a lone surrogate, `escape`,
 //! `String.fromCodePoint(-1)`, and `WeakMap` or `WeakSet` given entries, which
-//! throw on a primitive key.
+//! throw on a primitive key. So is `Symbol.for`, which puts its key in the global
+//! symbol registry.
 //!
 //! Every name is the global's only if the reference has no binding in the file,
 //! which the caller checks. The environment's own globals are assumed to be as the
@@ -79,8 +80,6 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
         ("Date", "parse") => (ToString, Primitive),
         ("Date", "UTC") => (ToNumber, Primitive),
         ("String", "fromCharCode") => (ToNumber, Primitive),
-        // A symbol, which no conversion may be applied to.
-        ("Symbol", "for") => (ToString, Other),
         _ => return Option::None,
     })
 }

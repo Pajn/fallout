@@ -746,6 +746,8 @@ mod tests {
             "export const result = parseInt('12', 10n);",
             "const R = 10n; export const result = Number.parseInt('ff', R);",
             "export const result = Math.abs(Symbol.for('x'));",
+            // The global symbol registry is state every module shares.
+            "export const result = Symbol.for('key');",
             "export const result = new Date(1n);",
             // Entries a weak collection throws on, and entries nothing wrote out.
             "export const result = new WeakSet([1]);",
