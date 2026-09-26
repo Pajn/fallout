@@ -11,7 +11,9 @@
 //! left out: `decodeURI("%")`, `encodeURI` of a lone surrogate, `escape`,
 //! `String.fromCodePoint(-1)`, and `WeakMap` or `WeakSet` given entries, which
 //! throw on a primitive key. So is `Symbol.for`, which puts its key in the global
-//! symbol registry.
+//! symbol registry, and so is anything whose result is not made from its arguments
+//! alone: `Date()`, `Date.now()` and `new Date()` read the clock, and `Math.random()`
+//! the generator's state.
 //!
 //! Every name is the global's only if the reference has no binding in the file,
 //! which the caller checks. The environment's own globals are assumed to be as the
@@ -55,8 +57,6 @@ pub(crate) fn function(name: &str) -> Option<(Conversion, Returns)> {
         "String" => (ToString, Primitive),
         "Boolean" => (None, Primitive),
         "Object" => (None, Other),
-        // `Date()` called as a function ignores its arguments.
-        "Date" => (None, Primitive),
         _ => return Option::None,
     })
 }
@@ -76,7 +76,6 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
         ("Array", "of") => (None, Other),
         ("ArrayBuffer", "isView") => (None, Primitive),
         ("Object", "is") => (None, Primitive),
-        ("Date", "now") => (None, Primitive),
         ("Date", "parse") => (ToString, Primitive),
         ("Date", "UTC") => (ToNumber, Primitive),
         ("String", "fromCharCode") => (ToNumber, Primitive),
@@ -89,6 +88,8 @@ pub(crate) fn method(object: &str, method: &str) -> Option<(Conversion, Returns)
 pub(crate) enum Constructor {
     /// Arguments are converted, as for a function call.
     Converting(Conversion),
+    /// The same, given at least one argument: `new Date()` reads the clock.
+    Given(Conversion),
     /// `Set`: iterates an array literal, if given one.
     Set,
     /// `Map`: iterates an array literal of array-literal entries, if given one.
@@ -108,7 +109,8 @@ pub(crate) fn constructor(name: &str) -> Option<Constructor> {
         "Object" | "Boolean" => Converting(Conversion::None),
         "String" | "Error" | "EvalError" | "RangeError" | "ReferenceError" | "SyntaxError"
         | "TypeError" | "URIError" => Converting(Conversion::ToString),
-        "Date" | "Number" => Converting(Conversion::ToNumber),
+        "Number" => Converting(Conversion::ToNumber),
+        "Date" => Given(Conversion::ToNumber),
         _ => return Option::None,
     })
 }
@@ -137,7 +139,7 @@ fn is_math_method(method: &str) -> bool {
         "abs" | "acos" | "acosh" | "asin" | "asinh" | "atan" | "atan2" | "atanh"
         | "cbrt" | "ceil" | "clz32" | "cos" | "cosh" | "exp" | "expm1" | "floor"
         | "fround" | "hypot" | "imul" | "log" | "log10" | "log1p" | "log2" | "max"
-        | "min" | "pow" | "random" | "round" | "sign" | "sin" | "sinh" | "sqrt"
+        | "min" | "pow" | "round" | "sign" | "sin" | "sinh" | "sqrt"
         | "tan" | "tanh" | "trunc"
     )
 }

@@ -171,12 +171,14 @@ Six things take a call back out of initialisation:
   and constant tables are usually written, provided `Object` is the global;
 - the language's own functions that only compute a value: `new Map()` and `new Set()`
   (empty, or filled from an array literal), `Math.*`, `Number.is*`, `parseInt`,
-  `String()`, `Array.isArray`, `Object.is`, `Date.now()`, `new Error("…")` and a few
+  `String()`, `Array.isArray`, `Object.is`, `Date.parse`, `new Error("…")` and a few
   more, taken from oxc's side-effect analysis. An argument such a function converts to
   a string or a number must be a primitive written out, since converting an object
   runs its `toString` or `valueOf`, and one converted to a number must not be a
   BigInt, which throws. Functions that throw on some literals — `decodeURI`,
-  `String.fromCodePoint`, `new Array(n)` — are not included;
+  `String.fromCodePoint`, `new Array(n)` — are not included, and nor are those whose
+  result comes from somewhere other than their arguments: `Date.now()`, `new Date()`,
+  `Math.random()`, and `Symbol.for`, which adds to the global symbol registry;
 - entries in the project's `fallout.toml`;
 - a proof for a small local helper.
 

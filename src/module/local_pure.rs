@@ -262,6 +262,12 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             Constructor::Converting(conversion) => {
                 return self.converted(&new.arguments, conversion, locals);
             }
+            Constructor::Given(conversion) => {
+                if new.arguments.is_empty() {
+                    return None;
+                }
+                return self.converted(&new.arguments, conversion, locals);
+            }
             Constructor::Set | Constructor::Map | Constructor::Empty => {
                 match new.arguments.as_slice() {
                     [] => return Some(0),
@@ -720,7 +726,6 @@ mod tests {
             "function make(x) { return Boolean(x); } export const on = make({});",
             "export const list = Array.of(1, 2);",
             "export const same = Object.is(NaN, NaN);",
-            "export const at = Date.now();",
             "export const error = new Error('broken');",
             "export const when = new Date('2024-01-01');",
             "function clamp(x) { return Math.min(Math.max(x === null ? 0 : 1, 0), 1); } export const result = clamp(1);",
@@ -749,6 +754,11 @@ mod tests {
             // The global symbol registry is state every module shares.
             "export const result = Symbol.for('key');",
             "export const result = new Date(1n);",
+            // Made from the clock or the generator rather than from the arguments.
+            "export const result = Date.now();",
+            "export const result = Date();",
+            "export const result = new Date();",
+            "export const result = Math.random();",
             // Entries a weak collection throws on, and entries nothing wrote out.
             "export const result = new WeakSet([1]);",
             "export const result = new WeakMap([[1, 2]]);",
