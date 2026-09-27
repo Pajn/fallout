@@ -256,8 +256,8 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
                 .iter()
                 .enumerate()
                 .filter(|(_, specifier)| {
-                    self.now.find(file, specifier).path()
-                        != self.before.find(file, specifier).path()
+                    self.now.find(file, specifier).paths()
+                        != self.before.find(file, specifier).paths()
                 })
                 .map(|(index, _)| index)
                 .collect()

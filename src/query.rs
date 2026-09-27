@@ -104,7 +104,7 @@ impl FileGraph {
         let imports: Rc<[PathBuf]> = specifiers()
             .as_ref()
             .iter()
-            .filter_map(|specifier| self.resolver.resolve(file, specifier))
+            .flat_map(|specifier| self.resolver.resolve(file, specifier).to_vec())
             .collect();
         self.imports
             .borrow_mut()

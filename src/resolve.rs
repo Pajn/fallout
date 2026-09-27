@@ -5,9 +5,9 @@
 //! does over the first, which adds the nodes for changed packages, the specifier
 //! cache and the report of what could not be placed.
 //!
-//! Two kinds of resolver, because a stylesheet is not resolved the way a module is.
-//! Sass has its own rules — see [`Tree::find`] — and running them through the
-//! JavaScript resolver would find nothing.
+//! More than one kind of resolver, because a stylesheet is not resolved the way a
+//! module is. Sass has its own rules — see [`Tree::find`] and `resolve_sass` —
+//! and running them through the JavaScript resolver would find nothing.
 //!
 //! One of each per set of aliases in use. An alias belongs to the file that writes
 //! the import rather than to the run, so two apps can mean different directories by
@@ -153,8 +153,10 @@ pub enum SideEffects {
 
 /// What looking for a specifier in one tree came to.
 pub enum Found {
-    /// A file, with the resolution that found it and the `package.json` it read.
-    File(Resolution),
+    /// The files it may load, each with the resolution that found it and the
+    /// `package.json` it read. Never empty, and one file for anything but a Sass
+    /// URL that more than one file answers: see `resolve_sass`.
+    Files(Vec<Resolution>),
     /// A name that names no file by design, such as a Node builtin or a `sass:`
     /// module: an answer, not a failure.
     NoFile,
@@ -163,20 +165,22 @@ pub enum Found {
 }
 
 impl Found {
-    /// The file found, if one was.
-    pub fn path(&self) -> Option<&Path> {
+    /// The files found, none if none was.
+    pub fn paths(&self) -> Vec<&Path> {
         match self {
-            Found::File(resolution) => Some(resolution.path()),
-            Found::NoFile | Found::NotFound => None,
+            Found::Files(resolutions) => resolutions.iter().map(Resolution::path).collect(),
+            Found::NoFile | Found::NotFound => Vec::new(),
         }
     }
 }
 
-/// Which rules a resolver follows: a module's, or a stylesheet's.
+/// Which rules a resolver follows: a module's, a stylesheet's, or the exact file
+/// lookup a Sass URL's candidates are looked for with.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum Dialect {
     Module,
     Style,
+    Sass,
 }
 
 /// Resolution over one file system.
@@ -226,11 +230,25 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
     pub fn find(&self, from_file: &Path, specifier: &str) -> Found {
         let chain = self.configs.chain(from_file);
         if is_style_file(from_file) {
-            let resolver = self.resolver(Dialect::Style, &chain);
-            return match resolve_style(&resolver, from_file, specifier) {
-                Some(resolution) => Found::File(resolution),
-                None if SASS_BUILTINS.contains(&specifier) => Found::NoFile,
-                None => Found::NotFound,
+            if SASS_BUILTINS.contains(&specifier) {
+                return Found::NoFile;
+            }
+            let request = specifier.strip_prefix('~').unwrap_or(specifier);
+            let mut found = Vec::new();
+            if is_sass_file(from_file) {
+                found = resolve_sass(&self.resolver(Dialect::Sass, &chain), from_file, request);
+            }
+            // Where no candidate a Sass URL names is there, which is how a package's
+            // entry point is named, and for plain CSS, the name is looked for as the
+            // bundler looks for it.
+            if found.is_empty() {
+                let resolver = self.resolver(Dialect::Style, &chain);
+                found.extend(resolve_style(&resolver, from_file, request));
+            }
+            return if found.is_empty() {
+                Found::NotFound
+            } else {
+                Found::Files(found)
             };
         }
         let resolver = self.resolver(Dialect::Module, &chain);
@@ -241,7 +259,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             attempt = resolver.resolve_file(from_file, request);
         }
         match attempt {
-            Ok(resolution) => Found::File(resolution),
+            Ok(resolution) => Found::Files(vec![resolution]),
             Err(ResolveError::Builtin { .. }) => Found::NoFile,
             Err(_) => Found::NotFound,
         }
@@ -326,12 +344,12 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
                 ],
                 ..ResolveOptions::default()
             },
-            // Sass looks for `_name.scss` beside `name.scss`, takes `_index.scss` for
-            // a directory, and tries the importing file's own directory before
-            // anything else — so a bare `@use "mixins"` is usually a sibling rather
-            // than a package. The `exports` field is left out because Sass tooling
-            // resolves a subpath by path, and honouring it would refuse targets that
-            // do resolve.
+            // A stylesheet tries the importing file's own directory before anything
+            // else — so a bare `@use "mixins"` is usually a sibling rather than a
+            // package. The `exports` field is left out because Sass tooling resolves
+            // a subpath by path, and honouring it would refuse targets that do
+            // resolve. This lookup takes `_index.scss` for a directory, and is the
+            // one plain CSS gets, and a Sass URL none of whose candidates is there.
             Dialect::Style => ResolveOptions {
                 extensions: vec![".scss".to_string(), ".css".to_string()],
                 main_files: vec!["_index".to_string(), "index".to_string()],
@@ -340,9 +358,23 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
                 alias: chain.style_aliases().clone(),
                 ..ResolveOptions::default()
             },
+            // The same, finding only the file a candidate names: which extensions
+            // and partials are tried, and in what order, is the Sass spec's to say,
+            // and `resolve_sass` says it one file name at a time.
+            Dialect::Sass => ResolveOptions {
+                extensions: Vec::new(),
+                main_files: Vec::new(),
+                exports_fields: Vec::new(),
+                prefer_relative: true,
+                alias: chain.style_aliases().clone(),
+                ..ResolveOptions::default()
+            },
         }
     }
 }
+
+/// The files each `(importing file, specifier)` pair resolved to.
+type Answers = AHashMap<(PathBuf, String), Arc<[PathBuf]>>;
 
 /// Resolves import specifiers to absolute paths, caching every answer
 /// (including failures) per `(importing file, specifier)` pair.
@@ -357,7 +389,7 @@ pub struct Resolver {
     /// Which imports the change may have moved, as this resolver resolves them. See
     /// [`crate::repoint`].
     moved: MovedImports,
-    cache: RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>,
+    cache: RwLock<Answers>,
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
     /// while the resolution that found its `package.json` is still in hand.
     side_effects: RwLock<AHashMap<PathBuf, SideEffects>>,
@@ -503,9 +535,9 @@ impl Resolver {
             .contains(&name)
     }
 
-    /// Resolves `specifier` as written in `from_file`, or `None` if it does not
-    /// point at a file on disk.
-    pub fn resolve(&self, from_file: &Path, specifier: &str) -> Option<PathBuf> {
+    /// Resolves `specifier` as written in `from_file` to the files on disk it may
+    /// load: none, one, or for a Sass URL several files answer, each of them.
+    pub fn resolve(&self, from_file: &Path, specifier: &str) -> Arc<[PathBuf]> {
         let cache_key = (from_file.to_path_buf(), specifier.to_string());
         if let Some(cached) = self.cache.read().unwrap().get(&cache_key) {
             return cached.clone();
@@ -519,29 +551,29 @@ impl Resolver {
             && let Some(name) = crate::lockfile::package_of(specifier)
             && self.packages.contains(name)
         {
-            let path = crate::lockfile::node_path(&self.root, name);
-            self.cache
-                .write()
-                .unwrap()
-                .insert(cache_key, Some(path.clone()));
-            return Some(path);
+            let path: Arc<[PathBuf]> = Arc::from([crate::lockfile::node_path(&self.root, name)]);
+            self.cache.write().unwrap().insert(cache_key, path.clone());
+            return path;
         }
 
-        let result = match self.now.find(from_file, specifier) {
-            Found::File(resolution) => {
-                let path = resolution.path().to_path_buf();
-                self.side_effects
-                    .write()
-                    .unwrap()
-                    .insert(path.clone(), declared_side_effects(&resolution));
-                Some(path)
+        let result: Arc<[PathBuf]> = match self.now.find(from_file, specifier) {
+            Found::Files(resolutions) => {
+                let mut side_effects = self.side_effects.write().unwrap();
+                resolutions
+                    .iter()
+                    .map(|resolution| {
+                        let path = resolution.path().to_path_buf();
+                        side_effects.insert(path.clone(), declared_side_effects(resolution));
+                        path
+                    })
+                    .collect()
             }
             // A specifier that names no file *by design* is a different thing from
             // one this run could not find, and is not worth reporting as a failure.
-            Found::NoFile => None,
+            Found::NoFile => Arc::from([]),
             Found::NotFound => {
                 self.unresolved.note(from_file, specifier);
-                None
+                Arc::from([])
             }
         };
         self.cache
@@ -565,27 +597,124 @@ impl Resolver {
     }
 }
 
-/// Resolves `specifier` the way Sass would.
+/// Resolves `request`, written in a Sass stylesheet with any leading `~` dropped,
+/// the way the Sass spec resolves a `file:` URL (spec/modules.md, "Resolving a
+/// `file:` URL"): every file that may be the one it loads, or none.
 ///
-/// Beyond what the tuned resolver already does, two rules are applied here
-/// because they are about the specifier rather than about the search:
+/// A URL with no extension is tried as `.sass` and `.scss`, each as written and as
+/// the partial Sass keeps under a leading underscore, then as `.css` the same way.
+/// Only when none of those is there is it tried as `url/index`, in the same order.
+/// A URL with an extension is tried as written and as a partial. Where more than
+/// one file answers one step Sass refuses the URL, and which one the author meant
+/// is not known, so every one of them is kept.
 ///
-/// - A leading `~` is dropped. It is a bundler convention meaning "not
-///   relative", and what follows it is an ordinary request.
-/// - A partial is tried. Sass keeps a file meant only for importing under a
-///   leading underscore and lets it be named without one, so `a/b` is also
-///   `a/_b`.
+/// An `@import` tries the import-only `.import.sass`, `.import.scss` and
+/// `.import.css` first. Which rule wrote a specifier is not kept, so both readings
+/// are taken, and they differ only where there is an import-only file.
+fn resolve_sass<Fs: FileSystem>(
+    exact: &ResolverGeneric<Fs>,
+    from_file: &Path,
+    request: &str,
+) -> Vec<Resolution> {
+    let exists = |candidate: &str| exact.resolve_file(from_file, candidate).ok();
+    let mut found: Vec<Resolution> = Vec::new();
+    for import in [false, true] {
+        let url = sass_for_extensions(&exists, request, import);
+        let url = if url.is_empty() {
+            sass_for_extensions(&exists, &format!("{request}/index"), import)
+        } else {
+            url
+        };
+        for resolution in url {
+            if !found.iter().any(|known| known.path() == resolution.path()) {
+                found.push(resolution);
+            }
+        }
+    }
+    found
+}
+
+/// "Resolving a `file:` URL for extensions", keeping every file of the first step
+/// that has any.
+fn sass_for_extensions(
+    exists: &impl Fn(&str) -> Option<Resolution>,
+    url: &str,
+    import: bool,
+) -> Vec<Resolution> {
+    if let Some(suffix) = [".scss", ".sass", ".css"]
+        .into_iter()
+        .find(|suffix| url.ends_with(suffix))
+    {
+        if import {
+            let prefix = &url[..url.len() - suffix.len()];
+            let found = sass_for_partials(exists, &format!("{prefix}.import{suffix}"));
+            if !found.is_empty() {
+                return found;
+            }
+        }
+        return sass_for_partials(exists, url);
+    }
+    let steps: &[&[&str]] = if import {
+        &[
+            &[".import.sass", ".import.scss"],
+            &[".import.css"],
+            &[".sass", ".scss"],
+            &[".css"],
+        ]
+    } else {
+        &[&[".sass", ".scss"], &[".css"]]
+    };
+    for step in steps {
+        let found: Vec<Resolution> = step
+            .iter()
+            .flat_map(|extension| sass_for_partials(exists, &format!("{url}{extension}")))
+            .collect();
+        if !found.is_empty() {
+            return found;
+        }
+    }
+    Vec::new()
+}
+
+/// "Resolving a `file:` URL for partials": the file as named and the partial beside
+/// it, both where both are there.
+fn sass_for_partials(exists: &impl Fn(&str) -> Option<Resolution>, url: &str) -> Vec<Resolution> {
+    let (directory, base) = match url.rsplit_once('/') {
+        Some((directory, base)) => (Some(directory), base),
+        None => (None, url),
+    };
+    if base.starts_with('_') {
+        return exists(url).into_iter().collect();
+    }
+    let partial = match directory {
+        Some(directory) => format!("{directory}/_{base}"),
+        None => format!("_{base}"),
+    };
+    [url, partial.as_str()]
+        .into_iter()
+        .filter_map(exists)
+        .collect()
+}
+
+/// Whether `path` is written in Sass, which resolves its URLs by its own rules,
+/// rather than in plain CSS.
+fn is_sass_file(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension == "scss" || extension == "sass")
+}
+
+/// Resolves `request`, with any leading `~` dropped, the way a bundler looks for a
+/// stylesheet: as written, then as a partial.
 ///
-/// A `sass:` module resolves to nothing, and should: it names no file.
+/// A leading `~` is a bundler convention meaning "not relative", and what follows
+/// it is an ordinary request. A partial is tried because Sass keeps a file meant
+/// only for importing under a leading underscore and lets it be named without one,
+/// so `a/b` is also `a/_b`.
 fn resolve_style<Fs: FileSystem>(
     resolver: &ResolverGeneric<Fs>,
     from_file: &Path,
-    specifier: &str,
+    request: &str,
 ) -> Option<Resolution> {
-    if SASS_BUILTINS.contains(&specifier) {
-        return None;
-    }
-    let request = specifier.strip_prefix('~').unwrap_or(specifier);
     let partial = match request.rsplit_once('/') {
         Some((dir, base)) if !base.starts_with('_') => Some(format!("{dir}/_{base}")),
         None if !request.starts_with('_') => Some(format!("_{request}")),

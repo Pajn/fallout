@@ -864,6 +864,16 @@ Specifiers are resolved the way Sass resolves them, not the way JavaScript does:
 | `@use "~pkg/x"` | `pkg/x.scss`, the leading `~` dropped |
 | `@use "sass:math"` | nothing — it names no file |
 
+A name without an extension, written in a `.scss` or `.sass` file, is looked for in
+the order the Sass spec gives: as `.sass` and `.scss`, each as written and as a `_`
+partial, then as `.css` the same way, and only when none of those is there as
+`name/index`, again with partials. So `_theme.scss` is found before `theme/_index.scss`
+or `theme.css`, and an edit to the one Sass does not load reaches nothing. Where two
+files answer the same step, as `theme.scss` beside `_theme.scss`, Sass refuses the
+name; both are kept as edges, since which one was meant is not known. A name none of
+those finds, and any name in a plain `.css` file, is looked for the way a bundler
+looks for it.
+
 A specifier like `~styles/settings` is neither of those. It is a name the app's
 bundler config gives to a directory, and that config is a program rather than data, so
 the project declares what it means:

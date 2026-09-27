@@ -1116,3 +1116,151 @@ fn a_deleted_file_of_a_workspace_package_moves_its_deep_imports() {
         run_is_affected(&root, &["src/page.ts"], &["packages/ui/button.ts"]);
     assert_eq!(code, 0, "{stdout}{stderr}");
 }
+
+/// Whether `anchor` comes out affected by `changed` at `granularity`, with no
+/// earlier versions, or with `earlier` (paths relative to `root`) standing in for
+/// the versions a base revision would hold.
+fn affected_at(
+    root: &Path,
+    anchor: &str,
+    changed: &[&str],
+    granularity: Granularity,
+    earlier: Option<&[(&str, &str)]>,
+) -> bool {
+    let options = Options {
+        anchors: vec![PathBuf::from(anchor)],
+        changed: changed.iter().map(PathBuf::from).collect(),
+        diff: None,
+        base: earlier.map(|_| "HEAD".to_string()),
+        root: root.to_path_buf(),
+        only: None,
+        granularity,
+        include_types: false,
+    };
+    let earlier = earlier.map(|files| -> Box<dyn Earlier> {
+        Box::new(
+            files
+                .iter()
+                .map(|(path, text)| (root.join(path), text.to_string()))
+                .collect::<AHashMap<PathBuf, String>>(),
+        )
+    });
+    analyse_with(&options, earlier)
+        .expect("an answer")
+        .verdict
+        .is_affected()
+}
+
+/// A project written into a fresh directory, spelled the way the resolver spells it.
+fn project(files: &[(&str, &str)]) -> (TempDir, PathBuf) {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    (temp, root)
+}
+
+/// A page whose stylesheet has `@use "../styles/<name>"`, with `files` besides.
+fn sass_project(name: &str, files: &[(&str, &str)]) -> (TempDir, PathBuf) {
+    let page_scss = format!("@use \"../styles/{name}\";\n.t {{ color: red; }}\n");
+    let mut all = vec![
+        (
+            "src/pages/Page.tsx",
+            "import \"./page.scss\";\nexport const Page = () => <h1 className=\"t\">Hi</h1>;\n",
+        ),
+        ("src/pages/page.scss", page_scss.as_str()),
+    ];
+    all.extend_from_slice(files);
+    project(&all)
+}
+
+/// Whether a change to `changed` reaches the page. Both levels are asked, and have
+/// to agree: a stylesheet is one node either way.
+fn sass_reaches(root: &Path, changed: &str) -> bool {
+    let at = |granularity| affected_at(root, "src/pages/Page.tsx", &[changed], granularity, None);
+    let file = at(Granularity::File);
+    assert_eq!(
+        file,
+        at(Granularity::Symbol),
+        "{changed}: the levels disagree"
+    );
+    file
+}
+
+/// Sass resolves a URL for extensions and partials before it tries `url/index`, so
+/// `@use "../styles/theme"` loads `_theme.scss` with `theme/_index.scss` beside it.
+#[test]
+fn a_sass_partial_is_found_before_a_directory_index() {
+    let (_keep, root) = sass_project(
+        "theme",
+        &[
+            ("src/styles/_theme.scss", "$ink: red;\n"),
+            ("src/styles/theme/_index.scss", "$ink: green;\n"),
+        ],
+    );
+    assert!(sass_reaches(&root, "src/styles/_theme.scss"));
+    let earlier = [("src/styles/_theme.scss", "$ink: blue;\n")];
+    assert!(
+        affected_at(
+            &root,
+            "src/pages/Page.tsx",
+            &["src/styles/_theme.scss"],
+            Granularity::Symbol,
+            Some(&earlier)
+        ),
+        "base"
+    );
+    // The index is the one Sass never loads, so an edit to it reaches nothing.
+    assert!(!sass_reaches(&root, "src/styles/theme/_index.scss"));
+}
+
+/// The tree before the change is asked by the same rules. Deleting the partial
+/// sends the same URL to the index, so the import moved.
+#[test]
+fn deleting_a_sass_partial_moves_its_url_to_the_directory_index() {
+    let (_keep, root) = sass_project(
+        "theme",
+        &[("src/styles/theme/_index.scss", "$ink: green;\n")],
+    );
+    assert!(sass_reaches(&root, "src/styles/_theme.scss"));
+}
+
+/// `.css` is tried only when neither `.sass` nor `.scss` resolves, as a partial or
+/// not, so Sass takes `_tokens.scss` over `tokens.css`.
+#[test]
+fn a_sass_partial_is_found_before_a_css_file() {
+    let (_keep, root) = sass_project(
+        "tokens",
+        &[
+            ("src/styles/_tokens.scss", "$ink: red;\n"),
+            ("src/styles/tokens.css", ".unused { color: blue; }\n"),
+        ],
+    );
+    assert!(sass_reaches(&root, "src/styles/_tokens.scss"));
+    assert!(!sass_reaches(&root, "src/styles/tokens.css"));
+}
+
+/// Where `theme.scss` and `_theme.scss` are both there, Sass refuses the URL.
+/// Which one the author meant is not known, so both are kept.
+#[test]
+fn an_ambiguous_sass_url_keeps_every_candidate() {
+    let (_keep, root) = sass_project(
+        "theme",
+        &[
+            ("src/styles/theme.scss", "$ink: red;\n"),
+            ("src/styles/_theme.scss", "$ink: green;\n"),
+        ],
+    );
+    assert!(sass_reaches(&root, "src/styles/theme.scss"));
+    assert!(sass_reaches(&root, "src/styles/_theme.scss"));
+}
+
+/// With nothing for the URL itself, the directory's index is found, as a partial.
+#[test]
+fn a_sass_url_naming_only_a_directory_finds_its_index() {
+    let (_keep, root) = sass_project("theme", &[("src/styles/theme/_index.scss", "$ink: red;\n")]);
+    assert!(sass_reaches(&root, "src/styles/theme/_index.scss"));
+}
