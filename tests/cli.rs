@@ -60,8 +60,10 @@ type Said = (i32, String, String);
 /// The command line run in this process.
 fn execute(args: &[&str]) -> Said {
     let (mut out, mut err) = (Vec::new(), Vec::new());
+    // The program name clap prints comes from the first argument, so this passes
+    // the one the binary is started with: its file name ends in `.exe` on Windows.
     let code = cli::execute(
-        std::iter::once("fallout").chain(args.iter().copied()),
+        std::iter::once(env!("CARGO_BIN_EXE_fallout")).chain(args.iter().copied()),
         None,
         &mut out,
         &mut err,
