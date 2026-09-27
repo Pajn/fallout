@@ -1,0 +1,6 @@
+# `paths` maps every specifier into `vendor`, where nothing is, so `lib/format`
+# falls back to `baseUrl` and names `lib/format.ts`. That file is deleted, and the
+# import goes to the package.
+[[anchor]]
+path = "src/page.ts"
+affected = true

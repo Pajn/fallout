@@ -103,6 +103,7 @@ mod tests {
                     change: FileChange::Deleted,
                 },
             ],
+            ..Default::default()
         };
 
         let marked = marked_files(root, &diff, &[], None, &Reading::default());
@@ -118,6 +119,7 @@ mod tests {
                 path: PathBuf::from("never-existed.ts"),
                 change: FileChange::Opaque,
             }],
+            ..Default::default()
         };
 
         assert!(marked_files(dir.path(), &diff, &[], None, &Reading::default()).is_empty());
@@ -135,6 +137,7 @@ mod tests {
                 path: PathBuf::from("a.ts"),
                 change: FileChange::Opaque,
             }],
+            ..Default::default()
         };
 
         let marked = marked_files(root, &diff, &[root.join("b.ts")], None, &Reading::default());

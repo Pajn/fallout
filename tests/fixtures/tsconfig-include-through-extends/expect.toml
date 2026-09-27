@@ -1,0 +1,6 @@
+# The app's tsconfig takes `include` from the config it extends, which stops
+# including `src`. The page is no longer the app config's, so `@/format` goes through
+# the root's mapping to another file.
+[[anchor]]
+path = "app/src/page.ts"
+affected = true

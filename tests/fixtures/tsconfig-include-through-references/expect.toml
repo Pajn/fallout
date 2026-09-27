@@ -1,0 +1,5 @@
+# The root tsconfig references `tsconfig.app.json`, whose `include` stops covering
+# `src`. The page falls to the root config, whose mapping sends `@/format` elsewhere.
+[[anchor]]
+path = "src/page.ts"
+affected = true

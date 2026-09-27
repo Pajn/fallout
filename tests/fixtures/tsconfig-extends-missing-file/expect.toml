@@ -1,0 +1,5 @@
+# The tsconfig now extends a file that is not there, so it cannot be read, and
+# nothing it maps resolves the way it did.
+[[anchor]]
+path = "src/page.ts"
+affected = true

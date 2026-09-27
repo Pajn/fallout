@@ -741,33 +741,35 @@ then as changed as if the import had been rewritten, and it is treated that way:
 everything in it that reads the import is marked, along with its module
 initialisation.
 
-Two things are taken to move imports:
+To find those imports, each one a search meets is resolved twice: in the tree as it
+is, and in the tree as it was before the change. An import the two answer
+differently has moved. The tree before is the current one with these differences:
 
-- **A deleted file** moves every import that could have named it: a relative
-  specifier, the same request in another of the tsconfig's `rootDirs`, or one its
-  `paths` or `baseUrl` maps, that names the file with or without its extension, or
-  names the directory it was the index of.
-- **A changed tsconfig**, or any file one reads through `extends`, moves the imports of
-  the files it governs. An `extends` entry that names a package is followed to the
-  package's `tsconfig.json`, as TypeScript follows it. A `tsconfig.json` that is added,
-  deleted, or changes which config owns a file reaches the files beneath it as well,
-  since it may have been the nearest before the change or may name the nearest
-  through `references`. Its other fields do not: they apply only to the files it
-  governs.
-- Both are read through a request's inline loaders and without its resource query,
-  so `!!file-loader!./logo.svg?url` names `logo.svg`.
+- a deleted file is there again, and so is the old path of a renamed one;
+- a file the change added is not;
+- against a base revision, every changed JSON file holds what it held then, which is
+  how a tsconfig, or a `package.json`'s `exports`, `imports` or `main`, changing its
+  mind is seen.
 
-How far a tsconfig change reaches is read from the fields resolution uses. Against a
-base revision both versions are compared: a change to one `paths` entry moves the
-specifiers that entry matches, a change to `baseUrl` moves every specifier that is
-not relative, and a change to `extends` or `rootDirs` moves every import of the files
-it governs. A change to `references`, `files`, `include` or `exclude`, or adding or
-deleting a tsconfig, can change which config governs a file, and moves every import
-beneath it. A change to anything else, such as `strict`, moves
-nothing. As a line range there is no earlier version to compare with, so any change
-to a tsconfig moves every import of every file it governs.
+Both are asked of the same resolver, so whatever decides where an import goes decides
+whether it moved: `paths` and their fallbacks, `baseUrl`, `rootDirs`, `extends` and
+`references`, which config owns a file, workspace packages, directory `main` files,
+Sass partials, inline loaders.
 
-Like a changed dependency, this is found by the downstream search only.
+As a line range there is no earlier version of a changed config to put back. A
+changed JSON file other than a `package.json` then moves every import of the files it
+may govern: those whose tsconfig reads it, through `extends` or `references`, or
+whose `tsconfig.json` files above them do, and every file beneath a changed
+`tsconfig.json`.
+
+`--changed` names paths and nothing else, so a rename is two paths there: the old
+one, which is no longer on disk and so reads as deleted, and the new one.
+`git diff --name-only --no-renames` lists both; without `--no-renames` git lists only
+the new one.
+
+This is found by the downstream search only. The upstream search starts from the
+changed files, and finding every file an import of which moved would mean resolving
+every import in the repository first.
 
 ## What counts as an import
 
@@ -897,9 +899,9 @@ app owns.
   than parsed.
 - Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer
   about its dependencies, rather than a wrong one.
-- A change to how an import resolves is followed for tsconfigs and deleted files
-  only. A change to a `package.json`'s `exports` or `imports`, or to `[aliases]` in a
-  `fallout.toml`, does not move the imports it resolves.
+- A change to `[aliases]` in a `fallout.toml` does not move the imports it resolves,
+  and neither does a change to a `package.json` given as a line range, with no base
+  revision to compare it with.
 
 ## License
 

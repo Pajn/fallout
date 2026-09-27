@@ -91,11 +91,7 @@ pub fn downstream(
         };
         if changed.contains(&current)
             || resolver.marks_changed_package(&current)
-            || resolver.repoints(&current, || {
-                specifiers()
-                    .iter()
-                    .any(|specifier| resolver.may_have_moved(&current, specifier))
-            })
+            || resolver.repoints(&current, specifiers)
         {
             let hit = Hit {
                 direction: Direction::Downstream,

@@ -1,0 +1,6 @@
+# The tsconfig starts excluding test files. The page is still the config's and its
+# import resolves as it did, which a base revision can tell and a line range cannot.
+[[anchor]]
+path = "src/page.ts"
+affected = false
+from = "base"
