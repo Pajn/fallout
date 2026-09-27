@@ -338,7 +338,7 @@ impl Graph {
         match node {
             Node::File(_) => self.file_edges(&fine),
             Node::Decl(_, decl) => self.decl_edges(&fine, decl),
-            Node::Export(file, name) => self.export_edges(file, name),
+            Node::Export(_, name) => self.export_edges(&fine, name),
             Node::Member(_, decl, member) => self.member_edges(&fine, decl, member),
             Node::ModuleInit(file) => self.init_edges(file),
         }
@@ -621,29 +621,21 @@ impl Graph {
         self.resolve_export(file, export)
     }
 
-    fn export_edges(&self, file: FileId, name: NameId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
-        };
-
+    fn export_edges(&self, fine: &Fine, name: NameId) -> Vec<Node> {
+        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let text = self.name(name);
         let mut edges = match module.export_named(&text).map(|e| &e.target) {
             Some(ExportTarget::Local(decl)) => vec![Node::Decl(file, *decl)],
             Some(ExportTarget::Reexport { source, name }) => {
-                match self.target_of(&analysed, *source) {
+                match self.target_of(analysed, *source) {
                     Some(target) => self.resolve_export(target, name),
                     None => Vec::new(),
                 }
             }
-            Some(ExportTarget::ReexportAll { source }) => {
-                match self.target_of(&analysed, *source) {
-                    Some(target) => self.all_exports(target),
-                    None => Vec::new(),
-                }
-            }
+            Some(ExportTarget::ReexportAll { source }) => match self.target_of(analysed, *source) {
+                Some(target) => self.all_exports(target),
+                None => Vec::new(),
+            },
             // Not in the table directly: it may arrive through `export *`.
             None => {
                 let providers = self.star_providers(file, &text);
