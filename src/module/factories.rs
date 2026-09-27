@@ -39,6 +39,9 @@ pub(crate) struct Candidates {
     pub conditional: AHashSet<usize>,
     calls: Vec<Pending>,
     derived: Vec<(DeclId, Callee)>,
+    /// Every `require` and `import()` a declaration makes, by where it is written.
+    /// Filled in once they are found, which is after the calls are.
+    pub placed: super::refs::Placed,
 }
 
 struct Pending {
@@ -311,9 +314,10 @@ fn read_by_property(ctx: &Ctx<'_>, symbol: SymbolId, statement: Span) -> bool {
 ///
 /// A reference is attributed by where it is written: to the argument it is in, or,
 /// outside every argument, to the frame, which every member reached through the
-/// call depends on. A name read in both places is in both. What the declaration
-/// depends on that no reference in the statement accounts for, and every edge the
-/// shared-state rule gave it, goes to the frame too.
+/// call depends on. A name read in both places is in both. So is a `require` or an
+/// `import()`, which the candidates' `placed` says where to find. What the declaration depends on
+/// that none of these accounts for, and every edge the shared-state rule gave it,
+/// goes to the frame too.
 pub(crate) fn attach(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
@@ -395,6 +399,21 @@ pub(crate) fn attach(
                 );
             }
         }
+    }
+
+    for (at, import) in &candidates.placed {
+        let Some(&index) = ctx
+            .statement_at(*at)
+            .and_then(|statement| call_by_statement.get(&statement))
+        else {
+            continue;
+        };
+        let call = &candidates.calls[index];
+        let deps = match call.args.iter().position(|span| span.contains(*at)) {
+            Some(argument) => &mut args[index][argument],
+            None => &mut frames[index],
+        };
+        push_unique(&mut deps.imports, import.clone());
     }
 
     for ((call, args), mut frame) in candidates.calls.into_iter().zip(args).zip(frames) {
@@ -482,6 +501,26 @@ mod tests {
         // Creating the thunk runs nothing but the call, so it waits on the graph.
         assert!(module.conditional_init.contains(&(t as u32)));
         assert!(!module.init_decls.contains(&(t as u32)));
+    }
+
+    #[test]
+    fn a_require_in_an_argument_is_that_arguments_and_not_the_calls() {
+        for payload in [
+            "async () => require('./modal').Modal",
+            "async () => { const { Modal } = require('./modal'); return Modal; }",
+            "async () => (await import('./modal')).Modal",
+        ] {
+            let module = module(&format!(
+                "import {{ createAsyncThunk }} from '@reduxjs/toolkit';
+                export const t = createAsyncThunk('a/b', {payload});\n"
+            ));
+            let t = module.decl_named("t").unwrap() as usize;
+            let call = module.decls[t].factory.as_ref().expect("a call");
+            let modal = module.sources.iter().position(|s| s == "./modal").unwrap() as u32;
+            let reads = |deps: &crate::module::Deps| deps.imports.iter().any(|i| i.source == modal);
+            assert!(reads(&call.args[1].1), "{payload}");
+            assert!(!reads(&call.frame), "{payload}");
+        }
     }
 
     #[test]
