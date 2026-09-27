@@ -93,3 +93,213 @@ impl Base {
         String::from_utf8(output.stdout).ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Files and their contents, by path relative to the repository root.
+    type Tree<'t> = &'t [(&'t str, &'t [u8])];
+
+    /// A repository whose one commit holds `before`, with `after` checked out over
+    /// the top: what a `--base HEAD` run reads.
+    fn repository(before: Tree, after: Tree) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let repo = dunce::canonicalize(dir.path()).expect("canonical temp dir");
+        write(&repo, before);
+        git(&repo, &["init", "--quiet"]);
+        git(&repo, &["add", "--all", "--force"]);
+        git(
+            &repo,
+            &["commit", "--quiet", "--allow-empty", "--message", "before"],
+        );
+        for entry in std::fs::read_dir(&repo).expect("readable repository") {
+            let path = entry.expect("readable entry").path();
+            if path.file_name().is_some_and(|name| name == ".git") {
+                continue;
+            }
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path).expect("removing directory");
+            } else {
+                std::fs::remove_file(&path).expect("removing file");
+            }
+        }
+        write(&repo, after);
+        (dir, repo)
+    }
+
+    fn write(root: &Path, tree: Tree) {
+        for (relative, content) in tree {
+            let path = root.join(relative);
+            std::fs::create_dir_all(path.parent().expect("a parent")).expect("directory");
+            std::fs::write(path, content).expect("writing file");
+        }
+    }
+
+    /// The repository stands alone: no identity, ignore list, hook or signing
+    /// setting from anywhere else takes part in making its one commit.
+    fn git(repo: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .current_dir(repo)
+            .args(["-c", "user.name=fallout"])
+            .args(["-c", "user.email=fallout@example.invalid"])
+            .args(["-c", "commit.gpgsign=false"])
+            .args(["-c", "core.excludesFile=/dev/null"])
+            .args(["-c", "core.hooksPath=/dev/null"])
+            .args(args)
+            .status()
+            .expect("running git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    /// The earlier versions of the files under `root`, written down the way a run
+    /// names them: what a caller with no repository hands a run. A file that is not
+    /// text has no version a run could read, so it is left out.
+    fn written_down(root: &Path, before: &[(&str, &[u8])]) -> AHashMap<PathBuf, String> {
+        before
+            .iter()
+            .filter_map(|(relative, content)| {
+                let text = String::from_utf8(content.to_vec()).ok()?;
+                Some((root.join(relative), text))
+            })
+            .collect()
+    }
+
+    /// Beneath `prefix`, and relative to it.
+    fn below<'t>(tree: Tree<'t>, prefix: &str) -> Vec<(&'t str, &'t [u8])> {
+        tree.iter()
+            .filter_map(|(path, content)| {
+                let relative = if prefix.is_empty() {
+                    *path
+                } else {
+                    path.strip_prefix(prefix)?.strip_prefix('/')?
+                };
+                Some((relative, *content))
+            })
+            .collect()
+    }
+
+    /// One question put to an [`Earlier`], and the answer every adapter must give.
+    struct Case {
+        name: &'static str,
+        /// Where the run is rooted, relative to the repository.
+        root: &'static str,
+        before: Tree<'static>,
+        after: Tree<'static>,
+        /// The file asked about, relative to the run's root.
+        asked: &'static str,
+        answer: Option<&'static str>,
+    }
+
+    const CASES: &[Case] = &[
+        Case {
+            name: "a file present in the base",
+            root: "",
+            before: &[("page.ts", b"export const page = 1;\n")],
+            after: &[("page.ts", b"export const page = 2;\n")],
+            asked: "page.ts",
+            answer: Some("export const page = 1;\n"),
+        },
+        Case {
+            name: "a file in a subdirectory",
+            root: "",
+            before: &[("src/lib/page.ts", b"export const page = 1;\n")],
+            after: &[("src/lib/page.ts", b"export const page = 2;\n")],
+            asked: "src/lib/page.ts",
+            answer: Some("export const page = 1;\n"),
+        },
+        Case {
+            name: "a deleted file whose directory survives",
+            root: "",
+            before: &[
+                ("src/gone.ts", b"export const gone = 1;\n"),
+                ("src/kept.ts", b"export const kept = 1;\n"),
+            ],
+            after: &[("src/kept.ts", b"export const kept = 1;\n")],
+            asked: "src/gone.ts",
+            answer: Some("export const gone = 1;\n"),
+        },
+        Case {
+            name: "a deleted file whose directory is gone",
+            root: "",
+            before: &[
+                ("src/old/deep/gone.ts", b"export const gone = 1;\n"),
+                ("src/kept.ts", b"export const kept = 1;\n"),
+            ],
+            after: &[("src/kept.ts", b"export const kept = 1;\n")],
+            asked: "src/old/deep/gone.ts",
+            answer: Some("export const gone = 1;\n"),
+        },
+        Case {
+            name: "an added file",
+            root: "",
+            before: &[("src/kept.ts", b"export const kept = 1;\n")],
+            after: &[
+                ("src/kept.ts", b"export const kept = 1;\n"),
+                ("src/new/added.ts", b"export const added = 1;\n"),
+            ],
+            asked: "src/new/added.ts",
+            answer: None,
+        },
+        Case {
+            name: "a file that is not text",
+            root: "",
+            before: &[(
+                "logo.png",
+                &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0xff],
+            )],
+            after: &[(
+                "logo.png",
+                &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0xfe],
+            )],
+            asked: "logo.png",
+            answer: None,
+        },
+        Case {
+            name: "a root below the repository's, as for one app of a monorepo",
+            root: "apps/web",
+            before: &[
+                ("apps/web/src/page.ts", b"export const page = 1;\n"),
+                ("packages/ui/button.ts", b"export const button = 1;\n"),
+            ],
+            after: &[
+                ("apps/web/src/page.ts", b"export const page = 2;\n"),
+                ("packages/ui/button.ts", b"export const button = 1;\n"),
+            ],
+            asked: "src/page.ts",
+            answer: Some("export const page = 1;\n"),
+        },
+    ];
+
+    /// Every adapter answers every case alike, so a run given its earlier versions
+    /// one way decides what it would have decided given them the other. The fixture
+    /// harness hands its runs a map on the strength of this.
+    #[test]
+    fn every_earlier_gives_the_same_answers() {
+        for case in CASES {
+            let (_keep, repo) = repository(case.before, case.after);
+            let root = if case.root.is_empty() {
+                repo.clone()
+            } else {
+                repo.join(case.root)
+            };
+            let asked = root.join(case.asked);
+
+            let adapters: [(&str, Box<dyn Earlier>); 2] = [
+                ("git", Box::new(Base::new("HEAD"))),
+                (
+                    "map",
+                    Box::new(written_down(&root, &below(case.before, case.root))),
+                ),
+            ];
+            for (adapter, earlier) in adapters {
+                assert_eq!(
+                    earlier.text(&asked).as_deref(),
+                    case.answer,
+                    "{adapter}: {}",
+                    case.name
+                );
+            }
+        }
+    }
+}
