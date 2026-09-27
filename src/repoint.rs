@@ -67,11 +67,6 @@ impl Repointing {
         !self.before.files.is_empty()
     }
 
-    /// The disk as it was before the change.
-    pub fn file_system(&self) -> BeforeFs {
-        self.over(FileSystemOs::new())
-    }
-
     /// `base`, the tree as it is, as it was before the change.
     pub fn over<Fs: FileSystem>(&self, base: Fs) -> BeforeFs<Fs> {
         BeforeFs {
@@ -621,7 +616,7 @@ mod tests {
              -x\n",
         );
         let repointing = repointing(&root, &changes, &[], None);
-        let fs = repointing.file_system();
+        let fs = repointing.over(FileSystemOs::new());
         let gone = root.join("src/shims/toolkit.ts");
         assert!(fs.metadata(&gone).unwrap().is_file());
         assert!(fs.metadata(&root.join("src/shims")).unwrap().is_dir());
@@ -642,7 +637,7 @@ mod tests {
              rename from src/shims/toolkit.ts\n\
              rename to src/legacy/toolkit.ts\n",
         );
-        let fs = repointing(&root, &changes, &[], None).file_system();
+        let fs = repointing(&root, &changes, &[], None).over(FileSystemOs::new());
         assert!(
             fs.metadata(&root.join("src/shims/toolkit.ts"))
                 .unwrap()

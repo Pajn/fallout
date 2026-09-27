@@ -6,7 +6,7 @@
 //! cache and the report of what could not be placed.
 //!
 //! Two kinds of resolver, because a stylesheet is not resolved the way a module is.
-//! Sass has its own rules — see [`resolve_style`] — and running them through the
+//! Sass has its own rules — see [`Tree::find`] — and running them through the
 //! JavaScript resolver would find nothing.
 //!
 //! One of each per set of aliases in use. An alias belongs to the file that writes
