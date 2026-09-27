@@ -1,0 +1,11 @@
+# The payload creator reads the API module with a `require` written inside it, as
+# an app does to load a module only when the thunk runs. The edit is to that
+# module. Creating the thunk requires nothing, so a case built from the slice's
+# reducer does not reach the edit, and a case that dispatches the thunk does.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/refresh-button.cases.tsx"
+affected = true

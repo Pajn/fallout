@@ -1,0 +1,33 @@
+import { createSlice } from "@reduxjs/toolkit";
+import { createAsyncThunk } from "./redux";
+
+export const refreshPlan = createAsyncThunk(
+  "session/refreshPlan",
+  async (accountId: string) => {
+    const { fetchPlan } = require("../api/subscriptions") as typeof import("../api/subscriptions");
+    return (await fetchPlan(accountId)).plan;
+  },
+);
+
+export const sessionSlice = createSlice({
+  name: "session",
+  initialState: { plan: null as string | null, loading: false },
+  reducers: {
+    cleared: (state) => {
+      state.plan = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(refreshPlan.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(refreshPlan.fulfilled, (state, action) => {
+        state.loading = false;
+        state.plan = action.payload;
+      })
+      .addCase(refreshPlan.rejected, (state) => {
+        state.loading = false;
+      });
+  },
+});

@@ -252,7 +252,7 @@ fn build_fine(
     let mut objects = members::find(&ctx, program, &drafts, cjs);
     // A call's result read by property is linked the way an object's is, and is
     // never read as one only for its members: calling it is not a read of one.
-    let candidates = factories::find(&ctx, program, &drafts, &imports);
+    let mut candidates = factories::find(&ctx, program, &drafts, &imports);
     for &(symbol, decl) in &candidates.by_symbol {
         objects
             .by_symbol
@@ -265,8 +265,9 @@ fn build_fine(
     let (import_spans, shared) =
         refs::link(&ctx, &drafts, &imports, &objects.by_symbol, &mut decls);
     let requires = decls::require_calls(program, sources)?;
-    let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls);
-    let init_dynamic = refs::attach_dynamic_imports(&ctx, &drafts, sources, &mut decls)?;
+    let placed = &mut candidates.placed;
+    let init_requires = refs::attach_requires(&ctx, &drafts, &requires, &mut decls, placed);
+    let init_dynamic = refs::attach_dynamic_imports(&ctx, &drafts, sources, &mut decls, placed)?;
     let conditional = candidates.conditional.clone();
     let by_symbol = objects.by_symbol.clone();
     members::attach(&ctx, &drafts, &imports, objects, &shared, &mut decls);

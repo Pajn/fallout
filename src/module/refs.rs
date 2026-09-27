@@ -416,8 +416,13 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
     }
 }
 
+/// Where in a declaration's statement it imports something without a binding: a
+/// `require` or an `import()` call, with what the call reaches.
+pub(crate) type Placed = Vec<(u32, ImportRef)>;
+
 /// Attributes every `require("./x")` to the declarations of the statement it is
 /// written in, and returns the targets of the calls that belong to no declaration.
+/// Each one attributed is also recorded in `placed`, by where it is written.
 ///
 /// Static property reads and destructuring select individual exports. Escaping or
 /// mutable module objects retain the whole namespace. A call in a statement that
@@ -427,6 +432,7 @@ pub(crate) fn attach_requires(
     drafts: &[DeclDraft],
     requires: &[RequireCall],
     decls: &mut [Decl],
+    placed: &mut Placed,
 ) -> Vec<SourceId> {
     if requires.is_empty() {
         return Vec::new();
@@ -461,6 +467,13 @@ pub(crate) fn attach_requires(
             .map(|&node_id| require_targets(ctx, node_id))
             .unwrap_or_else(|| vec![ImportTarget::Namespace]);
         for target in targets {
+            placed.push((
+                call.span.start,
+                ImportRef {
+                    source: call.source,
+                    target: target.clone(),
+                },
+            ));
             for &user in users {
                 push_import(
                     &mut decls[user as usize].imports,
@@ -597,6 +610,7 @@ pub(crate) fn attach_dynamic_imports(
     drafts: &[DeclDraft],
     sources: &[String],
     decls: &mut [Decl],
+    placed: &mut Placed,
 ) -> Option<Vec<SourceId>> {
     let statement_decls = statement_decls(drafts);
     let mut init_sources = Vec::new();
@@ -624,6 +638,13 @@ pub(crate) fn attach_dynamic_imports(
         };
 
         for target in dynamic_targets(ctx, node_id) {
+            placed.push((
+                expression.span.start,
+                ImportRef {
+                    source,
+                    target: target.clone(),
+                },
+            ));
             for &user in users {
                 push_import(
                     &mut decls[user as usize].imports,
