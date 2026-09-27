@@ -1290,6 +1290,38 @@ fn an_unreadable_tsconfig_above_the_one_found_does_not_refuse_an_answer() {
     }
 }
 
+/// A readable tsconfig that does not claim the file, one with `"files": []` and no
+/// reference that does, is walked past by the resolver on its way to the next one
+/// up. One that cannot be read there would have been the file's, so it is no
+/// answer.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_tsconfig_above_one_that_does_not_claim_the_file_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/tsconfig.json"), r#"{ "files": [] }"#).unwrap();
+    fs::write(root.join("src/theme.ts"), "export const theme = 1;\n").unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { theme } from \"./theme\";\nexport const page = theme;\n",
+    )
+    .unwrap();
+    let above = root.join("tsconfig.json");
+    fs::write(&above, r#"{ "include": ["src/**/*"] }"#).unwrap();
+    let Some(_unreadable) = Unreadable::make(above.clone()) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        let answer = page_answer(&root, "src/theme.ts", granularity, None);
+        assert!(
+            names_unreadable_tsconfig(&answer, &above),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_deleted_file_of_a_workspace_package_moves_its_deep_imports() {

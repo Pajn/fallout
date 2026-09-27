@@ -197,8 +197,9 @@ pub struct Tree<Fs> {
     /// that produced the aliases, which is the identity of the answer.
     resolvers: RwLock<Resolvers<Fs>>,
     /// The directories whose tsconfigs have been checked for one that cannot be
-    /// read, by where the walk up from them started.
-    checked: RwLock<AHashSet<PathBuf>>,
+    /// read, by where the walk up from them started and the tsconfig that claims
+    /// the file it started for.
+    checked: RwLock<AHashSet<(PathBuf, Option<PathBuf>)>>,
 }
 
 /// Resolvers by dialect and by the config directories that produced their aliases.
@@ -268,18 +269,30 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
     ///
     /// The resolver skips such a tsconfig and walks on, as if it were not there, so
     /// the imports it maps go somewhere else in silence. It looks in the file's
-    /// directory and each above it, and stops at the first tsconfig there; so does
-    /// this. What it hands back may be a project that tsconfig references from
-    /// elsewhere, but it is found through that tsconfig, so nothing above it is
-    /// consulted. With none at all, every directory up to the root is looked in, as
-    /// the resolver looks in them.
+    /// directory and each above it, walks past a tsconfig that does not claim the
+    /// file, and stops at the first that does, directly or through a project it
+    /// references; so does this. With none that claims the file, every directory up
+    /// to the root is looked in, as the resolver looks in them.
     fn check_tsconfigs(&self, resolver: &ResolverGeneric<Fs>, file: &Path) {
         // The resolver does not look for one for an installed package's files.
         if is_installed(file) || !file.is_absolute() {
             return;
         }
         let Some(start) = file.parent() else { return };
-        if !self.checked.write().unwrap().insert(start.to_path_buf()) {
+        // What the resolver hands back is the tsconfig that claims the file, or the
+        // project that tsconfig references which does. Which one claims a file is a
+        // question of that file, not only of its directory.
+        let owner = resolver
+            .find_tsconfig(file)
+            .ok()
+            .flatten()
+            .map(|tsconfig| tsconfig.path().to_path_buf());
+        if !self
+            .checked
+            .write()
+            .unwrap()
+            .insert((start.to_path_buf(), owner.clone()))
+        {
             return;
         }
         for directory in start.ancestors() {
@@ -291,16 +304,32 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             {
                 continue;
             }
-            if let Err(ResolveError::TsconfigLoadFailed { path, source }) =
-                resolver.resolve_tsconfig(&tsconfig)
-                && let ResolveError::IOError(error) = source.as_ref()
-            {
-                self.configs.note_unreadable_tsconfig(
-                    &path,
-                    std::io::Error::from(error.clone()).to_string(),
-                );
+            match resolver.resolve_tsconfig(&tsconfig) {
+                // One that cannot be parsed is the resolver's own error, which the
+                // run reports where it resolves; one that cannot be read it skips.
+                Err(ResolveError::TsconfigLoadFailed { path, source }) => {
+                    if let ResolveError::IOError(error) = source.as_ref() {
+                        self.configs.note_unreadable_tsconfig(
+                            &path,
+                            std::io::Error::from(error.clone()).to_string(),
+                        );
+                    }
+                    return;
+                }
+                Ok(read) => {
+                    let claims = owner.as_deref().is_some_and(|owner| {
+                        read.path() == owner
+                            || read
+                                .references_resolved
+                                .iter()
+                                .any(|referenced| referenced.path() == owner)
+                    });
+                    if claims {
+                        return;
+                    }
+                }
+                Err(_) => return,
             }
-            return;
         }
     }
 
