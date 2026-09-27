@@ -336,7 +336,7 @@ impl Graph {
             }
         };
         match node {
-            Node::File(file) => self.file_edges(file),
+            Node::File(_) => self.file_edges(&fine),
             Node::Decl(_, decl) => self.decl_edges(&fine, decl),
             Node::Export(file, name) => self.export_edges(file, name),
             Node::Member(file, decl, member) => self.member_edges(file, decl, member),
@@ -345,33 +345,17 @@ impl Graph {
     }
 
     /// `File(f)` depends on every other node of `f`.
-    fn file_edges(&self, file: FileId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-
-        match &analysed.analysis {
-            // A coarse module still has outgoing edges: its import list is
-            // extractable even when nothing else is. It reaches each dependency
-            // wholesale, which is what the file-level analysis has always done.
-            ModuleAnalysis::Coarse { .. } => analysed
-                .resolved
-                .iter()
-                .flatten()
-                .map(|target| Node::File(*target))
-                .collect(),
-            ModuleAnalysis::Fine(module) => {
-                let mut edges = Vec::with_capacity(module.decls.len() + module.exports.len() + 1);
-                for decl in 0..module.decls.len() {
-                    edges.push(Node::Decl(file, decl as DeclId));
-                }
-                for export in &module.exports {
-                    edges.push(Node::Export(file, self.name_id(&export.name)));
-                }
-                edges.push(Node::ModuleInit(file));
-                edges
-            }
+    fn file_edges(&self, fine: &Fine) -> Vec<Node> {
+        let (file, module) = (fine.file(), fine.module());
+        let mut edges = Vec::with_capacity(module.decls.len() + module.exports.len() + 1);
+        for decl in 0..module.decls.len() {
+            edges.push(Node::Decl(file, decl as DeclId));
         }
+        for export in &module.exports {
+            edges.push(Node::Export(file, self.name_id(&export.name)));
+        }
+        edges.push(Node::ModuleInit(file));
+        edges
     }
 
     fn decl_edges(&self, fine: &Fine, decl: DeclId) -> Vec<Node> {
