@@ -159,19 +159,18 @@ pub fn analyse_with(
 
 /// The earlier versions `options.base` names, read from git, once git has said it
 /// knows the revision. One it does not know is no answer rather than a tree with
-/// nothing in it. See [`base::Base::is_known`].
+/// nothing in it. See [`base::Base::resolve`].
 pub(crate) fn earlier(options: &Options) -> Result<Option<Box<dyn base::Earlier>>, Error> {
     let Some(reference) = options.base.as_deref() else {
         return Ok(None);
     };
-    let base = base::Base::new(reference);
     let root = canonical_root(&options.root);
-    if !base.is_known(&root) {
+    let Some(base) = base::Base::resolve(reference, &root) else {
         return Err(Error::UnknownBase {
             revision: reference.to_string(),
             root,
         });
-    }
+    };
     Ok(Some(Box::new(base)))
 }
 

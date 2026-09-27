@@ -10,7 +10,7 @@
 //! revision, read from git by [`Base`]. A file with no earlier version, one that is
 //! new, simply has none, and the caller falls back to the diff. A revision git does
 //! not know would have none for any file, so a run refuses it before it begins: see
-//! [`Base::is_known`].
+//! [`Base::resolve`].
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -67,24 +67,30 @@ impl Earlier for Base {
 }
 
 impl Base {
-    /// Whether git finds a commit by this revision from `root`, or from the nearest
+    /// The revision as the commit git finds by it from `root`, or from the nearest
     /// directory above it that is there, as [`Earlier::text`] asks for each file.
     ///
     /// A revision git cannot find has no version of any file, and [`Earlier::text`]
-    /// cannot tell that apart from a file the change added. A run has to ask this
-    /// first, and give no answer when it is false. Git that cannot be run, and a
+    /// cannot tell that apart from a file the change added. A run has to resolve it
+    /// first, and give no answer when this is `None`. Git that cannot be run, and a
     /// root outside any repository, find nothing either.
-    pub fn is_known(&self, root: &Path) -> bool {
-        let Some(directory) = root.ancestors().find(|directory| directory.is_dir()) else {
-            return false;
-        };
-        Command::new("git")
+    pub fn resolve(reference: &str, root: &Path) -> Option<Self> {
+        let directory = root.ancestors().find(|directory| directory.is_dir())?;
+        let output = Command::new("git")
             .arg("-C")
             .arg(directory)
             .args(["rev-parse", "--verify", "--quiet"])
-            .arg(format!("{}^{{commit}}", self.reference))
+            .arg(format!("{reference}^{{commit}}"))
             .output()
-            .is_ok_and(|output| output.status.success())
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        // Every file is read from the commit itself, not through the revision's name,
+        // so that a ref moving during the run, as a fetch moves `origin/main`, cannot
+        // give one run the files of two commits.
+        let commit = String::from_utf8(output.stdout).ok()?;
+        Some(Self::new(commit.trim()))
     }
 
     fn read(&self, path: &Path) -> Option<String> {
@@ -339,7 +345,7 @@ mod tests {
             &[("src/page.ts", b"export const page = 1;\n")],
             &[("src/page.ts", b"export const page = 2;\n")],
         );
-        let known = |reference: &str, root: &Path| Base::new(reference).is_known(root);
+        let known = |reference: &str, root: &Path| Base::resolve(reference, root).is_some();
 
         assert!(known("HEAD", &repo));
         assert!(known("HEAD", &repo.join("src")), "from a subdirectory");
@@ -349,5 +355,24 @@ mod tests {
         );
         assert!(!known("nosuchrev", &repo));
         assert!(!known("HEAD^{tree}", &repo), "a tree is not a commit");
+    }
+
+    /// A ref can move while a run reads through it, as a fetch moves `origin/main`.
+    /// Every file is read from the commit the ref named when the run began.
+    #[test]
+    fn a_resolved_revision_keeps_reading_the_commit_it_named() {
+        let (_keep, repo) = repository(
+            &[("src/page.ts", b"export const page = 1;\n")],
+            &[("src/page.ts", b"export const page = 2;\n")],
+        );
+        let base = Base::resolve("HEAD", &repo).expect("HEAD names a commit");
+
+        git(&repo, &["add", "--all"]);
+        git(&repo, &["commit", "--quiet", "--message", "moved"]);
+
+        assert_eq!(
+            base.text(&repo.join("src/page.ts")).as_deref(),
+            Some("export const page = 1;\n")
+        );
     }
 }
