@@ -2,7 +2,8 @@
 //!
 //! The exit code is the verdict: 0 when a change reaches the anchors, 1 when it
 //! does not, 2 when there is no answer — a bad argument, an anchor that is not there,
-//! a `fallout.toml` that cannot be read, a `--base` revision git cannot find. With
+//! a `fallout.toml` or a tsconfig that cannot be read, a `--base` revision git cannot
+//! find. With
 //! `--json` it says only whether there was an answer, since the answers are in the
 //! output: 0 or 2.
 

@@ -17,7 +17,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use oxc_resolver::{
     FileSystem, FileSystemOs, PackageJson, Resolution, ResolveError, ResolveOptions,
     ResolverGeneric, SideEffects as Declared, TsConfig, TsconfigDiscovery,
@@ -196,6 +196,9 @@ pub struct Tree<Fs> {
     /// One resolver per dialect and set of aliases, keyed by the config directories
     /// that produced the aliases, which is the identity of the answer.
     resolvers: RwLock<Resolvers<Fs>>,
+    /// The directories whose tsconfigs have been checked for one that cannot be
+    /// read, by where the walk up from them started and where it stopped.
+    checked: RwLock<AHashSet<(PathBuf, Option<PathBuf>)>>,
 }
 
 /// Resolvers by dialect and by the config directories that produced their aliases.
@@ -208,6 +211,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             lookup,
             fs,
             resolvers: RwLock::new(AHashMap::default()),
+            checked: RwLock::new(AHashSet::default()),
         }
     }
 
@@ -234,6 +238,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             };
         }
         let resolver = self.resolver(Dialect::Module, &chain);
+        self.check_tsconfigs(&resolver, from_file);
         let mut attempt = resolver.resolve_file(from_file, specifier);
         if attempt.is_err()
             && let Some(request) = strip_inline_loaders(specifier)
@@ -249,10 +254,68 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
 
     /// The tsconfig that governs `file` in this tree, found the way resolving an
     /// import written in it finds it. An error for a tsconfig that cannot be parsed,
-    /// or that names a config through `extends` that is not there.
+    /// or that names a config through `extends` that is not there. One that cannot
+    /// be read at all is noted: see `check_tsconfigs`.
     pub fn tsconfig_for(&self, file: &Path) -> Result<Option<Arc<TsConfig>>, ResolveError> {
-        self.resolver(Dialect::Module, &self.configs.chain(file))
-            .find_tsconfig(file)
+        let resolver = self.resolver(Dialect::Module, &self.configs.chain(file));
+        self.check_tsconfigs(&resolver, file);
+        resolver.find_tsconfig(file)
+    }
+
+    /// Notes, for the run to refuse an answer on, a `tsconfig.json` the resolver
+    /// would look at for `file` that is there and cannot be read, or that extends a
+    /// config that cannot be.
+    ///
+    /// The resolver skips such a tsconfig and walks on, as if it were not there, so
+    /// the imports it maps go somewhere else in silence. It looks in the file's
+    /// directory and each above it, and stops at the tsconfig it finds; so does
+    /// this. Where the one it finds is a project that tsconfig references, which
+    /// sits outside that walk, every directory above the file is looked in, which
+    /// can only refuse more answers.
+    fn check_tsconfigs(&self, resolver: &ResolverGeneric<Fs>, file: &Path) {
+        // The resolver does not look for one for an installed package's files.
+        if is_installed(file) || !file.is_absolute() {
+            return;
+        }
+        let Some(start) = file.parent() else { return };
+        let found = resolver.find_tsconfig(file).ok().flatten();
+        let stop = found
+            .as_ref()
+            .and_then(|tsconfig| tsconfig.path().parent())
+            .filter(|directory| start.starts_with(directory))
+            .map(Path::to_path_buf);
+        let key = (start.to_path_buf(), stop.clone());
+        if !self.checked.write().unwrap().insert(key) {
+            return;
+        }
+        for directory in start.ancestors() {
+            let tsconfig = directory.join("tsconfig.json");
+            if self
+                .fs
+                .metadata(&tsconfig)
+                .is_ok_and(|found| found.is_file())
+                && let Err(ResolveError::TsconfigLoadFailed { path, source }) =
+                    resolver.resolve_tsconfig(&tsconfig)
+                && let ResolveError::IOError(error) = source.as_ref()
+            {
+                self.configs.note_unreadable_tsconfig(
+                    &path,
+                    std::io::Error::from(error.clone()).to_string(),
+                );
+                return;
+            }
+            if stop.as_deref() == Some(directory) {
+                return;
+            }
+        }
+    }
+
+    /// Notes, for the run to refuse an answer on, a config at `path` that a
+    /// tsconfig reads and that is there but cannot be read. See
+    /// `check_tsconfigs`.
+    pub fn note_unreadable_config(&self, path: &Path, error: &std::io::Error) {
+        self.configs
+            .note_unreadable_tsconfig(path, error.to_string());
     }
 
     /// The resolver for one dialect and chain of config directories, built on first

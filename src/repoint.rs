@@ -277,8 +277,9 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
     /// above it, which can decide through `references`, `include` or `exclude` which
     /// config is found. A changed `tsconfig.json` above the file governs it too,
     /// whatever it reads now, since it may have been the nearest before. A tsconfig
-    /// that cannot be read at all is taken to govern everything: what it said before
-    /// is exactly what is not known.
+    /// that cannot be parsed is taken to govern everything: what it said before is
+    /// exactly what is not known. One whose file cannot be read at all is noted for
+    /// the run to give no answer on, since it is not known what it says now either.
     fn governed_by_unknown_config(&self, file: &Path) -> bool {
         let configs = self.repointing.configs();
         if configs.is_empty() {
@@ -328,11 +329,24 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
         let mut next = 0;
         while let Some(config) = reads.get(next).cloned() {
             next += 1;
-            let Some(parsed) =
-                self.now.fs().read_to_string(&config).ok().and_then(|text| {
-                    oxc_resolver::TsConfig::parse(true, &config, &config, text).ok()
-                })
-            else {
+            let text = match self.now.fs().read_to_string(&config) {
+                Ok(text) => text,
+                // One that is there and cannot be read is no answer, since whether
+                // it reads a changed config is exactly what is not known. One that
+                // is not there reads nothing.
+                Err(error) => {
+                    let there = self
+                        .now
+                        .fs()
+                        .metadata(&config)
+                        .is_ok_and(|found| found.is_file());
+                    if there {
+                        self.now.note_unreadable_config(&config, &error);
+                    }
+                    continue;
+                }
+            };
+            let Ok(parsed) = oxc_resolver::TsConfig::parse(true, &config, &config, text) else {
                 continue;
             };
             let extends = match &parsed.extends {

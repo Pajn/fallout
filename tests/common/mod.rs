@@ -245,3 +245,58 @@ pub fn setup_bundler_package(root: &Path) {
     fs::write(root.join("src/native/exported.ts"), "export const a = 1;\n").unwrap();
     fs::write(root.join("src/native/field.ts"), "export const b = 1;\n").unwrap();
 }
+
+/// Takes read permission away from a file for as long as the guard lives.
+#[cfg(unix)]
+pub struct Unreadable(PathBuf);
+
+#[cfg(unix)]
+impl Unreadable {
+    /// `None` where taking the permission away does not stop this process reading
+    /// the file, as when it runs as root, which permissions do not bind.
+    pub fn make(path: PathBuf) -> Option<Self> {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let guard = Self(path);
+        fs::read(&guard.0).is_err().then_some(guard)
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Unreadable {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o644));
+    }
+}
+
+/// A project whose `src/tsconfig.json` governs `src/page.ts` and maps `@ui/*`
+/// through the config it extends. A package named `@ui/button` is installed too,
+/// which is where the import goes when the mapping is not read.
+pub fn setup_tsconfig_project(root: &Path) {
+    let files = [
+        (
+            "src/tsconfig.json",
+            r#"{ "extends": "../tsconfig.base.json" }"#,
+        ),
+        (
+            "tsconfig.base.json",
+            r#"{ "compilerOptions": { "baseUrl": ".", "paths": { "@ui/*": ["src/ui/*"] } } }"#,
+        ),
+        (
+            "src/page.ts",
+            "import { button } from \"@ui/button\";\nexport const page = button;\n",
+        ),
+        ("src/ui/button.ts", "export const button = 1;\n"),
+        (
+            "node_modules/@ui/button/package.json",
+            r#"{ "name": "@ui/button", "main": "index.js" }"#,
+        ),
+        ("node_modules/@ui/button/index.js", "exports.button = 2;\n"),
+    ];
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("a parent")).unwrap();
+        fs::write(path, text).unwrap();
+    }
+}
