@@ -11,6 +11,7 @@ affected = true
 symbol = [
     "File(src/page.ts)",
     "Decl(src/page.ts, Page)",
+    "Export(src/barrel.ts, primary)",
     "File(src/tokens.json)",
 ]
 

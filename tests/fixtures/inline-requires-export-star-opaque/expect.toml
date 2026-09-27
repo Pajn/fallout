@@ -1,0 +1,18 @@
+# With imports deferred to first use, reading a name through a barrel evaluates
+# the barrel, whatever module the name finally comes from. Here it comes from a
+# JSON module behind `export *`, and the barrel's own statement changes. The page
+# reading `primary` from the barrel is affected, and so is the page reading it
+# through a second barrel that re-exports the first: each barrel it passes through
+# is evaluated on the way. The page importing the JSON directly never evaluates the
+# barrel, so it must not hear about the change.
+[[anchor]]
+path = "src/page.ts"
+affected = true
+
+[[anchor]]
+path = "src/outer-page.ts"
+affected = true
+
+[[anchor]]
+path = "src/tokens-page.ts"
+affected = false
