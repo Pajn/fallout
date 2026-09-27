@@ -339,7 +339,7 @@ impl Graph {
             Node::File(_) => self.file_edges(&fine),
             Node::Decl(_, decl) => self.decl_edges(&fine, decl),
             Node::Export(file, name) => self.export_edges(file, name),
-            Node::Member(file, decl, member) => self.member_edges(file, decl, member),
+            Node::Member(_, decl, member) => self.member_edges(&fine, decl, member),
             Node::ModuleInit(file) => self.init_edges(file),
         }
     }
@@ -412,20 +412,15 @@ impl Graph {
         edges
     }
 
-    fn member_edges(&self, file: FileId, decl: DeclId, member: NameId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
-        };
+    fn member_edges(&self, fine: &Fine, decl: DeclId, member: NameId) -> Vec<Node> {
+        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let member = self.name(member);
         if member_of(module, decl, &member).is_none()
             && let Some(deps) = self.factory_member(file, module, decl, &member)
         {
             return self.reference_edges(
                 file,
-                &analysed,
+                analysed,
                 module,
                 &deps.refs,
                 &deps.member_refs,
@@ -436,7 +431,7 @@ impl Graph {
             Some(entry) => {
                 let mut edges = self.reference_edges(
                     file,
-                    &analysed,
+                    analysed,
                     module,
                     &entry.refs,
                     &entry.member_refs,
