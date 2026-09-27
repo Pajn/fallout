@@ -732,8 +732,11 @@ impl Graph {
             let Some(target) = self.target_of(&analysed, source) else {
                 continue;
             };
+            // A target with no analysis, such as a JSON module or a file that could
+            // not be read, may hold any name, and nothing else links the barrel to
+            // it: `export *` is not a bare import.
             let Some(target_analysis) = self.analysis(target) else {
-                continue;
+                return Some(Node::File(target));
             };
             match target_analysis.analysis.as_fine() {
                 Some(target_module) => {
@@ -887,5 +890,49 @@ fn extended(callee: &crate::module::Callee, path: &[String]) -> crate::module::C
             decl: *decl,
             path: base.iter().chain(path).cloned().collect(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A graph over a project written to a temporary directory, which the caller
+    /// keeps alive for as long as the graph reads from it.
+    fn project(files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf, Graph) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        for (path, content) in files {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, content).unwrap();
+        }
+        (dir, root, Graph::default())
+    }
+
+    /// What the declaration `name` of `file` depends on.
+    fn decl_edges(graph: &Graph, file: FileId, name: &str) -> Vec<Node> {
+        let analysed = graph.analysis(file).unwrap();
+        let module = analysed.analysis.as_fine().unwrap();
+        let decl = module.decls.iter().position(|d| d.name == name).unwrap();
+        graph.edges(Node::Decl(file, decl as DeclId))
+    }
+
+    #[test]
+    fn a_star_from_a_file_with_no_analysis_stands_for_that_file() {
+        let (_dir, root, graph) = project(&[
+            ("src/tokens.json", "{ \"primary\": \"red\" }\n"),
+            (
+                "src/barrel.ts",
+                "export * from \"./tokens.json\";\nexport const other = 1;\n",
+            ),
+            (
+                "src/page.ts",
+                "import { primary } from \"./barrel\";\nexport const Page = () => primary;\n",
+            ),
+        ]);
+        let page = graph.file_id(&root.join("src/page.ts"));
+        let tokens = graph.file_id(&root.join("src/tokens.json"));
+        assert!(decl_edges(&graph, page, "Page").contains(&Node::File(tokens)));
     }
 }
