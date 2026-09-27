@@ -57,8 +57,11 @@ impl Node {
 pub struct Analysed {
     pub analysis: ModuleAnalysis,
     pub line_table: LineTable,
-    /// Where each import specifier resolves to, by source index.
-    pub resolved: Vec<Option<FileId>>,
+    /// The files each import specifier resolves to, by source index: none, one, or
+    /// for a Sass URL that several files answer, each of them. Only a stylesheet
+    /// has a Sass URL, and a stylesheet is never fine, so a fine module's imports
+    /// resolve to one file at most.
+    pub resolved: Vec<Box<[FileId]>>,
 }
 
 /// How far the analysis sees into one file, which every rule asks before any other
@@ -251,7 +254,9 @@ impl Graph {
                     .map(|specifier| {
                         self.resolver
                             .resolve(&path, specifier)
-                            .map(|target| self.file_id(&target))
+                            .iter()
+                            .map(|target| self.file_id(target))
+                            .collect()
                     })
                     .collect();
                 Rc::new(Analysed {
@@ -290,7 +295,7 @@ impl Graph {
     }
 
     fn target_of(&self, analysed: &Analysed, source: SourceId) -> Option<FileId> {
-        analysed.resolved.get(source as usize).copied().flatten()
+        analysed.resolved.get(source as usize)?.first().copied()
     }
 
     /// Everything `node` may depend on.
@@ -307,7 +312,9 @@ impl Graph {
                 return match node {
                     Node::File(_) => analysed
                         .iter()
-                        .flat_map(|analysed| analysed.resolved.iter().flatten())
+                        .flat_map(|analysed| {
+                            analysed.resolved.iter().flat_map(|targets| targets.iter())
+                        })
                         .map(|target| Node::File(*target))
                         .collect(),
                     _ => vec![Node::File(file)],
@@ -649,8 +656,10 @@ impl Graph {
         // in which case importing runs nothing and the edge belongs to whoever uses
         // the binding. A *bare* import introduces no binding, so there is nothing to
         // defer and it runs either way.
-        for (source, target) in analysed.resolved.iter().enumerate() {
-            let Some(target) = *target else { continue };
+        for (source, targets) in analysed.resolved.iter().enumerate() {
+            let Some(&target) = targets.first() else {
+                continue;
+            };
             let bare = module.bare_sources.contains(&(source as SourceId));
             if self.inline_requires && !bare {
                 continue;

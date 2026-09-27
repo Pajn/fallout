@@ -1,0 +1,5 @@
+@use "theme/index" as theme;
+
+.title {
+  color: theme.$ink;
+}

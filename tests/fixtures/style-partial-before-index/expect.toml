@@ -1,0 +1,19 @@
+# `@use "theme"` with both `_theme.scss` and `theme/_index.scss` beside the
+# stylesheet. Sass resolves a URL for extensions and partials before it tries
+# `url/index`, so the partial is the file it loads, and the one that changed.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ThemedPage.tsx)",
+    "ModuleInit(src/pages/ThemedPage.tsx)",
+    "File(src/styles/main.scss)",
+    "File(src/styles/_theme.scss)",
+]
+
+# A stylesheet naming the index outright loads the index, which did not change.
+[[anchor]]
+path = "src/pages/IndexPage.tsx"
+affected = false
