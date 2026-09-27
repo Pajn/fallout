@@ -336,15 +336,15 @@ impl Graph {
                 continue;
             };
             match &import.target {
-                ImportTarget::Named(name) => edges.push(self.resolve_export(target, name)),
+                ImportTarget::Named(name) => edges.extend(self.resolve_export(target, name)),
                 ImportTarget::Member { export, member } => {
-                    let node = self.resolve_member(target, export, member);
+                    let nodes = self.resolve_member(target, export, member);
                     // Reading a member reaches the module the way reading the export
                     // would, and only an export node says so by itself.
-                    if self.inline_requires && matches!(node, Node::Member(..)) {
+                    if self.inline_requires && nodes.iter().any(|n| matches!(n, Node::Member(..))) {
                         edges.push(Node::ModuleInit(target));
                     }
-                    edges.push(node);
+                    edges.extend(nodes);
                 }
                 ImportTarget::Namespace => edges.extend(self.all_exports(target)),
             }
@@ -547,21 +547,21 @@ impl Graph {
         }
     }
 
-    /// The node a read of `member` off the export `export` of `file` should point
+    /// The nodes a read of `member` off the export `export` of `file` should point
     /// at: the member itself where the export is an object of this file that can be
     /// read apart, and the whole export otherwise — a re-export, a lost name, a
     /// value of any other shape.
     ///
     /// A re-export is not followed: the statement that forwards the name is part of
     /// what the reader depends on, and only `Export` of the forwarding file says so.
-    pub fn resolve_member(&self, file: FileId, export: &str, member: &str) -> Node {
+    pub fn resolve_member(&self, file: FileId, export: &str, member: &str) -> Vec<Node> {
         if is_source_file(&self.path(file))
             && let Some(analysed) = self.analysis(file)
             && let Some(module) = analysed.analysis.as_fine()
             && let Some(ExportTarget::Local(decl)) = module.export_named(export).map(|e| &e.target)
             && self.has_member(file, module, *decl, member)
         {
-            return Node::Member(file, *decl, self.name_id(member));
+            return vec![Node::Member(file, *decl, self.name_id(member))];
         }
         self.resolve_export(file, export)
     }
@@ -579,7 +579,7 @@ impl Graph {
             Some(ExportTarget::Local(decl)) => vec![Node::Decl(file, *decl)],
             Some(ExportTarget::Reexport { source, name }) => {
                 match self.target_of(&analysed, *source) {
-                    Some(target) => vec![self.resolve_export(target, name)],
+                    Some(target) => self.resolve_export(target, name),
                     None => Vec::new(),
                 }
             }
@@ -687,26 +687,27 @@ impl Graph {
         self.resolver.side_effects(&self.path(file)) == SideEffects::Possible
     }
 
-    /// The node a named import of `name` from `file` should point at.
+    /// The nodes a named import of `name` from `file` should point at.
     ///
     /// A name the target no longer exports points at `Export(target, name)`, which is
     /// where the mark saying so is. A name it never exported points at
     /// `File(target)`, since anything in the target could be where it was meant to
-    /// come from.
-    pub fn resolve_export(&self, file: FileId, name: &str) -> Node {
+    /// come from, and at the file behind each of its `export *` statements for the
+    /// same reason: `File(target)` reaches the target's own nodes, not theirs.
+    pub fn resolve_export(&self, file: FileId, name: &str) -> Vec<Node> {
         if !is_source_file(&self.path(file)) {
-            return Node::File(file);
+            return vec![Node::File(file)];
         }
         let Some(analysed) = self.analysis(file) else {
-            return Node::File(file);
+            return vec![Node::File(file)];
         };
         let Some(module) = analysed.analysis.as_fine() else {
-            return Node::File(file);
+            return vec![Node::File(file)];
         };
 
         let id = self.name_id(name);
         if module.export_named(name).is_some() || self.has_lost(file, id) {
-            return Node::Export(file, id);
+            return vec![Node::Export(file, id)];
         }
 
         // A name that arrives through `export *` is still read through this module,
@@ -714,9 +715,34 @@ impl Graph {
         // node says so, and goes on through the star from there.
         let mut seen = AHashSet::default();
         match self.through_stars(file, name, &mut seen) {
-            Some(Node::Export(..)) => Node::Export(file, id),
-            Some(node) => node,
-            None => Node::File(file),
+            Some(Node::Export(..)) => vec![Node::Export(file, id)],
+            Some(node) => vec![node],
+            None => {
+                let mut seen = AHashSet::default();
+                let mut nodes = Vec::new();
+                self.behind_stars(file, &mut seen, &mut nodes);
+                nodes
+            }
+        }
+    }
+
+    /// `File` of `file` and of every module behind its `export *` statements, one
+    /// star after another, with a cycle guard.
+    fn behind_stars(&self, file: FileId, seen: &mut AHashSet<FileId>, out: &mut Vec<Node>) {
+        if !seen.insert(file) {
+            return;
+        }
+        out.push(Node::File(file));
+        let Some(analysed) = self.analysis(file) else {
+            return;
+        };
+        let Some(module) = analysed.analysis.as_fine() else {
+            return;
+        };
+        for &source in &module.export_stars {
+            if let Some(target) = self.target_of(&analysed, source) {
+                self.behind_stars(target, seen, out);
+            }
         }
     }
 
@@ -934,5 +960,31 @@ mod tests {
         let page = graph.file_id(&root.join("src/page.ts"));
         let tokens = graph.file_id(&root.join("src/tokens.json"));
         assert!(decl_edges(&graph, page, "Page").contains(&Node::File(tokens)));
+    }
+
+    #[test]
+    fn a_name_never_exported_reaches_every_file_behind_the_stars() {
+        // `star` and `barrel` re-export each other, which the walk must survive.
+        let (_dir, root, graph) = project(&[
+            ("src/deep.ts", "export const d = 1;\n"),
+            (
+                "src/star.ts",
+                "export * from \"./deep\";\nexport * from \"./barrel\";\nexport const y = 2;\n",
+            ),
+            (
+                "src/barrel.ts",
+                "export * from \"./star\";\nexport const z = 3;\n",
+            ),
+            (
+                "src/page.ts",
+                "import { x } from \"./barrel\";\nexport const Page = () => x;\n",
+            ),
+        ]);
+        let page = graph.file_id(&root.join("src/page.ts"));
+        let edges = decl_edges(&graph, page, "Page");
+        for file in ["src/barrel.ts", "src/star.ts", "src/deep.ts"] {
+            let file = graph.file_id(&root.join(file));
+            assert!(edges.contains(&Node::File(file)), "{edges:?}");
+        }
     }
 }

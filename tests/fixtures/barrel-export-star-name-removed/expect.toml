@@ -1,0 +1,13 @@
+# `x` leaves the module a barrel re-exports with `export *`, and the page that
+# imports it through the barrel is left as it was. With only the diff to go on, the
+# barrel no longer exports `x` and nothing says it ever did, so the import could
+# have meant anything the barrel holds, including everything behind its stars. The
+# base revision knows `x` has gone and reaches it by name. `z` is declared by the
+# barrel itself, so the page importing it must not hear about the removal.
+[[anchor]]
+path = "src/page.ts"
+affected = true
+
+[[anchor]]
+path = "src/other-page.ts"
+affected = false
