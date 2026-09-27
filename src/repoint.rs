@@ -208,6 +208,8 @@ pub struct MovedImports<Fs = FileSystemOs> {
     /// Finds the config a package `extends` entry names in the tree as it is, built
     /// on first use.
     extends: OnceLock<ResolverGeneric<Fs>>,
+    /// The same in the tree before the change.
+    extends_before: OnceLock<ResolverGeneric<BeforeFs<Fs>>>,
     /// Which imports of each file moved, by index, worked out the first time the
     /// file is asked about.
     indices: RwLock<AHashMap<PathBuf, Arc<[usize]>>>,
@@ -223,6 +225,7 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             root,
             tsconfig_reads: RwLock::new(AHashMap::default()),
             extends: OnceLock::new(),
+            extends_before: OnceLock::new(),
             indices: RwLock::new(AHashMap::default()),
         }
     }
@@ -399,27 +402,27 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             }
             return named.into_iter().map(|path| self.canonical(path)).collect();
         }
-        // A package's config, looked for the way oxc_resolver looks for it when it
-        // follows `extends`: a JSON file, and a package's `tsconfig.json` where
-        // the entry names only the package. A module resolver would find the
-        // package's code instead.
-        let resolver = self.extends.get_or_init(|| {
-            ResolverGeneric::new_with_file_system(
-                self.now.fs().clone(),
-                ResolveOptions {
-                    condition_names: vec!["node".to_string(), "import".to_string()],
-                    extensions: vec![".json".to_string()],
-                    main_files: vec!["tsconfig".to_string()],
-                    ..ResolveOptions::default()
-                },
-            )
+        // A package's config, looked for in both trees. One the change deleted is
+        // found only in the tree before, and one it added only in the tree as it
+        // is, and either may be the config whose earlier version is not known.
+        let now = self.extends.get_or_init(|| {
+            ResolverGeneric::new_with_file_system(self.now.fs().clone(), extends_options())
         });
-        resolver
-            .resolve(directory, specifier)
-            .ok()
-            .map(|resolution| resolution.full_path())
-            .into_iter()
-            .collect()
+        let before = self.extends_before.get_or_init(|| {
+            ResolverGeneric::new_with_file_system(self.before.fs().clone(), extends_options())
+        });
+        let mut named: Vec<PathBuf> = Vec::new();
+        let found = [
+            now.resolve(directory, specifier),
+            before.resolve(directory, specifier),
+        ];
+        for resolution in found.into_iter().flatten() {
+            let path = resolution.full_path();
+            if !named.contains(&path) {
+                named.push(path);
+            }
+        }
+        named
     }
 
     /// `path` as the tree as it is spells it, or as written where it is not there.
@@ -429,6 +432,19 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             .canonicalize(&path)
             .map(|real| dunce::simplified(&real).to_path_buf())
             .unwrap_or(path)
+    }
+}
+
+/// How a package's config is looked for: the way oxc_resolver looks for it when it
+/// follows `extends`, as a JSON file, and as a package's `tsconfig.json` where the
+/// entry names only the package. A module resolver would find the package's code
+/// instead.
+fn extends_options() -> ResolveOptions {
+    ResolveOptions {
+        condition_names: vec!["node".to_string(), "import".to_string()],
+        extensions: vec![".json".to_string()],
+        main_files: vec!["tsconfig".to_string()],
+        ..ResolveOptions::default()
     }
 }
 
@@ -742,6 +758,30 @@ mod tests {
             ("src/page.ts", ""),
         ];
         assert!(governs(&now, &[], "tsconfig.base.json"));
+    }
+
+    /// A package's config that the change deleted is not there to be found in the
+    /// tree as it is, and was in the tree before.
+    #[test]
+    fn a_deleted_package_config_a_tsconfig_above_extends_governs_the_file() {
+        let now = [
+            (
+                "tsconfig.json",
+                r#"{ "extends": "@acme/tsconfig/base.json" }"#,
+            ),
+            ("src/tsconfig.json", "{}"),
+            ("src/page.ts", ""),
+            (
+                "node_modules/@acme/tsconfig/package.json",
+                r#"{ "name": "@acme/tsconfig" }"#,
+            ),
+        ];
+        let deleted = [("node_modules/@acme/tsconfig/base.json", "")];
+        assert!(governs(
+            &now,
+            &deleted,
+            "node_modules/@acme/tsconfig/base.json"
+        ));
     }
 
     #[test]
