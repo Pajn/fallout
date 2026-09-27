@@ -1245,6 +1245,51 @@ fn an_unreadable_config_a_tsconfig_above_references_is_no_answer() {
     }
 }
 
+/// The resolver stops at the first tsconfig it can read above a file, even when
+/// what it hands back is a project that tsconfig references from elsewhere. A
+/// tsconfig above that one is never consulted, so one that cannot be read there is
+/// no reason to refuse an answer.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_tsconfig_above_the_one_found_does_not_refuse_an_answer() {
+    let temp = TempDir::new().unwrap();
+    let outer = fallout::canonical_root(temp.path());
+    let root = outer.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::create_dir_all(root.join("config/app")).unwrap();
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "files": [], "references": [{ "path": "./config/app" }] }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("config/app/tsconfig.json"),
+        r#"{ "compilerOptions": { "composite": true }, "include": ["../../src/**/*"] }"#,
+    )
+    .unwrap();
+    fs::write(root.join("src/theme.ts"), "export const theme = 1;\n").unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { theme } from \"./theme\";\nexport const page = theme;\n",
+    )
+    .unwrap();
+    let above = outer.join("tsconfig.json");
+    fs::write(&above, "{}").unwrap();
+    let Some(_unreadable) = Unreadable::make(above) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        let answer = page_answer(&root, "src/theme.ts", granularity, None);
+        assert!(
+            answer
+                .as_ref()
+                .is_ok_and(|answer| answer.verdict.is_affected()),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_deleted_file_of_a_workspace_package_moves_its_deep_imports() {

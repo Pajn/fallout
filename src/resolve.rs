@@ -197,8 +197,8 @@ pub struct Tree<Fs> {
     /// that produced the aliases, which is the identity of the answer.
     resolvers: RwLock<Resolvers<Fs>>,
     /// The directories whose tsconfigs have been checked for one that cannot be
-    /// read, by where the walk up from them started and where it stopped.
-    checked: RwLock<AHashSet<(PathBuf, Option<PathBuf>)>>,
+    /// read, by where the walk up from them started.
+    checked: RwLock<AHashSet<PathBuf>>,
 }
 
 /// Resolvers by dialect and by the config directories that produced their aliases.
@@ -268,45 +268,39 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
     ///
     /// The resolver skips such a tsconfig and walks on, as if it were not there, so
     /// the imports it maps go somewhere else in silence. It looks in the file's
-    /// directory and each above it, and stops at the tsconfig it finds; so does
-    /// this. Where the one it finds is a project that tsconfig references, which
-    /// sits outside that walk, every directory above the file is looked in, which
-    /// can only refuse more answers.
+    /// directory and each above it, and stops at the first tsconfig there; so does
+    /// this. What it hands back may be a project that tsconfig references from
+    /// elsewhere, but it is found through that tsconfig, so nothing above it is
+    /// consulted. With none at all, every directory up to the root is looked in, as
+    /// the resolver looks in them.
     fn check_tsconfigs(&self, resolver: &ResolverGeneric<Fs>, file: &Path) {
         // The resolver does not look for one for an installed package's files.
         if is_installed(file) || !file.is_absolute() {
             return;
         }
         let Some(start) = file.parent() else { return };
-        let found = resolver.find_tsconfig(file).ok().flatten();
-        let stop = found
-            .as_ref()
-            .and_then(|tsconfig| tsconfig.path().parent())
-            .filter(|directory| start.starts_with(directory))
-            .map(Path::to_path_buf);
-        let key = (start.to_path_buf(), stop.clone());
-        if !self.checked.write().unwrap().insert(key) {
+        if !self.checked.write().unwrap().insert(start.to_path_buf()) {
             return;
         }
         for directory in start.ancestors() {
             let tsconfig = directory.join("tsconfig.json");
-            if self
+            if !self
                 .fs
                 .metadata(&tsconfig)
                 .is_ok_and(|found| found.is_file())
-                && let Err(ResolveError::TsconfigLoadFailed { path, source }) =
-                    resolver.resolve_tsconfig(&tsconfig)
+            {
+                continue;
+            }
+            if let Err(ResolveError::TsconfigLoadFailed { path, source }) =
+                resolver.resolve_tsconfig(&tsconfig)
                 && let ResolveError::IOError(error) = source.as_ref()
             {
                 self.configs.note_unreadable_tsconfig(
                     &path,
                     std::io::Error::from(error.clone()).to_string(),
                 );
-                return;
             }
-            if stop.as_deref() == Some(directory) {
-                return;
-            }
+            return;
         }
     }
 
