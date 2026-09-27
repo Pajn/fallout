@@ -104,6 +104,13 @@ pub enum Error {
     /// rather than ignored: a setting that silently does nothing would show up as a
     /// verdict nobody can explain.
     Config(config::Error),
+    /// Git finds no commit by the `--base` revision from the run's root. Refused
+    /// rather than read: a revision with no files in it would have every changed
+    /// file taken as one the change added.
+    UnknownBase {
+        revision: String,
+        root: PathBuf,
+    },
 }
 
 impl fmt::Display for Error {
@@ -114,6 +121,11 @@ impl fmt::Display for Error {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
             }
             Error::Config(error) => write!(f, "{error}"),
+            Error::UnknownBase { revision, root } => write!(
+                f,
+                "Base revision not found: git finds no commit named {revision} from {}",
+                root.display()
+            ),
         }
     }
 }
@@ -127,7 +139,7 @@ pub fn canonical_root(root: &Path) -> PathBuf {
 }
 
 pub fn analyse(options: &Options) -> Result<Outcome, Error> {
-    analyse_with(options, earlier(options))
+    analyse_with(options, earlier(options)?)
 }
 
 /// As [`analyse`], with the earlier versions of the files handed over rather than
@@ -145,12 +157,21 @@ pub fn analyse_with(
     analysed(options, earlier).map(|(outcome, _)| outcome)
 }
 
-/// The earlier versions `options.base` names, read from git.
-pub(crate) fn earlier(options: &Options) -> Option<Box<dyn base::Earlier>> {
-    options
-        .base
-        .as_deref()
-        .map(|reference| Box::new(base::Base::new(reference)) as Box<dyn base::Earlier>)
+/// The earlier versions `options.base` names, read from git, once git has said it
+/// knows the revision. One it does not know is no answer rather than a tree with
+/// nothing in it. See [`base::Base::resolve`].
+pub(crate) fn earlier(options: &Options) -> Result<Option<Box<dyn base::Earlier>>, Error> {
+    let Some(reference) = options.base.as_deref() else {
+        return Ok(None);
+    };
+    let root = canonical_root(&options.root);
+    let Some(base) = base::Base::resolve(reference, &root) else {
+        return Err(Error::UnknownBase {
+            revision: reference.to_string(),
+            root,
+        });
+    };
+    Ok(Some(Box::new(base)))
 }
 
 /// [`analyse_with`]'s answer, and the root the run measured it from, so that the
@@ -206,7 +227,7 @@ pub struct UnresolvedImport {
 /// Every anchor sharing a bundler is answered on the same graph, so each module is
 /// read and resolved once however many anchors reach it.
 pub fn analyse_each(options: &Options) -> Result<Vec<AnchorOutcome>, Error> {
-    analyse_each_with(options, earlier(options))
+    analyse_each_with(options, earlier(options)?)
 }
 
 /// As [`analyse_each`], with the earlier versions of the files handed over rather

@@ -118,6 +118,14 @@ fn execute_says_what_the_binary_says() {
     runs.push(vec!["--root", root, "--anchor", "src/pages/Nowhere.tsx"]);
     runs.push(vec!["--root", root, "--anchor", "src/pages/DatePage.tsx"]);
     runs.push(vec!["--root", root, "--diff", "no-such.diff"]);
+    runs.push(vec![
+        "--root",
+        root,
+        "--anchor",
+        "src/pages/DatePage.tsx",
+        "--base",
+        "no-such-revision",
+    ]);
     runs.push(vec!["--help"]);
     runs.push(vec!["-h"]);
     runs.push(vec!["--version"]);
@@ -445,5 +453,64 @@ fn unreadable_config_is_reported_rather_than_ignored() {
     assert!(
         said.contains("inline-requires"),
         "the message names the setting: {said}"
+    );
+}
+
+/// A revision git cannot find is no answer. Read as one that holds none of the
+/// files, it would have every changed config taken as one the change added, and the
+/// imports that config governs not taken as moved: here the page would be found
+/// not affected.
+#[test]
+fn a_base_revision_git_cannot_find_is_no_answer() {
+    let fixture = fixture("tsconfig-extends-missing-file");
+    let (_keep, repo) = repository(&fixture);
+    let root = repo.to_str().expect("a root named in UTF-8");
+    let run = [
+        "--root",
+        root,
+        "--anchor",
+        "src/page.ts",
+        "--changed",
+        "tsconfig.json",
+        "--base",
+        "nosuchrev",
+    ];
+    for extra in [&[][..], &["--json"]] {
+        let (code, stdout, stderr) = spawn(&[&run[..], extra].concat());
+        assert_eq!(code, 2, "{extra:?}: {stdout}{stderr}");
+        assert_eq!(stdout, "", "{extra:?}");
+        assert!(
+            stderr.starts_with("Error: ") && stderr.contains("nosuchrev"),
+            "{extra:?}: the message names the revision: {stderr}"
+        );
+    }
+}
+
+/// Outside a repository no revision can be read, so a `--base` run there has no
+/// answer either.
+#[test]
+fn a_base_revision_outside_a_repository_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = dunce::canonicalize(temp.path()).expect("canonical temp dir");
+    setup_test_project(&root);
+
+    // Git looks for a repository no higher than the temporary directory, so none
+    // that encloses it takes part.
+    let output = Command::new(BINARY)
+        .env("GIT_CEILING_DIRECTORIES", root.parent().expect("a parent"))
+        .env_remove("GIT_DIR")
+        .arg("--root")
+        .arg(&root)
+        .args(["--anchor", "src/pages/CheckoutPage.tsx"])
+        .args(["--changed", "src/components/Button.tsx"])
+        .args(["--base", "HEAD"])
+        .output()
+        .expect("running fallout");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    assert!(
+        stderr.contains("HEAD"),
+        "the message names the revision: {stderr}"
     );
 }

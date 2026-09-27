@@ -7,9 +7,10 @@
 //!
 //! A run reads the earlier version through [`Earlier`], so that what it does with
 //! one does not depend on where it came from. A run is given one as a `--base`
-//! revision, read from git by [`Base`]. A file with no earlier version — one that is
-//! new, or a revision git does not know — simply has none, and the caller falls back
-//! to the diff.
+//! revision, read from git by [`Base`]. A file with no earlier version, one that is
+//! new, simply has none, and the caller falls back to the diff. A revision git does
+//! not know would have none for any file, so a run refuses it before it begins: see
+//! [`Base::resolve`].
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -66,6 +67,32 @@ impl Earlier for Base {
 }
 
 impl Base {
+    /// The revision as the commit git finds by it from `root`, or from the nearest
+    /// directory above it that is there, as [`Earlier::text`] asks for each file.
+    ///
+    /// A revision git cannot find has no version of any file, and [`Earlier::text`]
+    /// cannot tell that apart from a file the change added. A run has to resolve it
+    /// first, and give no answer when this is `None`. Git that cannot be run, and a
+    /// root outside any repository, find nothing either.
+    pub fn resolve(reference: &str, root: &Path) -> Option<Self> {
+        let directory = root.ancestors().find(|directory| directory.is_dir())?;
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(["rev-parse", "--verify", "--quiet"])
+            .arg(format!("{reference}^{{commit}}"))
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        // Every file is read from the commit itself, not through the revision's name,
+        // so that a ref moving during the run, as a fetch moves `origin/main`, cannot
+        // give one run the files of two commits.
+        let commit = String::from_utf8(output.stdout).ok()?;
+        Some(Self::new(commit.trim()))
+    }
+
     fn read(&self, path: &Path) -> Option<String> {
         // Naming the file relative to its own directory saves working out where the
         // repository root is, and works the same from a worktree or a subdirectory.
@@ -307,5 +334,45 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A revision git cannot find answers `None` for every file, which reads as a
+    /// tree the change added whole. So a run is not given one: it asks first whether
+    /// git finds a commit by that name from where the run is rooted.
+    #[test]
+    fn a_revision_is_known_only_when_git_finds_a_commit_by_it() {
+        let (_keep, repo) = repository(
+            &[("src/page.ts", b"export const page = 1;\n")],
+            &[("src/page.ts", b"export const page = 2;\n")],
+        );
+        let known = |reference: &str, root: &Path| Base::resolve(reference, root).is_some();
+
+        assert!(known("HEAD", &repo));
+        assert!(known("HEAD", &repo.join("src")), "from a subdirectory");
+        assert!(
+            known("HEAD", &repo.join("src/gone/deeper")),
+            "from a root that is not there, by the nearest directory that is"
+        );
+        assert!(!known("nosuchrev", &repo));
+        assert!(!known("HEAD^{tree}", &repo), "a tree is not a commit");
+    }
+
+    /// A ref can move while a run reads through it, as a fetch moves `origin/main`.
+    /// Every file is read from the commit the ref named when the run began.
+    #[test]
+    fn a_resolved_revision_keeps_reading_the_commit_it_named() {
+        let (_keep, repo) = repository(
+            &[("src/page.ts", b"export const page = 1;\n")],
+            &[("src/page.ts", b"export const page = 2;\n")],
+        );
+        let base = Base::resolve("HEAD", &repo).expect("HEAD names a commit");
+
+        git(&repo, &["add", "--all"]);
+        git(&repo, &["commit", "--quiet", "--message", "moved"]);
+
+        assert_eq!(
+            base.text(&repo.join("src/page.ts")).as_deref(),
+            Some("export const page = 1;\n")
+        );
     }
 }
