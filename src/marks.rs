@@ -19,9 +19,7 @@ use crate::change::{Change, Extent};
 use crate::diff::LineRange;
 use crate::graph::{FileId, Fine, Graph, Node, View};
 use crate::module::compare::Comparison;
-use crate::module::{
-    Decl, DeclId, Export, ExportTarget, FineModule, LineTable, ModuleAnalysis, SourceId, Span,
-};
+use crate::module::{Decl, DeclId, Export, ExportTarget, FineModule, LineTable, SourceId, Span};
 
 /// What the change marks in one graph.
 ///
@@ -399,13 +397,6 @@ fn mark_sources(graph: &Graph, fine: &Fine, sources: &[SourceId], out: &mut AHas
     }
 }
 
-/// Whether a file's analysis can support declaration-level marks at all.
-pub fn is_fine(graph: &Graph, file: FileId) -> bool {
-    graph
-        .analysis(file)
-        .is_some_and(|a| matches!(a.analysis, ModuleAnalysis::Fine(_)))
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -447,6 +438,86 @@ mod tests {
         let other = graph.file_id(&root.join("other.ts"));
         for node in nodes_of(&graph, other) {
             assert!(!marks.is_marked(&graph, node), "{node:?}");
+        }
+    }
+
+    /// Marking one file reads only the graph, never what marking another wrote, so
+    /// the order the change lists its files in cannot matter.
+    #[test]
+    fn marks_come_out_the_same_whatever_order_the_extents_are_in() {
+        let slice = |kind: &str| {
+            format!(
+                "import {{ createAsyncThunk }} from './store';\n\
+                 export const t = createAsyncThunk('{kind}', async () => 1);\n"
+            )
+        };
+        let (_dir, root) = tree(&[
+            (
+                "lib.ts",
+                "export const renamed = 1;\nexport const kept = 2;\n",
+            ),
+            (
+                "store.ts",
+                "export * from './lib';\nexport * from './redux';\n",
+            ),
+            (
+                "redux.ts",
+                "import { createAsyncThunk as base } from '@reduxjs/toolkit';\n\
+                 export const createAsyncThunk = base.withTypes<{ state: unknown }>();\n",
+            ),
+            ("slice.ts", &slice("a/now")),
+            ("page.ts", "export const p = 1;\n"),
+            ("util.ts", "export const a = 1;\n\nexport const b = 2;\n"),
+        ]);
+        let earlier: AHashMap<PathBuf, String> = [
+            (
+                root.join("lib.ts"),
+                "export const original = 1;\nexport const kept = 2;\n".to_string(),
+            ),
+            (root.join("slice.ts"), slice("a/then")),
+        ]
+        .into_iter()
+        .collect();
+        let change = Change::read(
+            &root,
+            ChangeSet {
+                files: vec![crate::diff::ChangedFile {
+                    path: PathBuf::from("util.ts"),
+                    change: crate::diff::FileChange::Modified {
+                        ranges: vec![LineRange { start: 3, len: 1 }],
+                    },
+                }],
+                ..Default::default()
+            },
+            &[
+                PathBuf::from("lib.ts"),
+                PathBuf::from("slice.ts"),
+                PathBuf::from("page.ts"),
+            ],
+            Some(Box::new(earlier)),
+            reading(&root),
+        );
+        let extents: Vec<(&Path, &Extent)> = change.extents().collect();
+        assert_eq!(extents.len(), 4);
+
+        // A graph of its own for each order, so that nothing one order analysed
+        // is there for the next to find.
+        let marks = |order: &[usize]| -> Vec<String> {
+            let graph = graph_of(&root, &change);
+            let marked = marked_nodes(&graph, order.iter().map(|&index| extents[index]));
+            let mut rendered: Vec<String> = marked
+                .into_iter()
+                .map(|node| graph.render(node, &root))
+                .collect();
+            rendered.sort();
+            rendered
+        };
+        let expected = marks(&[0, 1, 2, 3]);
+        assert!(expected.contains(&"Export(lib.ts, original)".to_string()));
+        assert!(expected.contains(&"Member(slice.ts, t.pending)".to_string()));
+        assert!(expected.contains(&"File(page.ts)".to_string()));
+        for order in [[3, 2, 1, 0], [1, 3, 0, 2], [2, 0, 3, 1]] {
+            assert_eq!(marks(&order), expected, "{order:?}");
         }
     }
 
