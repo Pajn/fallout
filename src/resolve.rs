@@ -1,7 +1,12 @@
 //! Module resolution: an `oxc_resolver` with a memoised specifier cache.
 //!
-//! Two resolvers, because a stylesheet is not resolved the way a module is. Sass has
-//! its own rules — see [`Resolver::resolve`] — and running them through the
+//! The rules live in [`Tree`], which resolves over one file system: the disk as it
+//! is, or the tree as it was before the change. [`Resolver`] resolves the way a run
+//! does over the first, which adds the nodes for changed packages, the specifier
+//! cache and the report of what could not be placed.
+//!
+//! Two kinds of resolver, because a stylesheet is not resolved the way a module is.
+//! Sass has its own rules — see [`resolve_style`] — and running them through the
 //! JavaScript resolver would find nothing.
 //!
 //! One of each per set of aliases in use. An alias belongs to the file that writes
@@ -14,15 +19,11 @@ use std::sync::{Arc, RwLock};
 
 use ahash::AHashMap;
 use oxc_resolver::{
-    FileSystem, PackageJson, Resolution, ResolveError, ResolveOptions, Resolver as OxcResolver,
-    ResolverGeneric, SideEffects as Declared, TsconfigDiscovery,
+    FileSystem, FileSystemOs, PackageJson, Resolution, ResolveError, ResolveOptions,
+    Resolver as OxcResolver, ResolverGeneric, SideEffects as Declared, TsConfig, TsconfigDiscovery,
 };
 
 use crate::config::{Chain, Configs, Lookup};
-
-/// A resolver over the tree as it was before the change.
-type BeforeResolver = ResolverGeneric<crate::repoint::BeforeFs>;
-
 use crate::module::is_style_file;
 
 /// Modules Sass ships with.
@@ -149,6 +150,193 @@ pub enum SideEffects {
     None,
 }
 
+/// What looking for a specifier in one tree came to.
+pub enum Found {
+    /// A file, with the resolution that found it and the `package.json` it read.
+    File(Resolution),
+    /// A name that names no file by design, such as a Node builtin or a `sass:`
+    /// module: an answer, not a failure.
+    NoFile,
+    /// Nothing, where something was asked for.
+    NotFound,
+}
+
+impl Found {
+    /// The file found, if one was.
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Found::File(resolution) => Some(resolution.path()),
+            Found::NoFile | Found::NotFound => None,
+        }
+    }
+}
+
+/// Which rules a resolver follows: a module's, or a stylesheet's.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum Dialect {
+    Module,
+    Style,
+}
+
+/// Resolution over one file system.
+///
+/// This is the one place the rules are, so that the tree before a change is asked
+/// exactly what the tree now is: the same options, the same Sass rules, the same
+/// handling of inline loaders. It answers only what is on the file system it looks
+/// at. Standing a changed package in for its files, remembering answers and noting
+/// what could not be placed are the [`Resolver`]'s, and a comparison between two
+/// trees wants none of them.
+pub struct Tree<Fs> {
+    /// What each file's own directory chain declares. See [`crate::config`].
+    configs: Arc<Configs>,
+    /// Which `exports` conditions and entry fields the app's bundler reads.
+    lookup: Lookup,
+    fs: Fs,
+    /// One resolver per dialect and set of aliases, keyed by the config directories
+    /// that produced the aliases, which is the identity of the answer.
+    resolvers: RwLock<Resolvers<Fs>>,
+}
+
+/// Resolvers by dialect and by the config directories that produced their aliases.
+type Resolvers<Fs> = AHashMap<(Dialect, Vec<PathBuf>), Arc<ResolverGeneric<Fs>>>;
+
+impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
+    pub fn new(configs: Arc<Configs>, lookup: Lookup, fs: Fs) -> Self {
+        Self {
+            configs,
+            lookup,
+            fs,
+            resolvers: RwLock::new(AHashMap::default()),
+        }
+    }
+
+    /// The file system this tree looks at.
+    pub fn fs(&self) -> &Fs {
+        &self.fs
+    }
+
+    /// How `specifier` resolves from `from_file` in this tree.
+    pub fn find(&self, from_file: &Path, specifier: &str) -> Found {
+        let chain = self.configs.chain(from_file);
+        if is_style_file(from_file) {
+            let resolver = self.resolver(Dialect::Style, &chain);
+            return match resolve_style(&resolver, from_file, specifier) {
+                Some(resolution) => Found::File(resolution),
+                None if SASS_BUILTINS.contains(&specifier) => Found::NoFile,
+                None => Found::NotFound,
+            };
+        }
+        let resolver = self.resolver(Dialect::Module, &chain);
+        let mut attempt = resolver.resolve_file(from_file, specifier);
+        if attempt.is_err()
+            && let Some(request) = strip_inline_loaders(specifier)
+        {
+            attempt = resolver.resolve_file(from_file, request);
+        }
+        match attempt {
+            Ok(resolution) => Found::File(resolution),
+            Err(ResolveError::Builtin { .. }) => Found::NoFile,
+            Err(_) => Found::NotFound,
+        }
+    }
+
+    /// The tsconfig that governs `file` in this tree, found the way resolving an
+    /// import written in it finds it. An error for a tsconfig that cannot be parsed,
+    /// or that names a config through `extends` that is not there.
+    pub fn tsconfig_for(&self, file: &Path) -> Result<Option<Arc<TsConfig>>, ResolveError> {
+        self.resolver(Dialect::Module, &self.configs.chain(file))
+            .find_tsconfig(file)
+    }
+
+    /// The resolver for one dialect and chain of config directories, built on first
+    /// use.
+    fn resolver(&self, dialect: Dialect, chain: &Chain) -> Arc<ResolverGeneric<Fs>> {
+        let key = (dialect, chain.dirs().to_vec());
+        if let Some(cached) = self.resolvers.read().unwrap().get(&key) {
+            return cached.clone();
+        }
+        let resolver = Arc::new(ResolverGeneric::new_with_file_system(
+            self.fs.clone(),
+            self.options(dialect, chain),
+        ));
+        self.resolvers
+            .write()
+            .unwrap()
+            .insert(key, resolver.clone());
+        resolver
+    }
+
+    fn options(&self, dialect: Dialect, chain: &Chain) -> ResolveOptions {
+        match dialect {
+            Dialect::Module => ResolveOptions {
+                extensions: vec![
+                    ".tsx".to_string(),
+                    ".ts".to_string(),
+                    ".cts".to_string(),
+                    ".mts".to_string(),
+                    ".jsx".to_string(),
+                    ".js".to_string(),
+                    ".mjs".to_string(),
+                    ".cjs".to_string(),
+                    ".json".to_string(),
+                ],
+                tsconfig: Some(TsconfigDiscovery::Auto),
+                alias: chain.aliases().clone(),
+                condition_names: self.lookup.conditions.clone(),
+                main_fields: self.lookup.main_fields.clone(),
+                // So that `fs` and `node:fs` come back as themselves rather than as a
+                // package nobody installed. They name no file, and saying so is what
+                // keeps them out of the unresolved report.
+                builtin_modules: true,
+                // TypeScript makes a module specifier name the file the compiler will
+                // emit, not the file on disk, so `./helper.js` is how a `.ts` file
+                // next door is spelled — and `"#app/*": "./app/*.js"` is how a whole
+                // package spells its own internals. Without this each of those
+                // resolves to nothing, which is an edge lost in silence rather than an
+                // error.
+                //
+                // Each list has to end in the extension it came from. The lookup
+                // replaces the normal one rather than adding to it, and refuses the
+                // file outright when nothing in the list is there, so leaving `.js`
+                // out would stop a real `.js` file from resolving at all.
+                extension_alias: vec![
+                    (
+                        ".js".to_string(),
+                        vec![".ts".to_string(), ".tsx".to_string(), ".js".to_string()],
+                    ),
+                    (
+                        ".jsx".to_string(),
+                        vec![".tsx".to_string(), ".jsx".to_string()],
+                    ),
+                    (
+                        ".cjs".to_string(),
+                        vec![".cts".to_string(), ".cjs".to_string()],
+                    ),
+                    (
+                        ".mjs".to_string(),
+                        vec![".mts".to_string(), ".mjs".to_string()],
+                    ),
+                ],
+                ..ResolveOptions::default()
+            },
+            // Sass looks for `_name.scss` beside `name.scss`, takes `_index.scss` for
+            // a directory, and tries the importing file's own directory before
+            // anything else — so a bare `@use "mixins"` is usually a sibling rather
+            // than a package. The `exports` field is left out because Sass tooling
+            // resolves a subpath by path, and honouring it would refuse targets that
+            // do resolve.
+            Dialect::Style => ResolveOptions {
+                extensions: vec![".scss".to_string(), ".css".to_string()],
+                main_files: vec!["_index".to_string(), "index".to_string()],
+                exports_fields: Vec::new(),
+                prefer_relative: true,
+                alias: chain.style_aliases().clone(),
+                ..ResolveOptions::default()
+            },
+        }
+    }
+}
+
 /// Resolves import specifiers to absolute paths, caching every answer
 /// (including failures) per `(importing file, specifier)` pair.
 pub struct Resolver {
@@ -157,14 +345,10 @@ pub struct Resolver {
     /// Specifiers this run could not place. Shared, because a run builds more than
     /// one resolver and the report is about the run.
     unresolved: Arc<Unresolved>,
-    /// One resolver per set of aliases, keyed by the config directories that produced
-    /// them, which is the identity of the answer.
-    modules: RwLock<AHashMap<Vec<PathBuf>, Arc<OxcResolver>>>,
-    /// The same, tuned for Sass.
-    style: RwLock<AHashMap<Vec<PathBuf>, Arc<OxcResolver>>>,
-    /// Both again, over the tree as it was before the change. See [`crate::repoint`].
-    before_modules: RwLock<AHashMap<Vec<PathBuf>, Arc<BeforeResolver>>>,
-    before_style: RwLock<AHashMap<Vec<PathBuf>, Arc<BeforeResolver>>>,
+    /// The tree as it is.
+    now: Arc<Tree<FileSystemOs>>,
+    /// The tree as it was before the change. See [`crate::repoint`].
+    before: Tree<crate::repoint::BeforeFs>,
     cache: RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>,
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
     /// while the resolution that found its `package.json` is still in hand.
@@ -177,9 +361,6 @@ pub struct Resolver {
     repointing: Arc<crate::repoint::Repointing>,
     /// The configuration files each tsconfig reads, itself first.
     tsconfig_reads: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
-    /// Which `exports` conditions and entry fields the app's bundler reads. One per
-    /// resolver: anchors whose bundlers differ get resolvers of their own.
-    lookup: Lookup,
     /// The names of the repository's own packages, read when first asked.
     workspace: std::sync::OnceLock<ahash::AHashSet<String>>,
     /// Finds the config a package `extends` entry names, built on first use.
@@ -197,6 +378,8 @@ pub struct Resolver {
 impl Resolver {
     /// `configs` is what the project declared about itself, which is the only place a
     /// stylesheet name that is not a path can come from. See [`crate::config`].
+    /// `lookup` is which `exports` conditions and entry fields the app's bundler
+    /// reads: anchors whose bundlers differ get resolvers of their own.
     pub fn new(
         configs: Arc<Configs>,
         unresolved: Arc<Unresolved>,
@@ -205,135 +388,28 @@ impl Resolver {
         repointing: Arc<crate::repoint::Repointing>,
         lookup: Lookup,
     ) -> Self {
+        let now = Arc::new(Tree::new(
+            configs.clone(),
+            lookup.clone(),
+            FileSystemOs::new(),
+        ));
+        let before = Tree::new(configs.clone(), lookup, repointing.file_system());
         Self {
             configs,
             unresolved,
+            now,
+            before,
             root,
             packages,
             repointing,
             tsconfig_reads: RwLock::new(AHashMap::default()),
-            lookup,
             workspace: std::sync::OnceLock::new(),
             extends: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
             repoints: RwLock::new(AHashMap::default()),
-            modules: RwLock::new(AHashMap::default()),
-            style: RwLock::new(AHashMap::default()),
-            before_modules: RwLock::new(AHashMap::default()),
-            before_style: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
             side_effects: RwLock::new(AHashMap::default()),
         }
-    }
-
-    /// The resolver for one chain of config directories, built on first use.
-    fn module_resolver(&self, chain: &Chain) -> Arc<OxcResolver> {
-        let key = chain.dirs().to_vec();
-        if let Some(cached) = self.modules.read().unwrap().get(&key) {
-            return cached.clone();
-        }
-        let resolver = Arc::new(OxcResolver::new(self.module_options(chain)));
-        self.modules.write().unwrap().insert(key, resolver.clone());
-        resolver
-    }
-
-    /// The same over the tree before the change.
-    fn before_module_resolver(&self, chain: &Chain) -> Arc<BeforeResolver> {
-        let key = chain.dirs().to_vec();
-        if let Some(cached) = self.before_modules.read().unwrap().get(&key) {
-            return cached.clone();
-        }
-        let resolver = Arc::new(BeforeResolver::new_with_file_system(
-            self.repointing.file_system(),
-            self.module_options(chain),
-        ));
-        self.before_modules
-            .write()
-            .unwrap()
-            .insert(key, resolver.clone());
-        resolver
-    }
-
-    fn module_options(&self, chain: &Chain) -> ResolveOptions {
-        ResolveOptions {
-            extensions: vec![
-                ".tsx".to_string(),
-                ".ts".to_string(),
-                ".cts".to_string(),
-                ".mts".to_string(),
-                ".jsx".to_string(),
-                ".js".to_string(),
-                ".mjs".to_string(),
-                ".cjs".to_string(),
-                ".json".to_string(),
-            ],
-            tsconfig: Some(TsconfigDiscovery::Auto),
-            alias: chain.aliases().clone(),
-            condition_names: self.lookup.conditions.clone(),
-            main_fields: self.lookup.main_fields.clone(),
-            // So that `fs` and `node:fs` come back as themselves rather than as a
-            // package nobody installed. They name no file, and saying so is what
-            // keeps them out of the unresolved report.
-            builtin_modules: true,
-            // TypeScript makes a module specifier name the file the compiler will
-            // emit, not the file on disk, so `./helper.js` is how a `.ts` file next
-            // door is spelled — and `"#app/*": "./app/*.js"` is how a whole package
-            // spells its own internals. Without this each of those resolves to
-            // nothing, which is an edge lost in silence rather than an error.
-            //
-            // Each list has to end in the extension it came from. The lookup replaces
-            // the normal one rather than adding to it, and refuses the file outright
-            // when nothing in the list is there, so leaving `.js` out would stop a
-            // real `.js` file from resolving at all.
-            extension_alias: vec![
-                (
-                    ".js".to_string(),
-                    vec![".ts".to_string(), ".tsx".to_string(), ".js".to_string()],
-                ),
-                (
-                    ".jsx".to_string(),
-                    vec![".tsx".to_string(), ".jsx".to_string()],
-                ),
-                (
-                    ".cjs".to_string(),
-                    vec![".cts".to_string(), ".cjs".to_string()],
-                ),
-                (
-                    ".mjs".to_string(),
-                    vec![".mts".to_string(), ".mjs".to_string()],
-                ),
-            ],
-            ..ResolveOptions::default()
-        }
-    }
-
-    /// The Sass resolver for one chain of config directories, built on first use.
-    /// See [`style_options`].
-    fn style_resolver(&self, chain: &Chain) -> Arc<OxcResolver> {
-        let key = chain.dirs().to_vec();
-        if let Some(cached) = self.style.read().unwrap().get(&key) {
-            return cached.clone();
-        }
-        let resolver = Arc::new(OxcResolver::new(style_options(chain)));
-        self.style.write().unwrap().insert(key, resolver.clone());
-        resolver
-    }
-
-    /// The same over the tree before the change.
-    fn before_style_resolver(&self, chain: &Chain) -> Arc<BeforeResolver> {
-        let key = chain.dirs().to_vec();
-        if let Some(cached) = self.before_style.read().unwrap().get(&key) {
-            return cached.clone();
-        }
-        let resolver = Arc::new(BeforeResolver::new_with_file_system(
-            self.repointing.file_system(),
-            style_options(chain),
-        ));
-        self.before_style
-            .write()
-            .unwrap()
-            .insert(key, resolver.clone());
-        resolver
     }
 
     /// Whether `file` imports something the change may have moved, worked out by
@@ -403,8 +479,8 @@ impl Resolver {
             return UnresolvedKind::Package;
         }
         let mapped = self
-            .module_resolver(&chain)
-            .find_tsconfig(from_file)
+            .now
+            .tsconfig_for(from_file)
             .ok()
             .flatten()
             .is_some_and(|tsconfig| {
@@ -475,32 +551,23 @@ impl Resolver {
             return Some(path);
         }
 
-        // Whether the specifier names no file *by design*, which is a different thing
-        // from one this run could not find and is not worth reporting as a failure.
-        let chain = self.configs.chain(from_file);
-        let found = find(
-            || self.module_resolver(&chain),
-            || self.style_resolver(&chain),
-            from_file,
-            specifier,
-        );
-        let (resolution, names_no_file) = match found {
-            Ok(resolution) => (Some(resolution), false),
-            Err(names_no_file) => (None, names_no_file),
+        let result = match self.now.find(from_file, specifier) {
+            Found::File(resolution) => {
+                let path = resolution.path().to_path_buf();
+                self.side_effects
+                    .write()
+                    .unwrap()
+                    .insert(path.clone(), declared_side_effects(&resolution));
+                Some(path)
+            }
+            // A specifier that names no file *by design* is a different thing from
+            // one this run could not find, and is not worth reporting as a failure.
+            Found::NoFile => None,
+            Found::NotFound => {
+                self.unresolved.note(from_file, specifier);
+                None
+            }
         };
-
-        let result = resolution.map(|resolution| {
-            let path = resolution.path().to_path_buf();
-            self.side_effects
-                .write()
-                .unwrap()
-                .insert(path.clone(), declared_side_effects(&resolution));
-            path
-        });
-
-        if result.is_none() && !names_no_file {
-            self.unresolved.note(from_file, specifier);
-        }
         self.cache
             .write()
             .unwrap()
@@ -523,26 +590,12 @@ impl Resolver {
         if !self.repointing.has_before() {
             return Vec::new();
         }
-        let chain = self.configs.chain(from_file);
-        let path =
-            |found: Result<Resolution, bool>| found.ok().map(|found| found.path().to_path_buf());
         specifiers
             .iter()
             .enumerate()
             .filter(|(_, specifier)| {
-                let now = find(
-                    || self.module_resolver(&chain),
-                    || self.style_resolver(&chain),
-                    from_file,
-                    specifier,
-                );
-                let then = find(
-                    || self.before_module_resolver(&chain),
-                    || self.before_style_resolver(&chain),
-                    from_file,
-                    specifier,
-                );
-                path(now) != path(then)
+                self.now.find(from_file, specifier).path()
+                    != self.before.find(from_file, specifier).path()
             })
             .map(|(index, _)| index)
             .collect()
@@ -564,10 +617,7 @@ impl Resolver {
             return false;
         }
         let mut reads: Vec<PathBuf> = Vec::new();
-        match self
-            .module_resolver(&self.configs.chain(file))
-            .find_tsconfig(file)
-        {
+        match self.now.tsconfig_for(file) {
             Ok(Some(tsconfig)) => {
                 reads.extend(self.tsconfig_reads(tsconfig.path()).iter().cloned())
             }
@@ -710,30 +760,6 @@ impl Resolver {
     }
 }
 
-/// How `specifier` resolves from `from_file`, with the resolvers `module` and
-/// `style` give: the one place the rules are, so that the tree before a change is
-/// asked exactly what the tree now is. `Err(true)` for a specifier that names no
-/// file by design, such as a Node builtin.
-fn find<Fs: FileSystem>(
-    module: impl FnOnce() -> Arc<ResolverGeneric<Fs>>,
-    style: impl FnOnce() -> Arc<ResolverGeneric<Fs>>,
-    from_file: &Path,
-    specifier: &str,
-) -> Result<Resolution, bool> {
-    if is_style_file(from_file) {
-        return resolve_style(&style(), from_file, specifier)
-            .ok_or(SASS_BUILTINS.contains(&specifier));
-    }
-    let resolver = module();
-    let mut attempt = resolver.resolve_file(from_file, specifier);
-    if attempt.is_err()
-        && let Some(request) = strip_inline_loaders(specifier)
-    {
-        attempt = resolver.resolve_file(from_file, request);
-    }
-    attempt.map_err(|error| matches!(error, ResolveError::Builtin { .. }))
-}
-
 /// Resolves `specifier` the way Sass would.
 ///
 /// Beyond what the tuned resolver already does, two rules are applied here
@@ -764,24 +790,6 @@ fn resolve_style<Fs: FileSystem>(
     std::iter::once(request.to_string())
         .chain(partial)
         .find_map(|candidate| resolver.resolve_file(from_file, &candidate).ok())
-}
-
-/// How a stylesheet's imports are looked for.
-///
-/// Sass looks for `_name.scss` beside `name.scss`, takes `_index.scss` for a
-/// directory, and tries the importing file's own directory before anything else —
-/// so a bare `@use "mixins"` is usually a sibling rather than a package. The
-/// `exports` field is left out because Sass tooling resolves a subpath by path,
-/// and honouring it would refuse targets that do resolve.
-fn style_options(chain: &Chain) -> ResolveOptions {
-    ResolveOptions {
-        extensions: vec![".scss".to_string(), ".css".to_string()],
-        main_files: vec!["_index".to_string(), "index".to_string()],
-        exports_fields: Vec::new(),
-        prefer_relative: true,
-        alias: chain.style_aliases().clone(),
-        ..ResolveOptions::default()
-    }
 }
 
 fn declared_side_effects(resolution: &Resolution) -> SideEffects {

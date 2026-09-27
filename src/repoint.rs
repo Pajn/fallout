@@ -171,6 +171,7 @@ fn is_config(path: &Path) -> bool {
 }
 
 /// The tree before the change, for a resolver to look at.
+#[derive(Clone)]
 pub struct BeforeFs {
     before: Arc<Before>,
     os: FileSystemOs,
