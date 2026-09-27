@@ -62,7 +62,8 @@ pub struct Analysed {
 }
 
 pub struct Graph {
-    resolver: Resolver,
+    /// Shared with the file graph the upstream search walks. See [`Graph::file_graph`].
+    resolver: std::sync::Arc<Resolver>,
     reading: Reading,
     /// Whether this run may treat an import as deferred to its first use.
     ///
@@ -96,14 +97,14 @@ impl Graph {
         repointing: std::sync::Arc<crate::repoint::Repointing>,
     ) -> Self {
         Self {
-            resolver: Resolver::new(
+            resolver: std::sync::Arc::new(Resolver::new(
                 reading.configs.clone(),
                 unresolved,
                 root,
                 packages,
                 repointing,
                 bundler.lookup,
-            ),
+            )),
             reading,
             inline_requires: bundler.inline_requires,
             paths: RefCell::new(Vec::new()),
@@ -217,6 +218,12 @@ impl Graph {
     /// resolver would start with an empty cache to prove it.
     pub fn resolver(&self) -> &Resolver {
         &self.resolver
+    }
+
+    /// The imports file by file, over this graph's resolver, for the searches that
+    /// stay at file granularity. They share its answers for the same reason.
+    pub fn file_graph(&self) -> crate::query::FileGraph {
+        crate::query::FileGraph::new(self.resolver.clone())
     }
 
     /// Analyses `file` if it has not been looked at yet. `None` for leaves.

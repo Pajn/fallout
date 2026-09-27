@@ -367,10 +367,6 @@ pub struct Resolver {
     packages: Arc<crate::lockfile::Changed>,
     /// The names of the repository's own packages, read when first asked.
     workspace: std::sync::OnceLock<ahash::AHashSet<String>>,
-    /// What each file imports, resolved, for the searches that walk file by file.
-    /// Several anchors' searches walk the same files, and reading one means parsing
-    /// it.
-    imports: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
 }
 
 impl Resolver {
@@ -400,7 +396,6 @@ impl Resolver {
             root,
             packages,
             workspace: std::sync::OnceLock::new(),
-            imports: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
             side_effects: RwLock::new(AHashMap::default()),
         }
@@ -418,19 +413,6 @@ impl Resolver {
         specifiers: impl FnOnce() -> S,
     ) -> Arc<[usize]> {
         self.moved.moved(file, specifiers)
-    }
-
-    /// The files `file` imports, worked out by `read` the first time it is asked.
-    pub fn imports_of(&self, file: &Path, read: impl FnOnce() -> Vec<PathBuf>) -> Arc<[PathBuf]> {
-        if let Some(known) = self.imports.read().unwrap().get(file) {
-            return known.clone();
-        }
-        let imports: Arc<[PathBuf]> = read().into();
-        self.imports
-            .write()
-            .unwrap()
-            .insert(file.to_path_buf(), imports.clone());
-        imports
     }
 
     /// The specifiers this resolver could not place.
