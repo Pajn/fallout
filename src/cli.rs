@@ -5,16 +5,35 @@
 //! a `fallout.toml` that cannot be read. With `--json` it says only whether there
 //! was an answer, since the answers are in the output: 0 or 2.
 
-use std::io::Read;
+use std::ffi::OsString;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser as ClapParser;
 
+use crate::base::Earlier;
 use crate::query::{Direction, Hit};
-use crate::{
-    AnchorOutcome, Granularity, Options, Outcome, Verdict, analyse, analyse_each, canonical_root,
-};
+use crate::{AnchorOutcome, Granularity, Options, Outcome, Verdict, analysed, analysed_each};
+
+/// Writes a line where standard output would have it, the way `println!` does: a
+/// stream that cannot be written to stops the run as it would stop `println!`.
+macro_rules! say {
+    ($out:expr, $($format:tt)*) => {
+        if let Err(error) = writeln!($out, $($format)*) {
+            panic!("failed printing to stdout: {}", error);
+        }
+    };
+}
+
+/// The same for standard error, as `eprintln!` does.
+macro_rules! say_error {
+    ($err:expr, $($format:tt)*) => {
+        if let Err(error) = writeln!($err, $($format)*) {
+            panic!("failed printing to stderr: {}", error);
+        }
+    };
+}
 
 #[derive(ClapParser)]
 #[command(about = "Decide whether a change can reach a page, by walking the import graph")]
@@ -77,63 +96,125 @@ pub struct Cli {
     pub json: bool,
 }
 
+/// Exit code 0: affected.
+const AFFECTED: u8 = 0;
+/// Exit code 0 with `--json`: answered, whatever the answers are.
+const ANSWERED: u8 = 0;
+/// Exit code 1: not affected.
+const NOT_AFFECTED: u8 = 1;
 /// Exit code 2: no answer.
-fn failure() -> ExitCode {
-    ExitCode::from(2)
+const NO_ANSWER: u8 = 2;
+
+/// The command line, run in this process: parses `args`, the program's name first,
+/// reads the diff, analyses, writes what the binary would print to `out` and `err`,
+/// and returns the exit code the binary would end with.
+///
+/// Arguments clap turns away, and `--help`, end the run with clap's own text and
+/// exit code rather than ending the process. The text is plain, since neither
+/// stream here is known to be a terminal. `--diff -` reads this process's standard
+/// input.
+///
+/// `earlier` stands in for whatever `--base` names: when it is given, the versions
+/// of the files before the change are read from it and the revision is not read.
+/// Without it, a `--base` revision is read from git as usual.
+pub fn execute<I, T>(
+    args: I,
+    earlier: Option<Box<dyn Earlier>>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    match Cli::try_parse_from(args) {
+        Ok(cli) => answer(cli, earlier, out, err),
+        Err(error) => {
+            let stream: (&str, &mut dyn Write) = if error.use_stderr() {
+                ("stderr", err)
+            } else {
+                ("stdout", out)
+            };
+            if let Err(failure) = write!(stream.1, "{}", error.render()) {
+                panic!("failed printing to {}: {}", stream.0, failure);
+            }
+            // Clap's codes are 0 and 2, which it spells as `i32` for `exit`.
+            u8::try_from(error.exit_code()).unwrap_or(NO_ANSWER)
+        }
+    }
 }
 
+/// The binary's entry point: [`execute`] over the process's own arguments and
+/// streams.
+///
+/// Clap parses the arguments itself here and prints what it turns away the way it
+/// always has, colouring the text when it goes to a terminal that takes colour.
+/// [`execute`], which writes to streams it cannot ask, prints the same text plain.
 pub fn run() -> ExitCode {
     let cli = Cli::parse();
+    ExitCode::from(answer(
+        cli,
+        None,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    ))
+}
 
+/// Everything after parsing: the run, what it prints and the exit code it ends with.
+fn answer(
+    cli: Cli,
+    earlier: Option<Box<dyn Earlier>>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
     let diff = match cli.diff.as_deref().map(read_diff) {
         Some(Ok(text)) => Some(text),
         Some(Err(message)) => {
-            eprintln!("Error: {}", message);
-            return failure();
+            say_error!(err, "Error: {}", message);
+            return NO_ANSWER;
         }
         None => None,
     };
 
     let (explain, list_unresolved, json) = (cli.explain, cli.unresolved, cli.json);
-    let root = cli.root.unwrap_or_else(|| PathBuf::from("."));
     let options = Options {
         anchors: cli.anchor,
         changed: cli.changed,
         diff,
         base: cli.base,
-        root: root.clone(),
+        root: cli.root.unwrap_or_else(|| PathBuf::from(".")),
         only: cli.only,
         granularity: cli.granularity,
         include_types: cli.include_types,
     };
+    let earlier = earlier.or_else(|| crate::earlier(&options));
 
+    // Paths are displayed against the root the run itself measured from, so what is
+    // printed names exactly the files that were analysed.
     if json {
-        return match analyse_each(&options) {
-            Ok(answers) => {
-                println!(
-                    "{}",
-                    render_json(&answers, &canonical_root(&root), options.granularity)
-                );
-                ExitCode::SUCCESS
+        return match analysed_each(&options, earlier) {
+            Ok((answers, root)) => {
+                say!(out, "{}", render_json(&answers, &root, options.granularity));
+                ANSWERED
             }
             Err(error) => {
-                eprintln!("Error: {}", error);
-                failure()
+                say_error!(err, "Error: {}", error);
+                NO_ANSWER
             }
         };
     }
 
-    match analyse(&options) {
-        Ok(outcome) => {
-            let code = report(&outcome, explain, &root, options.granularity);
+    match analysed(&options, earlier) {
+        Ok((outcome, root)) => {
+            let code = report(out, &outcome, explain, &root, options.granularity);
             if list_unresolved {
-                print_unresolved(&outcome, &canonical_root(&root));
+                print_unresolved(out, &outcome, &root);
             }
             code
         }
         Err(error) => {
-            eprintln!("Error: {}", error);
-            failure()
+            say_error!(err, "Error: {}", error);
+            NO_ANSWER
         }
     }
 }
@@ -230,22 +311,29 @@ fn push_string(out: &mut String, text: &str) {
     out.push('"');
 }
 
-fn report(outcome: &Outcome, explain: bool, root: &Path, granularity: Granularity) -> ExitCode {
+/// Prints the verdict, and returns the exit code that says it.
+fn report(
+    out: &mut dyn Write,
+    outcome: &Outcome,
+    explain: bool,
+    root: &Path,
+    granularity: Granularity,
+) -> u8 {
     match &outcome.verdict {
         Verdict::Affected(hit) => {
-            let root = canonical_root(root);
-            println!(
+            say!(
+                out,
                 "Impact detected on target anchor via: {:?}",
-                display_path(hit.changed_file(), &root)
+                display_path(hit.changed_file(), root)
             );
             if explain {
-                print_explanation(hit, &root, granularity);
+                print_explanation(out, hit, root, granularity);
             }
-            ExitCode::SUCCESS
+            AFFECTED
         }
         Verdict::NotAffected => {
-            println!("No reachability impact detected");
-            ExitCode::FAILURE
+            say!(out, "No reachability impact detected");
+            NOT_AFFECTED
         }
     }
 }
@@ -255,21 +343,25 @@ fn report(outcome: &Outcome, explain: bool, root: &Path, granularity: Granularit
 /// Printed after the verdict and never instead of it. An unresolved specifier is not
 /// by itself a fault — a package nobody installed on this machine looks exactly the
 /// same — so this reports and does not judge.
-fn print_unresolved(outcome: &Outcome, root: &Path) {
+fn print_unresolved(out: &mut dyn Write, outcome: &Outcome, root: &Path) {
     if outcome.unresolved.is_empty() {
-        println!("\nEvery specifier this run reached resolved to a file.");
+        say!(
+            out,
+            "\nEvery specifier this run reached resolved to a file."
+        );
         return;
     }
     let writers: usize = outcome.unresolved.iter().map(|(_, from)| from.len()).sum();
-    println!(
+    say!(
+        out,
         "\nResolved to nothing: {} specifier(s), written in {} file(s).",
         outcome.unresolved.len(),
         writers
     );
     for (specifier, from) in &outcome.unresolved {
-        println!("  {specifier}");
+        say!(out, "  {specifier}");
         for file in from {
-            println!("    {}", display_path(file, root));
+            say!(out, "    {}", display_path(file, root));
         }
     }
 }
@@ -291,8 +383,9 @@ fn read_diff(path: &Path) -> Result<String, String> {
 ///
 /// Node names match the vocabulary in `docs/symbol-level-analysis.md`, so a path
 /// stays comparable as finer node kinds arrive.
-fn print_explanation(hit: &Hit, root: &Path, granularity: Granularity) {
-    println!(
+fn print_explanation(out: &mut dyn Write, hit: &Hit, root: &Path, granularity: Granularity) {
+    say!(
+        out,
         "Path ({}, {} granularity):",
         hit.direction.as_str(),
         granularity.as_str()
@@ -302,12 +395,12 @@ fn print_explanation(hit: &Hit, root: &Path, granularity: Granularity) {
     match &hit.rendered {
         Some(nodes) => {
             for node in nodes {
-                println!("  {}", node);
+                say!(out, "  {}", node);
             }
         }
         None => {
             for file in &hit.path {
-                println!("  File({})", display_path(file, root));
+                say!(out, "  File({})", display_path(file, root));
             }
         }
     }

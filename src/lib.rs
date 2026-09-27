@@ -144,7 +144,7 @@ pub fn analyse_with(
 }
 
 /// The earlier versions `options.base` names, read from git.
-fn earlier(options: &Options) -> Option<Box<dyn base::Earlier>> {
+pub(crate) fn earlier(options: &Options) -> Option<Box<dyn base::Earlier>> {
     options
         .base
         .as_deref()

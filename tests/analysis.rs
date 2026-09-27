@@ -7,7 +7,39 @@ use std::process::Command;
 
 use ahash::AHashMap;
 use fallout::base::Earlier;
-use fallout::{Granularity, Options, analyse, analyse_with};
+use fallout::{Granularity, Options, analyse, analyse_with, cli};
+
+/// What a run of the command line said: the exit code, then stdout and stderr.
+type Said = (i32, String, String);
+
+/// The command line run in this process.
+fn execute(args: &[&str], earlier: Option<Box<dyn Earlier>>) -> Said {
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = cli::execute(
+        std::iter::once("fallout").chain(args.iter().copied()),
+        earlier,
+        &mut out,
+        &mut err,
+    );
+    (
+        i32::from(code),
+        String::from_utf8(out).expect("text on stdout"),
+        String::from_utf8(err).expect("text on stderr"),
+    )
+}
+
+/// The command line run as its own process.
+fn spawn(args: &[&str]) -> Said {
+    let output = Command::new(env!("CARGO_BIN_EXE_fallout"))
+        .args(args)
+        .output()
+        .expect("running fallout");
+    (
+        output.status.code().expect("an exit code"),
+        String::from_utf8(output.stdout).expect("text on stdout"),
+        String::from_utf8(output.stderr).expect("text on stderr"),
+    )
+}
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -147,5 +179,45 @@ fn earlier_versions_in_memory_answer_as_a_base_revision_does() {
             without.verdict.is_affected(),
             "{anchor}: with no earlier versions every changed file is marked whole"
         );
+    }
+}
+
+/// The command line run in this process says what the binary says, byte for byte,
+/// and ends with the same exit code: verdicts, explanations, JSON, a run with no
+/// answer, and the ones clap turns away before any run begins.
+#[test]
+fn execute_says_what_the_binary_says() {
+    let fixture = fixture("renamed-export");
+    let root = fixture.join("after");
+    let root = root.to_str().expect("a root named in UTF-8");
+    let changed = changed(&fixture);
+    let changed: Vec<&str> = changed
+        .iter()
+        .map(|path| path.to_str().expect("a path named in UTF-8"))
+        .collect();
+
+    let mut runs: Vec<Vec<&str>> = Vec::new();
+    for anchor in ["src/pages/DatePage.tsx", "src/pages/LegacyPage.tsx"] {
+        for granularity in ["file", "symbol"] {
+            let mut run = vec!["--root", root, "--anchor", anchor];
+            run.extend(["--granularity", granularity]);
+            for path in &changed {
+                run.extend(["--changed", path]);
+            }
+            runs.push([run.as_slice(), &["--explain", "--unresolved"]].concat());
+            runs.push([run.as_slice(), &["--json"]].concat());
+        }
+    }
+    runs.push(vec!["--root", root, "--anchor", "src/pages/Nowhere.tsx"]);
+    runs.push(vec!["--root", root, "--anchor", "src/pages/DatePage.tsx"]);
+    runs.push(vec!["--root", root, "--diff", "no-such.diff"]);
+    runs.push(vec!["--help"]);
+    runs.push(vec!["-h"]);
+    runs.push(vec!["--version"]);
+    runs.push(vec!["--only", "sideways"]);
+    runs.push(vec!["--json", "--explain"]);
+
+    for run in runs {
+        assert_eq!(execute(&run, None), spawn(&run), "{run:?}");
     }
 }
