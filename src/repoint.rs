@@ -138,8 +138,12 @@ pub fn repointing(
         if deleted {
             // A file's contents matter to a resolver only when it reads the file,
             // which it does for JSON: a config, or a package's manifest.
+            // A deleted file was there, whatever it held, so it is put back either
+            // way. A JSON file whose earlier text cannot be read, with no base
+            // revision or none git can show, is a config whose earlier version is
+            // not known.
             let content = if json { earlier(&path) } else { None };
-            if json && base.is_none() {
+            if json && content.is_none() {
                 repointing.configs.push(path.clone());
             }
             before.put(path, Some(content.unwrap_or_default().into_bytes().into()));
