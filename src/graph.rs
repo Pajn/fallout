@@ -340,7 +340,7 @@ impl Graph {
             Node::Decl(_, decl) => self.decl_edges(&fine, decl),
             Node::Export(_, name) => self.export_edges(&fine, name),
             Node::Member(_, decl, member) => self.member_edges(&fine, decl, member),
-            Node::ModuleInit(file) => self.init_edges(file),
+            Node::ModuleInit(_) => self.init_edges(&fine),
         }
     }
 
@@ -364,26 +364,18 @@ impl Graph {
             return Vec::new();
         };
 
-        self.reference_edges(
-            fine.file(),
-            fine.analysed(),
-            module,
-            &entry.refs,
-            &entry.member_refs,
-            &entry.imports,
-        )
+        self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports)
     }
 
     /// The nodes a declaration's references, or a member's, point at.
     fn reference_edges(
         &self,
-        file: FileId,
-        analysed: &Analysed,
-        module: &FineModule,
+        fine: &Fine,
         refs: &[DeclId],
         member_refs: &[(DeclId, String)],
         imports: &[ImportRef],
     ) -> Vec<Node> {
+        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let mut edges = Vec::new();
         for &target in refs {
             edges.push(Node::Decl(file, target));
@@ -413,30 +405,17 @@ impl Graph {
     }
 
     fn member_edges(&self, fine: &Fine, decl: DeclId, member: NameId) -> Vec<Node> {
-        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
+        let (file, module) = (fine.file(), fine.module());
         let member = self.name(member);
         if member_of(module, decl, &member).is_none()
             && let Some(deps) = self.factory_member(file, module, decl, &member)
         {
-            return self.reference_edges(
-                file,
-                analysed,
-                module,
-                &deps.refs,
-                &deps.member_refs,
-                &deps.imports,
-            );
+            return self.reference_edges(fine, &deps.refs, &deps.member_refs, &deps.imports);
         }
         match member_of(module, decl, &member) {
             Some(entry) => {
-                let mut edges = self.reference_edges(
-                    file,
-                    analysed,
-                    module,
-                    &entry.refs,
-                    &entry.member_refs,
-                    &entry.imports,
-                );
+                let mut edges =
+                    self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports);
                 // Called through the object, it may read any other property as
                 // `this`.
                 if entry.receiver {
@@ -657,14 +636,8 @@ impl Graph {
         edges
     }
 
-    fn init_edges(&self, file: FileId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
-        };
-
+    fn init_edges(&self, fine: &Fine) -> Vec<Node> {
+        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let mut edges = Vec::new();
         // A module that declares itself free of side effects is claiming that these
         // statements do nothing observable. The claim covers its own code only, so
@@ -687,9 +660,7 @@ impl Graph {
                 match call {
                     Some(call) if self.made_by(file, decl).is_some() => {
                         edges.extend(self.reference_edges(
-                            file,
-                            &analysed,
-                            module,
+                            fine,
                             &call.frame.refs,
                             &call.frame.member_refs,
                             &call.frame.imports,
