@@ -723,6 +723,39 @@ fn unresolved_leaves_out_what_names_no_file_by_design() {
     }
 }
 
+/// A star whose path names no file has no file behind it for either level to
+/// reach, and is reported at both. The name it could have provided still reaches
+/// the page through the barrel, and a change to another module the barrel's stars
+/// name still does too.
+#[test]
+fn a_star_that_names_no_file_is_dropped_and_reported_at_both_levels() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { x } from \"./barrel\";\nexport const page = x;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/barrel.ts"),
+        "export * from \"./missing\";\nexport * from \"./other\";\nexport const local = 0;\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/other.ts"), "export const y = 1;\n").unwrap();
+
+    for granularity in ["file", "symbol"] {
+        let (code, stdout, stderr) = run_is_affected_with(
+            &root,
+            &["src/page.ts"],
+            &["src/other.ts"],
+            &["--granularity", granularity, "--unresolved"],
+        );
+        assert_eq!(code, 0, "{granularity}: {stdout}{stderr}");
+        assert!(stdout.contains("./missing"), "{granularity}: {stdout}");
+    }
+}
+
 #[test]
 fn resolve_conditions_and_main_fields_come_from_fallout_toml() {
     let temp = TempDir::new().unwrap();

@@ -736,6 +736,10 @@ impl Graph {
     /// exports the name itself or forwards it through stars of its own, so that each
     /// barrel on the way stays on the path and is evaluated there when imports are
     /// deferred. A module it cannot see inside is what [`opaque_name`] says.
+    ///
+    /// A star whose path names no file has no node to go on to. It still makes the
+    /// barrel one that could provide the name, so the barrel's own export node is on
+    /// the path, and that node is marked when the barrel is.
     fn star_providers(&self, fine: &Fine, name: &str) -> Vec<Node> {
         let id = self.name_id(name);
         let mut providers = Vec::new();
@@ -759,7 +763,9 @@ impl Graph {
     }
 
     /// Whether `file` could provide `name`: it exports it, it has lost it, it is
-    /// opaque, or one of its stars could, with a cycle guard.
+    /// opaque, or one of its stars could, with a cycle guard. A star whose path names
+    /// no file could, as an opaque module could: what it held is exactly what is not
+    /// known, and a moved import may have marked the barrel holding it whole.
     ///
     /// Nothing else links a barrel to an opaque module behind a star: `export *` is
     /// not a bare import.
@@ -777,7 +783,7 @@ impl Graph {
         }
         fine.module().export_stars.iter().any(|&source| {
             self.target_of(fine.analysed(), source)
-                .is_some_and(|target| self.could_provide(target, name, seen))
+                .is_none_or(|target| self.could_provide(target, name, seen))
         })
     }
 

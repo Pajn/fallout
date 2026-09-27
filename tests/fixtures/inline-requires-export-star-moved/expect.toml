@@ -1,0 +1,29 @@
+# With imports deferred to first use, only the names the page reads connect it to
+# the barrels they pass through. `b.ts` forwards `./gone` through a star, and the
+# change deleted `gone.ts`, so that import moved and `b.ts` is marked whole. Before
+# the change `x` could come through `b` (Babel's `export *` takes the first star to
+# define a name) and now it comes from `c`. A star that resolves nowhere could have
+# provided any name, as an opaque module could, so `b` stays on the path of `x`
+# and the page reading it through `a` is affected. The page reading `x` from `c`
+# directly never evaluates `b`, so it must not hear about the change.
+[[anchor]]
+path = "src/page.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/page.ts)",
+    "Decl(src/page.ts, Page)",
+    "Export(src/a.ts, x)",
+    "Export(src/b.ts, x)",
+]
+base = [
+    "File(src/page.ts)",
+    "Decl(src/page.ts, Page)",
+    "Export(src/a.ts, x)",
+    "Export(src/b.ts, x)",
+]
+
+[[anchor]]
+path = "src/direct-page.ts"
+affected = false
