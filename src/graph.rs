@@ -127,9 +127,9 @@ impl Graph {
             let path = self.path(file);
             let moved: Vec<crate::module::SourceId> = self
                 .resolver
-                .moved(&path, analysed.analysis.sources())
-                .into_iter()
-                .map(|source| source as crate::module::SourceId)
+                .moved(&path, || analysed.analysis.sources())
+                .iter()
+                .map(|&source| source as crate::module::SourceId)
                 .collect();
             if !moved.is_empty() {
                 match analysed.analysis.as_fine() {

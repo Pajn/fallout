@@ -20,11 +20,12 @@ use std::sync::{Arc, RwLock};
 use ahash::AHashMap;
 use oxc_resolver::{
     FileSystem, FileSystemOs, PackageJson, Resolution, ResolveError, ResolveOptions,
-    Resolver as OxcResolver, ResolverGeneric, SideEffects as Declared, TsConfig, TsconfigDiscovery,
+    ResolverGeneric, SideEffects as Declared, TsConfig, TsconfigDiscovery,
 };
 
 use crate::config::{Chain, Configs, Lookup};
 use crate::module::is_style_file;
+use crate::repoint::MovedImports;
 
 /// Modules Sass ships with.
 ///
@@ -215,6 +216,12 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
         &self.fs
     }
 
+    /// The same rules over another file system, which is how the tree before a
+    /// change is built from the tree as it is.
+    pub fn over<Other: FileSystem + Clone + 'static>(&self, fs: Other) -> Tree<Other> {
+        Tree::new(self.configs.clone(), self.lookup.clone(), fs)
+    }
+
     /// How `specifier` resolves from `from_file` in this tree.
     pub fn find(&self, from_file: &Path, specifier: &str) -> Found {
         let chain = self.configs.chain(from_file);
@@ -347,8 +354,9 @@ pub struct Resolver {
     unresolved: Arc<Unresolved>,
     /// The tree as it is.
     now: Arc<Tree<FileSystemOs>>,
-    /// The tree as it was before the change. See [`crate::repoint`].
-    before: Tree<crate::repoint::BeforeFs>,
+    /// Which imports the change may have moved, as this resolver resolves them. See
+    /// [`crate::repoint`].
+    moved: MovedImports,
     cache: RwLock<AHashMap<(PathBuf, String), Option<PathBuf>>>,
     /// The `sideEffects` verdict for each path this resolver has produced, recorded
     /// while the resolution that found its `package.json` is still in hand.
@@ -357,22 +365,12 @@ pub struct Resolver {
     root: PathBuf,
     /// Packages a lockfile change touched. See [`crate::lockfile`].
     packages: Arc<crate::lockfile::Changed>,
-    /// What the change could have sent an import to instead. See [`crate::repoint`].
-    repointing: Arc<crate::repoint::Repointing>,
-    /// The configuration files each tsconfig reads, itself first.
-    tsconfig_reads: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
     /// The names of the repository's own packages, read when first asked.
     workspace: std::sync::OnceLock<ahash::AHashSet<String>>,
-    /// Finds the config a package `extends` entry names, built on first use.
-    extends: std::sync::OnceLock<OxcResolver>,
     /// What each file imports, resolved, for the searches that walk file by file.
     /// Several anchors' searches walk the same files, and reading one means parsing
     /// it.
     imports: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
-    /// Whether each file imports something the change may have moved, for the same
-    /// searches, which would otherwise read the file again to ask. Kept here because
-    /// the answer is this resolver's: another bundler may resolve the file otherwise.
-    repoints: RwLock<AHashMap<PathBuf, bool>>,
 }
 
 impl Resolver {
@@ -393,37 +391,33 @@ impl Resolver {
             lookup.clone(),
             FileSystemOs::new(),
         ));
-        let before = Tree::new(configs.clone(), lookup, repointing.file_system());
+        let moved = MovedImports::new(repointing, now.clone(), root.clone());
         Self {
             configs,
             unresolved,
             now,
-            before,
+            moved,
             root,
             packages,
-            repointing,
-            tsconfig_reads: RwLock::new(AHashMap::default()),
             workspace: std::sync::OnceLock::new(),
-            extends: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
-            repoints: RwLock::new(AHashMap::default()),
             cache: RwLock::new(AHashMap::default()),
             side_effects: RwLock::new(AHashMap::default()),
         }
     }
 
-    /// Whether `file` imports something the change may have moved, worked out by
-    /// `ask` the first time it is asked. See [`crate::change::Change::repoints`].
-    pub fn repoints_of(&self, file: &Path, ask: impl FnOnce() -> bool) -> bool {
-        if let Some(&known) = self.repoints.read().unwrap().get(file) {
-            return known;
-        }
-        let repoints = ask();
-        self.repoints
-            .write()
-            .unwrap()
-            .insert(file.to_path_buf(), repoints);
-        repoints
+    /// Which of the imports of `file` the change may have sent to another file, by
+    /// index into `specifiers`, which are read only the first time a file is asked
+    /// about. See [`crate::repoint`].
+    ///
+    /// The answer is kept here, and not on the change, because it is this
+    /// resolver's: another bundler may resolve the same file otherwise.
+    pub fn moved<S: AsRef<[String]>>(
+        &self,
+        file: &Path,
+        specifiers: impl FnOnce() -> S,
+    ) -> Arc<[usize]> {
+        self.moved.moved(file, specifiers)
     }
 
     /// The files `file` imports, worked out by `read` the first time it is asked.
@@ -573,177 +567,6 @@ impl Resolver {
             .unwrap()
             .insert(cache_key, result.clone());
         result
-    }
-
-    /// Which of `specifiers`, imported from `from_file`, the change may have sent
-    /// to another file, by index. See [`crate::repoint`].
-    ///
-    /// An import has moved when the tree before the change resolves it to another
-    /// file, or to none, or to one where there is none now.
-    pub fn moved(&self, from_file: &Path, specifiers: &[String]) -> Vec<usize> {
-        if self.repointing.is_empty() {
-            return Vec::new();
-        }
-        if self.governed_by_unknown_config(from_file) {
-            return (0..specifiers.len()).collect();
-        }
-        if !self.repointing.has_before() {
-            return Vec::new();
-        }
-        specifiers
-            .iter()
-            .enumerate()
-            .filter(|(_, specifier)| {
-                self.now.find(from_file, specifier).path()
-                    != self.before.find(from_file, specifier).path()
-            })
-            .map(|(index, _)| index)
-            .collect()
-    }
-
-    /// Whether a changed config whose earlier version is not known may govern
-    /// `file`, which then has to be taken as moving all its imports.
-    ///
-    /// A config governs a file when the tsconfig found for it reads the config,
-    /// directly or through `extends`, and so does one of the `tsconfig.json` files
-    /// above it, which can decide through `references`, `include` or `exclude` which
-    /// config is found. A changed `tsconfig.json` above the file governs it too,
-    /// whatever it reads now, since it may have been the nearest before. A tsconfig
-    /// that cannot be read at all is taken to govern everything: what it said before
-    /// is exactly what is not known.
-    fn governed_by_unknown_config(&self, file: &Path) -> bool {
-        let configs = self.repointing.configs();
-        if configs.is_empty() {
-            return false;
-        }
-        let mut reads: Vec<PathBuf> = Vec::new();
-        match self.now.tsconfig_for(file) {
-            Ok(Some(tsconfig)) => {
-                reads.extend(self.tsconfig_reads(tsconfig.path()).iter().cloned())
-            }
-            Ok(None) => {}
-            Err(_) => return true,
-        }
-        for directory in file
-            .ancestors()
-            .skip(1)
-            .take_while(|directory| directory.starts_with(&self.root))
-        {
-            let above = directory.join("tsconfig.json");
-            if above.is_file() {
-                reads.extend(self.tsconfig_reads(&above).iter().cloned());
-            }
-        }
-        configs.iter().any(|config| {
-            reads.contains(config)
-                || (config
-                    .file_name()
-                    .is_some_and(|name| name == "tsconfig.json")
-                    && config
-                        .parent()
-                        .is_some_and(|directory| file.starts_with(directory)))
-        })
-    }
-
-    /// Every configuration file the tsconfig at `path` reads: itself, what it
-    /// extends, and what it references, however far.
-    fn tsconfig_reads(&self, path: &Path) -> Arc<[PathBuf]> {
-        if let Some(known) = self.tsconfig_reads.read().unwrap().get(path) {
-            return known.clone();
-        }
-        let mut reads = vec![path.to_path_buf()];
-        let mut next = 0;
-        while let Some(config) = reads.get(next).cloned() {
-            next += 1;
-            let Some(parsed) = std::fs::read_to_string(&config)
-                .ok()
-                .and_then(|text| oxc_resolver::TsConfig::parse(true, &config, &config, text).ok())
-            else {
-                continue;
-            };
-            let extends = match &parsed.extends {
-                Some(oxc_resolver::ExtendsField::Single(one)) => vec![one.clone()],
-                Some(oxc_resolver::ExtendsField::Multiple(many)) => many.clone(),
-                None => Vec::new(),
-            };
-            let referenced = parsed.references.iter().filter_map(|reference| {
-                let path = crate::repoint::normalize(&config.parent()?.join(&reference.path));
-                Some(
-                    if path
-                        .extension()
-                        .is_some_and(|extension| extension == "json")
-                    {
-                        path
-                    } else {
-                        path.join("tsconfig.json")
-                    },
-                )
-            });
-            let named: Vec<PathBuf> = extends
-                .iter()
-                .flat_map(|specifier| self.extended_configs(&config, specifier))
-                .chain(referenced.map(|path| dunce::canonicalize(&path).unwrap_or(path)))
-                .collect();
-            for read in named {
-                if !reads.contains(&read) {
-                    reads.push(read);
-                }
-            }
-        }
-        let reads: Arc<[PathBuf]> = reads.into();
-        self.tsconfig_reads
-            .write()
-            .unwrap()
-            .insert(path.to_path_buf(), reads.clone());
-        reads
-    }
-
-    /// The files an `extends` entry of the tsconfig at `config` may name, whether or
-    /// not they are still there.
-    ///
-    /// A relative entry written without `.json` may name a file with it added, or a
-    /// directory's `tsconfig.json`, and which one is a question about the disk before
-    /// the change as much as after it, so both are read.
-    fn extended_configs(&self, config: &Path, specifier: &str) -> Vec<PathBuf> {
-        let Some(directory) = config.parent() else {
-            return Vec::new();
-        };
-        if specifier.starts_with('.') || Path::new(specifier).is_absolute() {
-            let path = crate::repoint::normalize(&directory.join(specifier));
-            let mut named = vec![path.join("tsconfig.json")];
-            if path
-                .extension()
-                .is_some_and(|extension| extension == "json")
-            {
-                named.push(path);
-            } else {
-                let mut file = path;
-                file.as_mut_os_string().push(".json");
-                named.push(file);
-            }
-            return named
-                .into_iter()
-                .map(|path| dunce::canonicalize(&path).unwrap_or(path))
-                .collect();
-        }
-        // A package's config, looked for the way oxc_resolver looks for it when it
-        // follows `extends`: a JSON file, and a package's `tsconfig.json` where
-        // the entry names only the package. A module resolver would find the
-        // package's code instead.
-        let resolver = self.extends.get_or_init(|| {
-            OxcResolver::new(ResolveOptions {
-                condition_names: vec!["node".to_string(), "import".to_string()],
-                extensions: vec![".json".to_string()],
-                main_files: vec!["tsconfig".to_string()],
-                ..ResolveOptions::default()
-            })
-        });
-        resolver
-            .resolve(directory, specifier)
-            .ok()
-            .map(|resolution| resolution.full_path())
-            .into_iter()
-            .collect()
     }
 
     /// What the nearest `package.json` says about importing `path`.
