@@ -38,7 +38,7 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | Flag | Description |
 | --- | --- |
 | `-a, --anchor <PATH>` | Target component. Repeatable; the anchor set is affected if *any* anchor is. |
-| `-c, --changed <PATH>` | A changed file, as produced by `git diff --name-only`. Repeatable. |
+| `-c, --changed <PATH>` | A changed file, as produced by `git diff --name-only`: a relative path is relative to `--root`. Repeatable. |
 | `-d, --diff <PATH>` | A unified diff describing the change; `-` reads standard input. |
 | `-b, --base <REV>` | Git revision to compare each changed file against. See below. |
 | `--include-types` | Read every file as written, so a type-only change still counts. See below. |

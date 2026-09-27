@@ -5,9 +5,11 @@
 //! be compared as syntax rather than as text, so a reformatting, a reworded comment
 //! or a statement that merely moved stops counting as a change at all.
 //!
-//! The earlier version is read from git, which is where a `--base` revision is
-//! written down. A file git cannot produce — one that is new, or a revision it does
-//! not know — simply has no base version, and the caller falls back to the diff.
+//! A run reads the earlier version through [`Earlier`], so that what it does with
+//! one does not depend on where it came from. A run is given one as a `--base`
+//! revision, read from git by [`Base`]. A file with no earlier version — one that is
+//! new, or a revision git does not know — simply has none, and the caller falls back
+//! to the diff.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -15,41 +17,37 @@ use std::process::Command;
 
 use ahash::AHashMap;
 
-use crate::module::Reading;
-use crate::module::compare::{self, Comparison};
+/// Where the version of a file before the change comes from.
+pub trait Earlier {
+    /// What `path` contained before the change, or `None` when there is no such
+    /// version to read.
+    fn text(&self, path: &Path) -> Option<String>;
+}
 
-/// A revision to compare against, plus the contents already read from it.
+/// Earlier versions written down beforehand, by absolute path.
+impl Earlier for AHashMap<PathBuf, String> {
+    fn text(&self, path: &Path) -> Option<String> {
+        self.get(path).cloned()
+    }
+}
+
+/// A git revision to compare against, plus the contents already read from it.
 pub struct Base {
     reference: String,
-    /// The earlier version of a module is analysed like any other, and has to be:
-    /// two versions read under different rules cannot be compared.
-    reading: Reading,
     contents: RefCell<AHashMap<PathBuf, Option<String>>>,
 }
 
 impl Base {
-    pub fn new(reference: &str, reading: Reading) -> Self {
+    pub fn new(reference: &str) -> Self {
         Self {
             reference: reference.to_string(),
-            reading,
             contents: RefCell::new(AHashMap::default()),
         }
     }
+}
 
-    /// How `path` differs from its base version, or `None` when there is no answer
-    /// to be had: no version of it in this revision, or two versions that cannot be
-    /// compared. The caller then falls back on what the diff says.
-    pub fn comparison(&self, path: &Path) -> Option<Comparison> {
-        compare::compare(path, &self.before(path)?, &self.reading)
-    }
-
-    /// What `path` contained at the base revision, or `None` when there is no such
-    /// version to read.
-    pub fn text(&self, path: &Path) -> Option<String> {
-        self.before(path)
-    }
-
-    fn before(&self, path: &Path) -> Option<String> {
+impl Earlier for Base {
+    fn text(&self, path: &Path) -> Option<String> {
         if let Some(cached) = self.contents.borrow().get(path) {
             return cached.clone();
         }
@@ -59,7 +57,9 @@ impl Base {
             .insert(path.to_path_buf(), text.clone());
         text
     }
+}
 
+impl Base {
     fn read(&self, path: &Path) -> Option<String> {
         // Naming the file relative to its own directory saves working out where the
         // repository root is, and works the same from a worktree or a subdirectory.

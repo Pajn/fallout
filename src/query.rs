@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use ahash::{AHashMap, AHashSet};
 use clap::ValueEnum;
 
+use crate::change::Change;
 use crate::graph::{Graph, Node};
 use crate::module::{Reading, imported_specifiers};
 use crate::resolve::Resolver;
@@ -68,7 +69,7 @@ pub struct Search<T> {
 /// Walks forward from every anchor, looking for a changed file.
 pub fn downstream(
     anchors: &[PathBuf],
-    changed: &AHashSet<PathBuf>,
+    change: &Change,
     resolver: &Resolver,
     reading: &Reading,
 ) -> Search<Hit> {
@@ -89,9 +90,9 @@ pub fn downstream(
                 .get_or_init(|| imported_specifiers(&current, reading).unwrap_or_default())
                 .as_slice()
         };
-        if changed.contains(&current)
-            || resolver.marks_changed_package(&current)
-            || resolver.repoints(&current, specifiers)
+        if change.files().contains(&current)
+            || change.marks_package(&current)
+            || change.repoints(resolver, &current, specifiers)
         {
             let hit = Hit {
                 direction: Direction::Downstream,
@@ -207,6 +208,7 @@ fn trace(came_from: &AHashMap<PathBuf, Option<PathBuf>>, target: &Path) -> Vec<P
 pub fn downstream_symbols(
     anchors: &[PathBuf],
     marked: &AHashSet<Node>,
+    change: &Change,
     graph: &Graph,
 ) -> Search<Vec<Node>> {
     let mut came_from: AHashMap<Node, Option<Node>> = AHashMap::default();
@@ -224,7 +226,7 @@ pub fn downstream_symbols(
         files.into_iter().map(|file| graph.path(file)).collect()
     };
     while let Some(current) = queue.pop_front() {
-        if is_marked(graph, marked, current) {
+        if is_marked(graph, marked, change, current) {
             return Search {
                 hit: Some(trace_nodes(&came_from, current)),
                 visited: visited(&came_from),
@@ -248,11 +250,8 @@ pub fn downstream_symbols(
 /// `File(f)` is the umbrella node: marking it says "something in f changed, and we
 /// cannot say what". Every node of `f` is therefore marked with it, or a search that
 /// reaches only a declaration would miss a whole-file change.
-fn is_marked(graph: &Graph, marked: &AHashSet<Node>, node: Node) -> bool {
-    if graph
-        .resolver()
-        .marks_changed_package(&graph.path(node.file()))
-    {
+fn is_marked(graph: &Graph, marked: &AHashSet<Node>, change: &Change, node: Node) -> bool {
+    if change.marks_package(&graph.path(node.file())) {
         return true;
     }
     marked.contains(&node)

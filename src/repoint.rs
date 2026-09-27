@@ -32,7 +32,7 @@ use std::sync::Arc;
 use ahash::{AHashMap, AHashSet};
 use oxc_resolver::{FileMetadata, FileSystem, FileSystemOs, ResolveError};
 
-use crate::base::Base;
+use crate::base::Earlier;
 use crate::diff::{ChangeSet, FileChange};
 
 /// What a change could have moved, as a run asks about it.
@@ -101,7 +101,7 @@ pub fn repointing(
     root: &Path,
     changes: &ChangeSet,
     explicit: &[PathBuf],
-    base: Option<&Base>,
+    earlier: Option<&dyn Earlier>,
 ) -> Repointing {
     let added: AHashSet<PathBuf> = changes
         .added
@@ -118,15 +118,11 @@ pub fn repointing(
                 .iter()
                 .map(|path| (root.join(path), true)),
         )
-        .chain(explicit.iter().map(|path| {
-            let path = std::path::absolute(path).unwrap_or_else(|_| path.clone());
-            let deleted = !path.exists();
-            (path, deleted)
-        }));
+        .chain(explicit.iter().map(|path| (path.clone(), !path.exists())));
 
     let mut repointing = Repointing::default();
     let mut before = Before::default();
-    let earlier = |path: &Path| base.and_then(|base| base.text(path));
+    let earlier_text = |path: &Path| earlier.and_then(|earlier| earlier.text(path));
     for (path, deleted) in named {
         let path = canonical(&path);
         if before.files.contains_key(&path) || repointing.configs.contains(&path) {
@@ -142,7 +138,7 @@ pub fn repointing(
             // way. A JSON file whose earlier text cannot be read, with no base
             // revision or none git can show, is a config whose earlier version is
             // not known.
-            let content = if json { earlier(&path) } else { None };
+            let content = if json { earlier_text(&path) } else { None };
             if json && content.is_none() {
                 repointing.configs.push(path.clone());
             }
@@ -150,10 +146,10 @@ pub fn repointing(
         } else if added.contains(&path) {
             before.put(path, None);
         } else if json {
-            match base {
+            match earlier {
                 // A file with no earlier version is one this change added.
-                Some(base) => {
-                    let content = base.text(&path).map(|text| text.into_bytes().into());
+                Some(earlier) => {
+                    let content = earlier.text(&path).map(|text| text.into_bytes().into());
                     before.put(path, content);
                 }
                 None if is_config(&path) => repointing.configs.push(path),

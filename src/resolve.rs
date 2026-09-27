@@ -188,9 +188,10 @@ pub struct Resolver {
     /// Several anchors' searches walk the same files, and reading one means parsing
     /// it.
     imports: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
-    /// Whether each file imports something the change may have moved, for the
-    /// same searches, which would otherwise read the file again to ask.
-    repointed_files: RwLock<AHashMap<PathBuf, bool>>,
+    /// Whether each file imports something the change may have moved, for the same
+    /// searches, which would otherwise read the file again to ask. Kept here because
+    /// the answer is this resolver's: another bundler may resolve the file otherwise.
+    repoints: RwLock<AHashMap<PathBuf, bool>>,
 }
 
 impl Resolver {
@@ -215,7 +216,7 @@ impl Resolver {
             workspace: std::sync::OnceLock::new(),
             extends: std::sync::OnceLock::new(),
             imports: RwLock::new(AHashMap::default()),
-            repointed_files: RwLock::new(AHashMap::default()),
+            repoints: RwLock::new(AHashMap::default()),
             modules: RwLock::new(AHashMap::default()),
             style: RwLock::new(AHashMap::default()),
             before_modules: RwLock::new(AHashMap::default()),
@@ -335,21 +336,14 @@ impl Resolver {
         resolver
     }
 
-    /// Whether `file`, which imports `specifiers`, imports something the change may
-    /// have moved. The specifiers are read only the first time it is asked.
-    pub fn repoints<S: AsRef<[String]>>(
-        &self,
-        file: &Path,
-        specifiers: impl FnOnce() -> S,
-    ) -> bool {
-        if !self.may_repoint() {
-            return false;
-        }
-        if let Some(&known) = self.repointed_files.read().unwrap().get(file) {
+    /// Whether `file` imports something the change may have moved, worked out by
+    /// `ask` the first time it is asked. See [`crate::change::Change::repoints`].
+    pub fn repoints_of(&self, file: &Path, ask: impl FnOnce() -> bool) -> bool {
+        if let Some(&known) = self.repoints.read().unwrap().get(file) {
             return known;
         }
-        let repoints = !self.moved(file, specifiers().as_ref()).is_empty();
-        self.repointed_files
+        let repoints = ask();
+        self.repoints
             .write()
             .unwrap()
             .insert(file.to_path_buf(), repoints);
@@ -512,24 +506,6 @@ impl Resolver {
             .unwrap()
             .insert(cache_key, result.clone());
         result
-    }
-
-    /// Whether `path` is the node standing for a package whose lockfile entry
-    /// changed. Asked by the searches, which have a resolver but no change set.
-    pub fn marks_changed_package(&self, path: &Path) -> bool {
-        self.packages.marks(&self.root, path)
-    }
-
-    /// Whether any package changed at all, which is the one thing a search
-    /// cannot learn by asking about a path it has not reached yet.
-    pub fn has_changed_packages(&self) -> bool {
-        !self.packages.is_empty()
-    }
-
-    /// Whether anything the change did could have moved an import, which a search
-    /// likewise cannot learn from the paths it has reached.
-    pub fn may_repoint(&self) -> bool {
-        !self.repointing.is_empty()
     }
 
     /// Which of `specifiers`, imported from `from_file`, the change may have sent

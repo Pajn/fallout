@@ -357,6 +357,37 @@ export const IndexPage = () => <> <Button /> <Card /> </>;"#,
     assert!(stdout.contains("src/components/Button.tsx"));
 }
 
+/// `--changed` takes paths the way `git diff --name-only` writes them, relative to
+/// the root, wherever the command runs from.
+#[test]
+fn test_changed_paths_are_relative_to_the_root() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    setup_test_project(&root);
+
+    let binary = build_binary();
+
+    for granularity in ["file", "symbol"] {
+        let output = Command::new(&binary)
+            .current_dir(temp_dir.path())
+            .args(["--anchor", "src/pages/SettingsPage.tsx"])
+            .args(["--changed", "src/components/Button.tsx"])
+            .arg("--root")
+            .arg(&root)
+            .args(["--granularity", granularity])
+            .output()
+            .expect("Failed to execute is_affected");
+
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "[{granularity}] a path relative to the root names the root's file: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+}
+
 #[test]
 fn test_no_anchor_error() {
     let temp_dir = TempDir::new().unwrap();
