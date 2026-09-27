@@ -1,0 +1,11 @@
+# The root tsconfig maps `@/*` somewhere else. A page it governs, which reads an
+# icon through an inline loader, now reads another file. A page under a project with a tsconfig of its own, which does not extend the
+# root's, resolves as it did, which a base revision can tell and a line range cannot.
+[[anchor]]
+path = "site/page.ts"
+affected = true
+
+[[anchor]]
+path = "packages/app/page.ts"
+affected = false
+from = "base"

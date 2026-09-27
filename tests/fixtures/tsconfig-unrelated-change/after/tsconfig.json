@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@icons/*": ["./src/icons-v2/*"],
+      "@ui/*": ["./src/ui/*"]
+    }
+  }
+}

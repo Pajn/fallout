@@ -1,0 +1,1 @@
+{"references":[{"path":"./tsconfig.app.json"}],"compilerOptions":{"paths":{"@/*":["./legacy/*"]}}}

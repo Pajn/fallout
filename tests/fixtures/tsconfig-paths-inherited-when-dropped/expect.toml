@@ -1,0 +1,5 @@
+# The tsconfig drops its own `paths`, so the ones in the config it extends apply
+# again, and `toolkit` now names the shim rather than the package.
+[[anchor]]
+path = "src/page.ts"
+affected = true

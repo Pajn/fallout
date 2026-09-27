@@ -1469,3 +1469,75 @@ fn test_json_does_not_take_flags_it_already_answers() {
         assert_eq!(code, 2, "{flag}: {stderr}");
     }
 }
+
+#[test]
+fn test_a_config_extended_from_a_package_is_read_as_its_tsconfig() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    // The package has code of its own, so resolving its name as a module finds
+    // `index.ts` rather than the config it ships.
+    let package = root.join("node_modules/@acme/tsconfig");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{ "name": "@acme/tsconfig", "version": "1.0.0" }"#,
+    )
+    .unwrap();
+    fs::write(package.join("index.ts"), "export const preset = 1;\n").unwrap();
+    fs::write(
+        package.join("tsconfig.json"),
+        r#"{ "compilerOptions": { "baseUrl": "." } }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "extends": "@acme/tsconfig" }"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/theme.ts"), "export const theme = 1;\n").unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { theme } from \"theme\";\nexport const page = theme;\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected(
+        &binary,
+        &root,
+        &["src/page.ts"],
+        &["node_modules/@acme/tsconfig/tsconfig.json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_a_deleted_file_of_a_workspace_package_moves_its_deep_imports() {
+    let binary = build_binary();
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    // The package is linked into `node_modules` the way a workspace links it, and
+    // `@acme/ui/button` names `button.ts` until it is gone, then the directory.
+    let package = root.join("packages/ui");
+    fs::create_dir_all(package.join("button")).unwrap();
+    fs::write(package.join("package.json"), r#"{ "name": "@acme/ui" }"#).unwrap();
+    fs::write(
+        package.join("button/index.ts"),
+        "export const button = 1;\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("node_modules/@acme")).unwrap();
+    std::os::unix::fs::symlink("../../packages/ui", root.join("node_modules/@acme/ui")).unwrap();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { button } from \"@acme/ui/button\";\nexport const page = button;\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) =
+        run_is_affected(&binary, &root, &["src/page.ts"], &["packages/ui/button.ts"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+}

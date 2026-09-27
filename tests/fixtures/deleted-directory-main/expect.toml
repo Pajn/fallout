@@ -1,0 +1,5 @@
+# `./widget` names the directory, whose `package.json` points `main` at `impl.ts`.
+# That file is deleted, and the import falls to the directory's index.
+[[anchor]]
+path = "src/page.ts"
+affected = true

@@ -488,10 +488,13 @@ fn diff_and_changed_paths_agree() {
     for case in cases() {
         let before = collect_tree(&case.dir.join("before"));
         let after_tree = collect_tree(&case.dir.join("after"));
+        // As `git diff --name-only` lists them: deleted files too.
         let changed: Vec<String> = after_tree
             .iter()
             .filter(|(path, content)| before.get(*path) != Some(content))
-            .map(|(path, _)| path.to_string_lossy().replace('\\', "/"))
+            .map(|(path, _)| path)
+            .chain(before.keys().filter(|path| !after_tree.contains_key(*path)))
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
             .collect();
 
         for anchor in &case.expect.anchor {

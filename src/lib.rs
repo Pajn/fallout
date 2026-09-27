@@ -18,6 +18,7 @@ pub mod marks;
 pub mod module;
 pub mod pure;
 pub mod query;
+pub mod repoint;
 pub mod resolve;
 
 use std::fmt;
@@ -227,6 +228,8 @@ struct Run<'o> {
     configs: std::sync::Arc<config::Configs>,
     reading: module::Reading,
     packages: std::sync::Arc<lockfile::Changed>,
+    /// What the change could have sent an unchanged import to instead.
+    repointing: std::sync::Arc<repoint::Repointing>,
     base: Option<base::Base>,
     /// Every group's unresolved specifiers together, for the combined report. Each
     /// group records its own, since what one bundler cannot place another may.
@@ -283,6 +286,12 @@ impl<'o> Run<'o> {
             .base
             .as_deref()
             .map(|reference| base::Base::new(reference, reading.clone()));
+        let repointing = std::sync::Arc::new(repoint::repointing(
+            &root,
+            &change_set,
+            &options.changed,
+            base.as_ref(),
+        ));
 
         Ok(Self {
             options,
@@ -292,6 +301,7 @@ impl<'o> Run<'o> {
             configs,
             reading,
             packages,
+            repointing,
             base,
             unresolved: Unresolved::default(),
             changed: std::cell::OnceCell::new(),
@@ -334,6 +344,7 @@ impl<'o> Run<'o> {
                 std::sync::Arc::new(Unresolved::default()),
                 self.root.clone(),
                 self.packages.clone(),
+                self.repointing.clone(),
                 bundler.lookup,
             ))),
             Granularity::Symbol => {
@@ -343,6 +354,7 @@ impl<'o> Run<'o> {
                     std::sync::Arc::new(Unresolved::default()),
                     self.root.clone(),
                     self.packages.clone(),
+                    self.repointing.clone(),
                 );
                 let marked = marks::marked_nodes(
                     &graph,
@@ -397,7 +409,7 @@ impl Engine {
         match self {
             Engine::File(resolver) => {
                 let changed = run.changed(&run.reading);
-                if changed.is_empty() && run.packages.is_empty() {
+                if changed.is_empty() && run.packages.is_empty() && run.repointing.is_empty() {
                     return Judged {
                         verdict: Verdict::NotAffected,
                         visited,
@@ -422,7 +434,10 @@ impl Engine {
             // answer, so a declaration run is never *less* sensitive than a file run.
             Engine::Symbol(symbol) => {
                 let (graph, marked) = symbol.as_ref();
-                if marked.is_empty() && !graph.resolver().has_changed_packages() {
+                if marked.is_empty()
+                    && !graph.resolver().has_changed_packages()
+                    && !graph.resolver().may_repoint()
+                {
                     return Judged {
                         verdict: Verdict::NotAffected,
                         visited,

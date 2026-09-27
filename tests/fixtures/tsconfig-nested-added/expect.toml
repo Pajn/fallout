@@ -1,0 +1,7 @@
+# A tsconfig that maps only `#config` is added beneath the root one. It becomes the
+# nearest for the files of `packages/app`, and a nearer tsconfig does not add to the
+# root's `paths`, so the page's `@/format` no longer resolves through the root's
+# mapping, though nothing the new config writes names `@/`.
+[[anchor]]
+path = "packages/app/page.ts"
+affected = true

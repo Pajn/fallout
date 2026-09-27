@@ -731,6 +731,46 @@ byte-identical copies rebuilt against the new peer.
 A lockfile named without line information — by `--changed`, or as a binary diff
 — names every package it lists, since there is nothing to narrow with.
 
+## Changed resolution
+
+An import names a file through the rules that resolve it, and a change can move the
+file without touching the import. A tsconfig whose `paths` stop mapping
+`@reduxjs/toolkit` to a shim of the app's own, or the shim deleted from under the
+mapping, sends the same specifier to the package. The file that writes the import is
+then as changed as if the import had been rewritten, and it is treated that way:
+everything in it that reads the import is marked, along with its module
+initialisation.
+
+To find those imports, each one a search meets is resolved twice: in the tree as it
+is, and in the tree as it was before the change. An import the two answer
+differently has moved. The tree before is the current one with these differences:
+
+- a deleted file is there again, and so is the old path of a renamed one;
+- a file the change added is not;
+- against a base revision, every changed JSON file holds what it held then, which is
+  how a tsconfig, or a `package.json`'s `exports`, `imports` or `main`, changing its
+  mind is seen.
+
+Both are asked of the same resolver, so whatever decides where an import goes decides
+whether it moved: `paths` and their fallbacks, `baseUrl`, `rootDirs`, `extends` and
+`references`, which config owns a file, workspace packages, directory `main` files,
+Sass partials, inline loaders.
+
+As a line range there is no earlier version of a changed config to put back. A
+changed JSON file other than a `package.json` then moves every import of the files it
+may govern: those whose tsconfig reads it, through `extends` or `references`, or
+whose `tsconfig.json` files above them do, and every file beneath a changed
+`tsconfig.json`.
+
+`--changed` names paths and nothing else, so a rename is two paths there: the old
+one, which is no longer on disk and so reads as deleted, and the new one.
+`git diff --name-only --no-renames` lists both; without `--no-renames` git lists only
+the new one.
+
+This is found by the downstream search only. The upstream search starts from the
+changed files, and finding every file an import of which moved would mean resolving
+every import in the repository first.
+
 ## What counts as an import
 
 Static `import`, `export ... from`, `export * from`, dynamic `import()`, and `require()`.
@@ -859,6 +899,9 @@ app owns.
   than parsed.
 - Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer
   about its dependencies, rather than a wrong one.
+- A change to `[aliases]` in a `fallout.toml` does not move the imports it resolves,
+  and neither does a change to a `package.json` given as a line range, with no base
+  revision to compare it with.
 
 ## License
 

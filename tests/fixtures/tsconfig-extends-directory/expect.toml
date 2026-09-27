@@ -1,0 +1,6 @@
+# The tsconfig extends `./config`, which names that directory's `tsconfig.json`.
+# The mapping there moves `@/*` to another directory, so the page now reads another
+# file.
+[[anchor]]
+path = "src/page.ts"
+affected = true

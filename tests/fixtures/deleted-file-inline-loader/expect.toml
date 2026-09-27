@@ -1,0 +1,6 @@
+# The logo a module imports through an inline loader is deleted, and the import is
+# left as it was. What the loader's request names is gone, so the page built from
+# that module is affected, though nothing that still exists changed.
+[[anchor]]
+path = "src/page.ts"
+affected = true

@@ -41,6 +41,11 @@ pub struct ChangedFile {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChangeSet {
     pub files: Vec<ChangedFile>,
+    /// Paths a rename took a file away from. Nothing is there any more, which is
+    /// a deletion as far as any import of the old path is concerned.
+    pub renamed_from: Vec<PathBuf>,
+    /// Files the diff creates, which the base version did not have.
+    pub added: Vec<PathBuf>,
 }
 
 impl ChangeSet {
@@ -59,6 +64,11 @@ impl ChangeSet {
 /// mode changes that say nothing about which lines moved.
 pub fn parse(text: &str) -> ChangeSet {
     let mut files: Vec<ChangedFile> = Vec::new();
+    let mut renamed_from = Vec::new();
+    let mut added = Vec::new();
+    // Whether the file being read has no before version, which its `---` line or
+    // a `new file mode` line says before its `+++` line settles its path.
+    let mut creating = false;
     // The file currently being read, kept aside until the next header so that late
     // markers (a binary notice, a `+++ /dev/null`) can still change its verdict.
     let mut current: Option<ChangedFile> = None;
@@ -78,6 +88,10 @@ pub fn parse(text: &str) -> ChangeSet {
         }
 
         if let Some(rest) = line.strip_prefix("diff --git ") {
+            if creating && let Some(file) = &current {
+                added.push(file.path.clone());
+            }
+            creating = false;
             flush(&mut files, current.take());
             current = Some(ChangedFile {
                 path: git_header_after_path(rest),
@@ -101,6 +115,14 @@ pub fn parse(text: &str) -> ChangeSet {
                     });
                 }
             }
+        } else if line.starts_with("new file mode")
+            || line
+                .strip_prefix("--- ")
+                .is_some_and(|rest| strip_path_field(rest).as_os_str() == "/dev/null")
+        {
+            creating = true;
+        } else if let Some(rest) = line.strip_prefix("rename from ") {
+            renamed_from.push(unquote(rest.trim()));
         } else if let Some(rest) = line.strip_prefix("rename to ") {
             if let Some(file) = current.as_mut() {
                 file.path = unquote(rest.trim());
@@ -115,9 +137,16 @@ pub fn parse(text: &str) -> ChangeSet {
             hunk = parse_hunk_header(line);
         }
     }
+    if creating && let Some(file) = &current {
+        added.push(file.path.clone());
+    }
     flush(&mut files, current.take());
 
-    ChangeSet { files }
+    ChangeSet {
+        files,
+        renamed_from,
+        added,
+    }
 }
 
 /// Tracks position within a hunk body.
@@ -450,6 +479,7 @@ mod tests {
 
         assert_eq!(set.files[0].path, PathBuf::from("src/new.ts"));
         assert_eq!(set.files[0].change, modified(&[(1, 2)]));
+        assert_eq!(set.added, [PathBuf::from("src/new.ts")]);
     }
 
     #[test]
@@ -511,6 +541,8 @@ mod tests {
         assert_eq!(set.files.len(), 1);
         assert_eq!(set.files[0].path, PathBuf::from("src/new.ts"));
         assert_eq!(set.files[0].change, FileChange::Opaque);
+        assert_eq!(set.renamed_from, [PathBuf::from("src/old.ts")]);
+        assert!(set.added.is_empty());
     }
 
     #[test]

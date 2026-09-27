@@ -1,0 +1,6 @@
+# The shim the tsconfig maps `@reduxjs/toolkit` to is deleted, and the mapping is
+# left as it was. The session module's import falls through to the package, so what
+# loading that module does has changed.
+[[anchor]]
+path = "src/cases/plan-badge.cases.tsx"
+affected = true

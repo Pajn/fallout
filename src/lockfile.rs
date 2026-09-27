@@ -455,6 +455,7 @@ snapshots:
                     path: PathBuf::from(name),
                     change: FileChange::Modified { ranges },
                 }],
+                ..Default::default()
             },
             &[],
         )

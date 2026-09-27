@@ -1,0 +1,7 @@
+# `src/views` is a root of its own as well as a directory of `src`, and the resolver
+# reads a request from the longest root it falls under, so `./template` there can
+# name `generated/template.ts`. That file is deleted, and the page no longer reads
+# what it did.
+[[anchor]]
+path = "src/views/page.ts"
+affected = true
