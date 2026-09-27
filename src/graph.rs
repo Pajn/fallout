@@ -61,6 +61,50 @@ pub struct Analysed {
     pub resolved: Vec<Option<FileId>>,
 }
 
+/// How far the analysis sees into one file, which every rule asks before any other
+/// question about it.
+pub enum View {
+    Fine(Fine),
+    /// A leaf, an asset, or a module the analyser gave up on. Nothing finer than the
+    /// file can be said about any of them, so the view does not tell them apart. It
+    /// keeps the analysis where there is one, because a coarse module's import list
+    /// can still be read.
+    Opaque(Option<Rc<Analysed>>),
+}
+
+impl View {
+    pub fn fine(self) -> Option<Fine> {
+        match self {
+            View::Fine(fine) => Some(fine),
+            View::Opaque(_) => None,
+        }
+    }
+}
+
+/// A file the analysis can see into. Only [`Graph::view`] makes one, and only of a
+/// file analysed finely, so what reads it never has to ask again.
+pub struct Fine {
+    file: FileId,
+    analysed: Rc<Analysed>,
+}
+
+impl Fine {
+    pub fn file(&self) -> FileId {
+        self.file
+    }
+
+    pub fn analysed(&self) -> &Analysed {
+        &self.analysed
+    }
+
+    pub fn module(&self) -> &FineModule {
+        self.analysed
+            .analysis
+            .as_fine()
+            .expect("a fine view holds a fine analysis")
+    }
+}
+
 pub struct Graph {
     /// Shared with the file graph the upstream search walks. See [`Graph::file_graph`].
     resolver: std::sync::Arc<Resolver>,
@@ -255,15 +299,45 @@ impl Graph {
         analysed
     }
 
+    /// How far the analysis sees into `file`, analysing it if it has not been looked
+    /// at yet.
+    pub fn view(&self, file: FileId) -> View {
+        match self.analysis(file) {
+            Some(analysed) if analysed.analysis.as_fine().is_some() => {
+                View::Fine(Fine { file, analysed })
+            }
+            analysed => View::Opaque(analysed),
+        }
+    }
+
     fn target_of(&self, analysed: &Analysed, source: SourceId) -> Option<FileId> {
         analysed.resolved.get(source as usize).copied().flatten()
     }
 
     /// Everything `node` may depend on.
+    ///
+    /// Whether the file is opaque is decided here, once. Every node of an opaque file
+    /// other than `File(f)` stands for the whole of it, which is all anything can say
+    /// about it, and `File(f)` reaches each import wholesale, which is what the
+    /// file-level analysis has always done. The rules below see only fine files.
     pub fn edges(&self, node: Node) -> Vec<Node> {
+        let file = node.file();
+        let fine = match self.view(file) {
+            View::Fine(fine) => fine,
+            View::Opaque(analysed) => {
+                return match node {
+                    Node::File(_) => analysed
+                        .iter()
+                        .flat_map(|analysed| analysed.resolved.iter().flatten())
+                        .map(|target| Node::File(*target))
+                        .collect(),
+                    _ => vec![Node::File(file)],
+                };
+            }
+        };
         match node {
             Node::File(file) => self.file_edges(file),
-            Node::Decl(file, decl) => self.decl_edges(file, decl),
+            Node::Decl(_, decl) => self.decl_edges(&fine, decl),
             Node::Export(file, name) => self.export_edges(file, name),
             Node::Member(file, decl, member) => self.member_edges(file, decl, member),
             Node::ModuleInit(file) => self.init_edges(file),
@@ -300,20 +374,15 @@ impl Graph {
         }
     }
 
-    fn decl_edges(&self, file: FileId, decl: DeclId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return Vec::new();
-        };
+    fn decl_edges(&self, fine: &Fine, decl: DeclId) -> Vec<Node> {
+        let module = fine.module();
         let Some(entry) = module.decls.get(decl as usize) else {
             return Vec::new();
         };
 
         self.reference_edges(
-            file,
-            &analysed,
+            fine.file(),
+            fine.analysed(),
             module,
             &entry.refs,
             &entry.member_refs,
@@ -953,7 +1022,85 @@ fn extended(callee: &crate::module::Callee, path: &[String]) -> crate::module::C
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use crate::config::{Bundler, Configs};
+
+    /// A graph over a tree of the given files, and the directory holding them.
+    fn graph_for(files: &[(&str, &str)]) -> (tempfile::TempDir, Graph) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        for (name, body) in files {
+            let path = root.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let graph = Graph::new(
+            Reading {
+                configs: Arc::new(Configs::new(&root)),
+                ignore_types: true,
+            },
+            Bundler::default(),
+            Arc::default(),
+            root,
+            Arc::default(),
+            Arc::default(),
+        );
+        (dir, graph)
+    }
+
+    /// The file `name` of the tree `dir` holds.
+    fn file(graph: &Graph, dir: &tempfile::TempDir, name: &str) -> FileId {
+        graph.file_id(&dunce::canonicalize(dir.path()).unwrap().join(name))
+    }
+
+    /// Every node a search from `anchor` could arrive at, the anchor included.
+    fn reach(graph: &Graph, anchor: FileId) -> AHashSet<Node> {
+        let mut seen = AHashSet::default();
+        let mut stack = vec![Node::File(anchor)];
+        while let Some(node) = stack.pop() {
+            if seen.insert(node) {
+                stack.extend(graph.edges(node));
+            }
+        }
+        seen
+    }
+
+    /// Nothing finer than the file can be said about an opaque one, so whatever
+    /// names a part of it reaches the whole, and the whole reaches what it imports.
+    /// A leaf and a module the analyser gave up on are the same to a reader.
+    #[test]
+    fn every_node_of_an_opaque_file_reaches_only_the_file() {
+        let (dir, graph) = graph_for(&[
+            (
+                "legacy.js",
+                "const a = require('./a');\nObject.assign(module.exports, { a });\n",
+            ),
+            ("a.ts", "export const a = 1;\n"),
+            ("data.json", "{}\n"),
+        ]);
+        let legacy = file(&graph, &dir, "legacy.js");
+        let a = file(&graph, &dir, "a.ts");
+        let data = file(&graph, &dir, "data.json");
+        assert!(graph.analysis(legacy).unwrap().analysis.as_fine().is_none());
+        assert!(graph.analysis(data).is_none());
+
+        assert_eq!(graph.edges(Node::File(legacy)), vec![Node::File(a)]);
+        assert_eq!(graph.edges(Node::File(data)), Vec::<Node>::new());
+        let name = graph.name_id("a");
+        for opaque in [legacy, data] {
+            for node in [
+                Node::Decl(opaque, 0),
+                Node::Export(opaque, name),
+                Node::Member(opaque, 0, name),
+                Node::ModuleInit(opaque),
+            ] {
+                assert_eq!(graph.edges(node), vec![Node::File(opaque)], "{node:?}");
+            }
+        }
+        assert_eq!(reach(&graph, legacy).len(), 1 + reach(&graph, a).len());
+    }
 
     /// A graph over a project written to a temporary directory, which the caller
     /// keeps alive for as long as the graph reads from it.
