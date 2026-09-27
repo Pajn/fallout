@@ -11,6 +11,7 @@ use clap::ValueEnum;
 
 use crate::change::Change;
 use crate::graph::{Graph, Node};
+use crate::marks::Marks;
 use crate::module::{Reading, imported_specifiers};
 use crate::resolve::Resolver;
 
@@ -235,12 +236,7 @@ fn trace(came_from: &AHashMap<PathBuf, Option<PathBuf>>, target: &Path) -> Vec<P
 /// problem — a change to a sibling component cannot reach a page through references,
 /// yet they render together — so upstream stays at file granularity until that
 /// question is settled.
-pub fn downstream_symbols(
-    anchors: &[PathBuf],
-    marked: &AHashSet<Node>,
-    change: &Change,
-    graph: &Graph,
-) -> Search<Vec<Node>> {
+pub fn downstream_symbols(anchors: &[PathBuf], marks: &Marks, graph: &Graph) -> Search<Vec<Node>> {
     let mut came_from: AHashMap<Node, Option<Node>> = AHashMap::default();
     let mut queue = VecDeque::new();
 
@@ -256,7 +252,7 @@ pub fn downstream_symbols(
         files.into_iter().map(|file| graph.path(file)).collect()
     };
     while let Some(current) = queue.pop_front() {
-        if is_marked(graph, marked, change, current) {
+        if marks.is_marked(graph, current) {
             return Search {
                 hit: Some(trace_nodes(&came_from, current)),
                 visited: visited(&came_from),
@@ -275,21 +271,6 @@ pub fn downstream_symbols(
         hit: None,
         visited: visited(&came_from),
     }
-}
-
-/// `File(f)` is the umbrella node: marking it says "something in f changed, and we
-/// cannot say what". Every node of `f` is therefore marked with it, or a search that
-/// reaches only a declaration would miss a whole-file change.
-fn is_marked(graph: &Graph, marked: &AHashSet<Node>, change: &Change, node: Node) -> bool {
-    if change.marks_package(&graph.path(node.file())) {
-        return true;
-    }
-    marked.contains(&node)
-        || marked.contains(&Node::File(node.file()))
-        || graph.repointed(node.file()).contains(&node)
-        || graph
-            .repointed(node.file())
-            .contains(&Node::File(node.file()))
 }
 
 fn trace_nodes(came_from: &AHashMap<Node, Option<Node>>, target: Node) -> Vec<Node> {

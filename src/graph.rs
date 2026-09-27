@@ -127,9 +127,6 @@ pub struct Graph {
     /// consumers that ask for it still reach, so the mark that says it has gone
     /// reaches exactly those consumers and no others.
     lost_exports: AHashMap<PathBuf, Vec<String>>,
-    /// The nodes of each file that read an import the change may have sent
-    /// somewhere else. See [`crate::repoint`].
-    repointed: RefCell<AHashMap<FileId, Rc<AHashSet<Node>>>>,
 }
 
 impl Graph {
@@ -159,39 +156,21 @@ impl Graph {
             name_ids: RefCell::new(AHashMap::default()),
             analyses: RefCell::new(AHashMap::default()),
             lost_exports,
-            repointed: RefCell::new(AHashMap::default()),
         }
     }
 
-    /// The nodes of `file` that read an import the change may have sent to another
-    /// file, which are as changed as if the import had been rewritten.
-    pub fn repointed(&self, file: FileId) -> Rc<AHashSet<Node>> {
-        if let Some(known) = self.repointed.borrow().get(&file) {
-            return known.clone();
-        }
-        let mut nodes = AHashSet::default();
-        if let Some(analysed) = self.analysis(file) {
-            let path = self.path(file);
-            let moved: Vec<crate::module::SourceId> = self
-                .resolver
-                .moved(&path, || analysed.analysis.sources())
-                .iter()
-                .map(|&source| source as crate::module::SourceId)
-                .collect();
-            if !moved.is_empty() {
-                match analysed.analysis.as_fine() {
-                    Some(module) => {
-                        crate::marks::mark_sources(self, file, module, &moved, &mut nodes)
-                    }
-                    None => {
-                        nodes.insert(Node::File(file));
-                    }
-                }
-            }
-        }
-        let nodes = Rc::new(nodes);
-        self.repointed.borrow_mut().insert(file, nodes.clone());
-        nodes
+    /// The imports of `file` the change may have sent to another file, as this
+    /// graph's resolver resolves them. None for a file with no analysis, which
+    /// imports nothing.
+    pub fn moved_sources(&self, file: FileId) -> Vec<SourceId> {
+        let Some(analysed) = self.analysis(file) else {
+            return Vec::new();
+        };
+        self.resolver
+            .moved(&self.path(file), || analysed.analysis.sources())
+            .iter()
+            .map(|&source| source as SourceId)
+            .collect()
     }
 
     pub fn file_id(&self, path: &Path) -> FileId {
