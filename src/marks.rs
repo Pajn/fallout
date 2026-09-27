@@ -9,110 +9,52 @@
 //! differs. Without one, the diff's line ranges are laid over the statement spans,
 //! which says roughly what differs and guesses at the rest.
 
-use std::path::{Path, PathBuf};
-
 use ahash::AHashSet;
 
-use crate::base::Base;
-use crate::diff::{ChangeSet, FileChange, LineRange};
+use crate::change::{Change, Extent};
+use crate::diff::LineRange;
 use crate::graph::{FileId, Graph, Node};
+use crate::module::compare::Comparison;
 use crate::module::{
     Decl, DeclId, Export, ExportTarget, FineModule, LineTable, ModuleAnalysis, Span,
 };
 
-/// Every node a change set marks, at declaration granularity.
+/// Every node the change marks, at declaration granularity.
 ///
-/// A base revision, where there is one, decides what changed in each file; the
-/// diff's line ranges are the fallback for the rest.
-///
-/// A file described without line information — a binary file, a rename, or a path
+/// A file whose whole extent the change reaches — a binary file, a rename, a path
 /// given with `--changed` — marks `File(f)`, which is the file-level behaviour and
 /// stays available forever.
-pub fn marked_nodes(
-    graph: &Graph,
-    diff: &ChangeSet,
-    root: &Path,
-    explicit: &[PathBuf],
-    base: Option<&Base>,
-) -> AHashSet<Node> {
+pub fn marked_nodes(graph: &Graph, change: &Change) -> AHashSet<Node> {
     let mut marked = AHashSet::default();
-
-    for file in &diff.files {
-        if file.change == FileChange::Deleted {
-            continue;
-        }
-        let Ok(path) = dunce::canonicalize(root.join(&file.path)) else {
-            continue;
-        };
-        let id = graph.file_id(&path);
-
-        if mark_against_base(graph, id, &path, base, &mut marked) {
-            continue;
-        }
-
-        match &file.change {
-            FileChange::Modified { ranges } => {
-                mark_ranges(graph, id, ranges, &mut marked);
-            }
-            // No line information: the whole file.
-            FileChange::Opaque => {
+    for (path, extent) in change.extents() {
+        let id = graph.file_id(path);
+        match extent {
+            // Nothing observable differs: a reworded comment, a reflowed expression.
+            // This is the one case where a file the change names marks nothing.
+            Extent::Unchanged => {}
+            Extent::Whole => {
                 marked.insert(Node::File(id));
             }
-            FileChange::Deleted => unreachable!("dropped above"),
+            Extent::Lines(ranges) => mark_ranges(graph, id, ranges, &mut marked),
+            Extent::Statements(comparison) => mark_statements(graph, id, comparison, &mut marked),
         }
     }
-
-    for path in explicit {
-        let Ok(path) = dunce::canonicalize(path) else {
-            continue;
-        };
-        let id = graph.file_id(&path);
-        if !mark_against_base(graph, id, &path, base, &mut marked) {
-            marked.insert(Node::File(id));
-        }
-    }
-
     marked
 }
 
 /// Marks what the base version of a file says actually changed in it.
-///
-/// `false` means there was no answer to be had — no base revision, no version of
-/// this file in it, or two versions that cannot be compared — and the caller falls
-/// back on what the diff says.
-fn mark_against_base(
-    graph: &Graph,
-    file: FileId,
-    path: &Path,
-    base: Option<&Base>,
-    out: &mut AHashSet<Node>,
-) -> bool {
-    let Some(comparison) = base.and_then(|base| base.comparison(path)) else {
-        return false;
-    };
-
-    // Nothing observable differs: a reworded comment, a reflowed expression. This is
-    // the one place the analysis may mark nothing at all for a file the diff names.
-    if comparison.is_empty() {
-        return true;
-    }
-
+fn mark_statements(graph: &Graph, file: FileId, comparison: &Comparison, out: &mut AHashSet<Node>) {
     // Knowing exactly what changed is no use in a file with no interior to put it in:
     // a consumer of a module the analyser gave up on reaches one node, so that is the
     // node to mark.
     let Some(module) = graph.analysis(file) else {
         out.insert(Node::File(file));
-        return true;
+        return;
     };
     let Some(module) = module.analysis.as_fine() else {
         out.insert(Node::File(file));
-        return true;
+        return;
     };
-
-    if comparison.whole_file {
-        out.insert(Node::File(file));
-        return true;
-    }
 
     // A name that has gone is still a node, and one only the consumers that ask for
     // it arrive at.
@@ -132,7 +74,6 @@ fn mark_against_base(
             out.insert(Node::ModuleInit(file));
         }
     }
-    true
 }
 
 fn mark_ranges(graph: &Graph, file: FileId, ranges: &[LineRange], out: &mut AHashSet<Node>) {

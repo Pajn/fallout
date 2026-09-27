@@ -7,7 +7,7 @@
 //! honour: the tool may over-report, it may never under-report.
 
 pub mod base;
-pub mod changes;
+pub mod change;
 pub mod cli;
 pub mod config;
 pub mod diff;
@@ -224,20 +224,13 @@ struct Run<'o> {
     options: &'o Options,
     root: PathBuf,
     anchors: Vec<PathBuf>,
-    change_set: diff::ChangeSet,
+    /// Nothing about it depends on the bundler, so every group asks the same one.
+    change: change::Change,
     configs: std::sync::Arc<config::Configs>,
     reading: module::Reading,
-    packages: std::sync::Arc<lockfile::Changed>,
-    /// What the change could have sent an unchanged import to instead.
-    repointing: std::sync::Arc<repoint::Repointing>,
-    base: Option<base::Base>,
     /// Every group's unresolved specifiers together, for the combined report. Each
     /// group records its own, since what one bundler cannot place another may.
     unresolved: Unresolved,
-    /// The files the change marks, for the searches that work file by file: every
-    /// file-level search, and the upstream one at any granularity. Worked out once,
-    /// since nothing about it depends on the bundler.
-    changed: std::cell::OnceCell<ahash::AHashSet<PathBuf>>,
 }
 
 impl<'o> Run<'o> {
@@ -278,33 +271,26 @@ impl<'o> Run<'o> {
             configs: configs.clone(),
             ignore_types: !options.include_types,
         };
-        // A changed lockfile entry is a change to code this repository does not
-        // hold. Read before any search, because every search asks a resolver and it
-        // is the resolver that gives a changed package a node.
-        let packages = std::sync::Arc::new(lockfile::changed(&root, &change_set, &options.changed));
-        let base = options
+        let earlier = options
             .base
             .as_deref()
-            .map(|reference| base::Base::new(reference, reading.clone()));
-        let repointing = std::sync::Arc::new(repoint::repointing(
+            .map(|reference| Box::new(base::Base::new(reference)) as Box<dyn base::Earlier>);
+        let change = change::Change::read(
             &root,
-            &change_set,
+            change_set,
             &options.changed,
-            base.as_ref(),
-        ));
+            earlier,
+            reading.clone(),
+        );
 
         Ok(Self {
             options,
             root,
             anchors,
-            change_set,
+            change,
             configs,
             reading,
-            packages,
-            repointing,
-            base,
             unresolved: Unresolved::default(),
-            changed: std::cell::OnceCell::new(),
         })
     }
 
@@ -325,26 +311,15 @@ impl<'o> Run<'o> {
         groups
     }
 
-    fn changed(&self, reading: &module::Reading) -> &ahash::AHashSet<PathBuf> {
-        self.changed.get_or_init(|| {
-            changes::marked_files(
-                &self.root,
-                &self.change_set,
-                &self.options.changed,
-                self.base.as_ref(),
-                reading,
-            )
-        })
-    }
-
     fn engine(&self, bundler: config::Bundler) -> Engine {
+        let (packages, repointing) = self.change.for_resolution();
         match self.options.granularity {
             Granularity::File => Engine::File(Box::new(Resolver::new(
                 self.configs.clone(),
                 std::sync::Arc::new(Unresolved::default()),
                 self.root.clone(),
-                self.packages.clone(),
-                self.repointing.clone(),
+                packages,
+                repointing,
                 bundler.lookup,
             ))),
             Granularity::Symbol => {
@@ -353,16 +328,10 @@ impl<'o> Run<'o> {
                     bundler,
                     std::sync::Arc::new(Unresolved::default()),
                     self.root.clone(),
-                    self.packages.clone(),
-                    self.repointing.clone(),
+                    packages,
+                    repointing,
                 );
-                let marked = marks::marked_nodes(
-                    &graph,
-                    &self.change_set,
-                    &self.root,
-                    &self.options.changed,
-                    self.base.as_ref(),
-                );
+                let marked = marks::marked_nodes(&graph, &self.change);
                 Engine::Symbol(Box::new((graph, marked)))
             }
         }
@@ -406,17 +375,17 @@ impl Engine {
             visited,
         };
 
+        if run.change.is_empty() {
+            return Judged {
+                verdict: Verdict::NotAffected,
+                visited,
+            };
+        }
         match self {
             Engine::File(resolver) => {
-                let changed = run.changed(&run.reading);
-                if changed.is_empty() && run.packages.is_empty() && run.repointing.is_empty() {
-                    return Judged {
-                        verdict: Verdict::NotAffected,
-                        visited,
-                    };
-                }
+                let changed = run.change.files();
                 if only != Some(Direction::Upstream) {
-                    let search = query::downstream(anchors, changed, resolver, &run.reading);
+                    let search = query::downstream(anchors, &run.change, resolver, &run.reading);
                     visited.extend(search.visited);
                     if let Some(hit) = search.hit {
                         return affected(hit, visited);
@@ -434,17 +403,8 @@ impl Engine {
             // answer, so a declaration run is never *less* sensitive than a file run.
             Engine::Symbol(symbol) => {
                 let (graph, marked) = symbol.as_ref();
-                if marked.is_empty()
-                    && !graph.resolver().has_changed_packages()
-                    && !graph.resolver().may_repoint()
-                {
-                    return Judged {
-                        verdict: Verdict::NotAffected,
-                        visited,
-                    };
-                }
                 if only != Some(Direction::Upstream) {
-                    let search = query::downstream_symbols(anchors, marked, graph);
+                    let search = query::downstream_symbols(anchors, marked, &run.change, graph);
                     visited.extend(search.visited);
                     if let Some(nodes) = search.hit {
                         let path = nodes.iter().map(|node| graph.path(node.file())).collect();
@@ -461,9 +421,12 @@ impl Engine {
                     }
                 }
                 if only != Some(Direction::Downstream) {
-                    let changed = run.changed(graph.reading());
-                    let search =
-                        query::upstream(anchors, changed, graph.resolver(), graph.reading());
+                    let search = query::upstream(
+                        anchors,
+                        run.change.files(),
+                        graph.resolver(),
+                        graph.reading(),
+                    );
                     visited.extend(search.visited);
                     if let Some(hit) = search.hit {
                         return affected(hit, visited);

@@ -105,9 +105,7 @@ pub fn changed(root: &Path, diff: &ChangeSet, explicit: &[PathBuf]) -> Changed {
         let Some(format) = format_of(path) else {
             continue;
         };
-        let text = std::fs::read_to_string(path)
-            .or_else(|_| std::fs::read_to_string(root.join(path)))
-            .unwrap_or_default();
+        let text = std::fs::read_to_string(path).unwrap_or_default();
         let entries = entries(&text, format);
         if entries.is_empty() {
             changed.everything = true;

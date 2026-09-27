@@ -123,9 +123,7 @@ impl Graph {
             return known.clone();
         }
         let mut nodes = AHashSet::default();
-        if self.resolver.may_repoint()
-            && let Some(analysed) = self.analysis(file)
-        {
+        if let Some(analysed) = self.analysis(file) {
             let path = self.path(file);
             let moved: Vec<crate::module::SourceId> = self
                 .resolver
