@@ -30,7 +30,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use ahash::{AHashMap, AHashSet};
-use oxc_resolver::{FileMetadata, FileSystem, FileSystemOs, ResolveError, ResolveOptions};
+use oxc_resolver::{
+    FileMetadata, FileSystem, FileSystemOs, ResolveError, ResolveOptions, ResolverGeneric,
+};
 
 use crate::base::Earlier;
 use crate::diff::{ChangeSet, FileChange};
@@ -203,8 +205,9 @@ pub struct MovedImports<Fs = FileSystemOs> {
     root: PathBuf,
     /// The configuration files each tsconfig reads, itself first.
     tsconfig_reads: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
-    /// Finds the config a package `extends` entry names, built on first use.
-    extends: OnceLock<oxc_resolver::Resolver>,
+    /// Finds the config a package `extends` entry names in the tree as it is, built
+    /// on first use.
+    extends: OnceLock<ResolverGeneric<Fs>>,
     /// Which imports of each file moved, by index, worked out the first time the
     /// file is asked about.
     indices: RwLock<AHashMap<PathBuf, Arc<[usize]>>>,
@@ -297,7 +300,12 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             .take_while(|directory| directory.starts_with(&self.root))
         {
             let above = directory.join("tsconfig.json");
-            if above.is_file() {
+            if self
+                .now
+                .fs()
+                .metadata(&above)
+                .is_ok_and(|found| found.is_file())
+            {
                 reads.extend(self.tsconfig_reads(&above).iter().cloned());
             }
         }
@@ -322,9 +330,10 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
         let mut next = 0;
         while let Some(config) = reads.get(next).cloned() {
             next += 1;
-            let Some(parsed) = std::fs::read_to_string(&config)
-                .ok()
-                .and_then(|text| oxc_resolver::TsConfig::parse(true, &config, &config, text).ok())
+            let Some(parsed) =
+                self.now.fs().read_to_string(&config).ok().and_then(|text| {
+                    oxc_resolver::TsConfig::parse(true, &config, &config, text).ok()
+                })
             else {
                 continue;
             };
@@ -349,7 +358,7 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             let named: Vec<PathBuf> = extends
                 .iter()
                 .flat_map(|specifier| self.extended_configs(&config, specifier))
-                .chain(referenced.map(|path| dunce::canonicalize(&path).unwrap_or(path)))
+                .chain(referenced.map(|path| self.canonical(path)))
                 .collect();
             for read in named {
                 if !reads.contains(&read) {
@@ -388,22 +397,22 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
                 file.as_mut_os_string().push(".json");
                 named.push(file);
             }
-            return named
-                .into_iter()
-                .map(|path| dunce::canonicalize(&path).unwrap_or(path))
-                .collect();
+            return named.into_iter().map(|path| self.canonical(path)).collect();
         }
         // A package's config, looked for the way oxc_resolver looks for it when it
         // follows `extends`: a JSON file, and a package's `tsconfig.json` where
         // the entry names only the package. A module resolver would find the
         // package's code instead.
         let resolver = self.extends.get_or_init(|| {
-            oxc_resolver::Resolver::new(ResolveOptions {
-                condition_names: vec!["node".to_string(), "import".to_string()],
-                extensions: vec![".json".to_string()],
-                main_files: vec!["tsconfig".to_string()],
-                ..ResolveOptions::default()
-            })
+            ResolverGeneric::new_with_file_system(
+                self.now.fs().clone(),
+                ResolveOptions {
+                    condition_names: vec!["node".to_string(), "import".to_string()],
+                    extensions: vec![".json".to_string()],
+                    main_files: vec!["tsconfig".to_string()],
+                    ..ResolveOptions::default()
+                },
+            )
         });
         resolver
             .resolve(directory, specifier)
@@ -411,6 +420,15 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             .map(|resolution| resolution.full_path())
             .into_iter()
             .collect()
+    }
+
+    /// `path` as the tree as it is spells it, or as written where it is not there.
+    fn canonical(&self, path: PathBuf) -> PathBuf {
+        self.now
+            .fs()
+            .canonicalize(&path)
+            .map(|real| dunce::simplified(&real).to_path_buf())
+            .unwrap_or(path)
     }
 }
 
@@ -685,6 +703,87 @@ mod tests {
         let moved = in_memory(now, change);
         let imports = || specifiers(&["@reduxjs/toolkit", "./never-there"]);
         assert_eq!(&*moved.moved(&at("src/page.ts"), imports), &[0]);
+    }
+
+    /// Whether `config`, changed with no earlier text, is taken to govern
+    /// `src/page.ts` in `now`: every import of a file it governs moves, and no
+    /// import of one it does not, since nothing else changed.
+    fn governs(now: &[(&str, &str)], deleted: &[(&str, &str)], config: &str) -> bool {
+        let now = MemoryFs::with(now);
+        let change = changed(&now, deleted, &[config]);
+        let moved =
+            in_memory(now, change).moved(&at("src/page.ts"), || specifiers(&["./a", "./b"]));
+        match &*moved {
+            [0, 1] => true,
+            [] => false,
+            other => panic!("a governed file moves every import, not {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_config_the_tsconfig_found_extends_governs_the_file() {
+        let now = [
+            ("tsconfig.json", r#"{ "extends": "./tsconfig.base.json" }"#),
+            ("tsconfig.base.json", "{}"),
+            ("src/page.ts", ""),
+        ];
+        assert!(governs(&now, &[], "tsconfig.base.json"));
+    }
+
+    /// A `tsconfig.json` above the file can decide through `references`, `include`
+    /// or `exclude` which config is found, so what it reads governs the file too,
+    /// though another config is the one found.
+    #[test]
+    fn a_config_a_tsconfig_above_extends_governs_the_file() {
+        let now = [
+            ("tsconfig.json", r#"{ "extends": "./tsconfig.base.json" }"#),
+            ("tsconfig.base.json", "{}"),
+            ("src/tsconfig.json", "{}"),
+            ("src/page.ts", ""),
+        ];
+        assert!(governs(&now, &[], "tsconfig.base.json"));
+    }
+
+    #[test]
+    fn a_config_a_tsconfig_above_references_governs_the_file() {
+        let now = [
+            (
+                "tsconfig.json",
+                r#"{ "references": [{ "path": "./packages/lib" }] }"#,
+            ),
+            ("packages/lib/tsconfig.json", "{}"),
+            ("src/page.ts", ""),
+        ];
+        assert!(governs(&now, &[], "packages/lib/tsconfig.json"));
+    }
+
+    /// It may have been the nearest before, whatever the tree as it is reads.
+    #[test]
+    fn a_deleted_tsconfig_above_the_file_governs_it() {
+        let now = [("tsconfig.json", "{}"), ("src/page.ts", "")];
+        let deleted = [("src/tsconfig.json", "")];
+        assert!(governs(&now, &deleted, "src/tsconfig.json"));
+    }
+
+    /// What a tsconfig that cannot be read said before is exactly what is not known.
+    #[test]
+    fn a_tsconfig_that_cannot_be_read_governs_the_file() {
+        let now = [
+            ("tsconfig.json", "{ not json"),
+            ("tools/tsconfig.json", "{}"),
+            ("src/page.ts", ""),
+        ];
+        assert!(governs(&now, &[], "tools/tsconfig.json"));
+    }
+
+    #[test]
+    fn an_unrelated_config_does_not_govern_the_file() {
+        let now = [
+            ("tsconfig.json", "{}"),
+            ("tools/tsconfig.json", "{}"),
+            ("src/page.ts", ""),
+        ];
+        assert!(!governs(&now, &[], "tools/tsconfig.json"));
     }
 
     /// With no base revision a changed tsconfig has no earlier text, so the tree
