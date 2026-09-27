@@ -117,6 +117,10 @@ const NO_ANSWER: u8 = 2;
 /// `earlier` stands in for whatever `--base` names: when it is given, the versions
 /// of the files before the change are read from it and the revision is not read.
 /// Without it, a `--base` revision is read from git as usual.
+///
+/// # Panics
+///
+/// When writing to `out` or `err` fails, as `println!` does for the binary.
 pub fn execute<I, T>(
     args: I,
     earlier: Option<Box<dyn Earlier>>,

@@ -135,7 +135,9 @@ pub fn analyse(options: &Options) -> Result<Outcome, Error> {
 /// are none, and the change is read from the diff and the changed paths alone.
 ///
 /// This is how a caller with no repository to hand, a test say, gives a run what a
-/// `--base` run would read from git.
+/// `--base` run would read from git. `earlier` has to hold every text file of the
+/// tree before the change: a file it has no text for is taken as one the change
+/// added. See [`base::Earlier::text`].
 pub fn analyse_with(
     options: &Options,
     earlier: Option<Box<dyn base::Earlier>>,

@@ -21,6 +21,12 @@ use ahash::AHashMap;
 pub trait Earlier {
     /// What `path` contained before the change, or `None` when there is no such
     /// version to read.
+    ///
+    /// `None` is read as "the file was not there before", not as "not known": a
+    /// changed config with no earlier version is taken as one the change added, so
+    /// the imports it governs are not taken as moved. An implementation has to
+    /// answer for every text file of the tree before the change, or a run can
+    /// report less than the change reaches.
     fn text(&self, path: &Path) -> Option<String>;
 }
 

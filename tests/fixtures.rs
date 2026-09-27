@@ -649,6 +649,11 @@ fn answers(case: &Case) -> String {
 #[test]
 fn answers_match_their_snapshots() {
     let bless = std::env::var_os("FALLOUT_BLESS").is_some_and(|value| value == "1");
+    // Blessing rewrites what is recorded, which a CI run must never do quietly.
+    assert!(
+        !(bless && std::env::var_os("CI").is_some()),
+        "FALLOUT_BLESS is set in CI, where the recorded answers are checked, not written"
+    );
     each_case(|case| {
         let path = case.dir.join("answers.txt");
         let now = answers(case);

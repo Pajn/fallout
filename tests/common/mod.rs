@@ -66,7 +66,10 @@ pub fn repository(fixture: &Path) -> (tempfile::TempDir, PathBuf) {
     copy(&tree(&fixture.join("before")), &repo);
     git(&repo, &["init", "--quiet"]);
     git(&repo, &["add", "--all", "--force"]);
-    git(&repo, &["commit", "--quiet", "--message", "before"]);
+    git(
+        &repo,
+        &["commit", "--quiet", "--allow-empty", "--message", "before"],
+    );
     clear(&repo);
     copy(&tree(&fixture.join("after")), &repo);
     (dir, repo)
