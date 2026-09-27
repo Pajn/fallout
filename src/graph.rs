@@ -310,6 +310,19 @@ impl Graph {
         }
     }
 
+    /// The fine view of `file` for looking a name up in it, if it has one.
+    ///
+    /// Only a source file can be fine, and any other is not parsed to find that out.
+    /// A search parses a file when it arrives at it, which is when the imports the
+    /// file makes are resolved and the ones that resolve nowhere are recorded; a
+    /// file it only names, and then stops short of, stays out of that record.
+    fn lookup(&self, file: FileId) -> Option<Fine> {
+        if !is_source_file(&self.path(file)) {
+            return None;
+        }
+        self.view(file).fine()
+    }
+
     fn target_of(&self, analysed: &Analysed, source: SourceId) -> Option<FileId> {
         analysed.resolved.get(source as usize).copied().flatten()
     }
@@ -508,11 +521,7 @@ impl Graph {
                 // map a package's name onto a shim.
                 if let Some(target) = self.target_of(fine.analysed(), *source) {
                     let target_path = self.path(target);
-                    if is_source_file(&target_path)
-                        && !target_path
-                            .components()
-                            .any(|part| part.as_os_str() == "node_modules")
-                    {
+                    if is_source_file(&target_path) && !crate::resolve::is_installed(&target_path) {
                         return self.export_rule(target, name, path, depth + 1);
                     }
                 }
@@ -589,8 +598,7 @@ impl Graph {
     /// A re-export is not followed: the statement that forwards the name is part of
     /// what the reader depends on, and only `Export` of the forwarding file says so.
     pub fn resolve_member(&self, file: FileId, export: &str, member: &str) -> Vec<Node> {
-        if is_source_file(&self.path(file))
-            && let Some(fine) = self.view(file).fine()
+        if let Some(fine) = self.lookup(file)
             && let Some(ExportTarget::Local(decl)) =
                 fine.module().export_named(export).map(|e| &e.target)
             && self.has_member(&fine, *decl, member)
@@ -714,10 +722,7 @@ impl Graph {
     /// come from, and at the file behind each of its `export *` statements for the
     /// same reason: `File(target)` reaches the target's own nodes, not theirs.
     pub fn resolve_export(&self, file: FileId, name: &str) -> Vec<Node> {
-        if !is_source_file(&self.path(file)) {
-            return vec![opaque_name(file)];
-        }
-        let Some(fine) = self.view(file).fine() else {
+        let Some(fine) = self.lookup(file) else {
             return vec![opaque_name(file)];
         };
 
@@ -812,8 +817,9 @@ impl Graph {
 
     /// Every export of `file`, for a namespace import.
     fn all_exports(&self, file: FileId) -> Vec<Node> {
+        // Not parsed to find it opaque, for the reason `lookup` gives.
         if !is_source_file(&self.path(file)) {
-            return vec![Node::File(file)];
+            return vec![opaque_name(file)];
         }
         let mut seen = AHashSet::default();
         let mut nodes = Vec::new();
@@ -1030,6 +1036,23 @@ mod tests {
             }
         }
         assert_eq!(reach(&graph, legacy).len(), 1 + reach(&graph, a).len());
+    }
+
+    /// Parsing a file resolves its imports, and a search records the ones that
+    /// resolve nowhere for the files it arrives at, so naming a file that cannot be
+    /// fine must not parse it.
+    #[test]
+    fn looking_a_name_up_in_a_stylesheet_does_not_parse_it() {
+        let (dir, graph) = graph_for(&[("theme.css", "@import './missing.css';\n")]);
+        let theme = file(&graph, &dir, "theme.css");
+
+        assert_eq!(graph.resolve_export(theme, "x"), vec![Node::File(theme)]);
+        assert_eq!(
+            graph.resolve_member(theme, "x", "y"),
+            vec![Node::File(theme)]
+        );
+        assert_eq!(graph.all_exports(theme), vec![Node::File(theme)]);
+        assert!(!graph.analyses.borrow().contains_key(&theme));
     }
 
     /// However a name is read out of an opaque file — imported, re-exported, taken

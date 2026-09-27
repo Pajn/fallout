@@ -660,6 +660,13 @@ fn alias_matches(name: &str, specifier: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
+/// Whether `path` belongs to an installed package, somewhere below a `node_modules`
+/// directory, rather than to the project's own source.
+pub fn is_installed(path: &Path) -> bool {
+    path.components()
+        .any(|part| part.as_os_str() == "node_modules")
+}
+
 /// Whether the package a bare specifier names is installed where Node would look
 /// for it from `from_file`: a `node_modules` in its directory or any above it.
 fn package_installed(from_file: &Path, specifier: &str) -> bool {
