@@ -126,12 +126,7 @@ impl Change {
         file: &Path,
         specifiers: impl FnOnce() -> S,
     ) -> bool {
-        if self.repointing.is_empty() {
-            return false;
-        }
-        resolver.repoints_of(file, || {
-            !resolver.moved(file, specifiers().as_ref()).is_empty()
-        })
+        !resolver.moved(file, specifiers).is_empty()
     }
 
     /// What a resolver needs of the change to resolve as the run does: which packages

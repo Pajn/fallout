@@ -1,8 +1,10 @@
 //! Graph traversal in both directions, capturing the path that produced a hit.
 
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 
 use ahash::{AHashMap, AHashSet};
 use clap::ValueEnum;
@@ -66,11 +68,55 @@ pub struct Search<T> {
     pub visited: AHashSet<PathBuf>,
 }
 
+/// The import graph file by file, as one bundler's resolver resolves it, for the
+/// searches that walk whole files.
+pub struct FileGraph {
+    resolver: Arc<Resolver>,
+    /// What each file imports, resolved. Several anchors' searches walk the same
+    /// files, and reading one means parsing it.
+    imports: RefCell<AHashMap<PathBuf, Rc<[PathBuf]>>>,
+}
+
+impl FileGraph {
+    pub fn new(resolver: Arc<Resolver>) -> Self {
+        Self {
+            resolver,
+            imports: RefCell::new(AHashMap::default()),
+        }
+    }
+
+    /// The resolver the edges are resolved with.
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
+
+    /// The files `file` imports, resolving `specifiers`, which are read only the
+    /// first time `file` is asked about.
+    pub fn edges_from<S: AsRef<[String]>>(
+        &self,
+        file: &Path,
+        specifiers: impl FnOnce() -> S,
+    ) -> Rc<[PathBuf]> {
+        if let Some(known) = self.imports.borrow().get(file) {
+            return known.clone();
+        }
+        let imports: Rc<[PathBuf]> = specifiers()
+            .as_ref()
+            .iter()
+            .filter_map(|specifier| self.resolver.resolve(file, specifier))
+            .collect();
+        self.imports
+            .borrow_mut()
+            .insert(file.to_path_buf(), imports.clone());
+        imports
+    }
+}
+
 /// Walks forward from every anchor, looking for a changed file.
 pub fn downstream(
     anchors: &[PathBuf],
     change: &Change,
-    resolver: &Resolver,
+    files: &FileGraph,
     reading: &Reading,
 ) -> Search<Hit> {
     let mut came_from: AHashMap<PathBuf, Option<PathBuf>> = AHashMap::default();
@@ -92,7 +138,7 @@ pub fn downstream(
         };
         if change.files().contains(&current)
             || change.marks_package(&current)
-            || change.repoints(resolver, &current, specifiers)
+            || change.repoints(files.resolver(), &current, specifiers)
         {
             let hit = Hit {
                 direction: Direction::Downstream,
@@ -105,10 +151,10 @@ pub fn downstream(
             };
         }
 
-        for next in edges_from(&current, resolver, specifiers) {
-            if !came_from.contains_key(&next) {
+        for next in files.edges_from(&current, specifiers).iter() {
+            if !came_from.contains_key(next) {
                 came_from.insert(next.clone(), Some(current.clone()));
-                queue.push_back(next);
+                queue.push_back(next.clone());
             }
         }
     }
@@ -126,7 +172,7 @@ pub fn downstream(
 pub fn upstream(
     anchors: &[PathBuf],
     changed: &AHashSet<PathBuf>,
-    resolver: &Resolver,
+    files: &FileGraph,
     reading: &Reading,
 ) -> Search<Hit> {
     let anchor_set: AHashSet<&PathBuf> = anchors.iter().collect();
@@ -156,10 +202,10 @@ pub fn upstream(
             }
 
             let specifiers = || imported_specifiers(&current, reading).unwrap_or_default();
-            for next in edges_from(&current, resolver, specifiers) {
-                if !came_from.contains_key(&next) {
+            for next in files.edges_from(&current, specifiers).iter() {
+                if !came_from.contains_key(next) {
                     came_from.insert(next.clone(), Some(current.clone()));
-                    queue.push_back(next);
+                    queue.push_back(next.clone());
                 }
             }
         }
@@ -167,22 +213,6 @@ pub fn upstream(
     }
 
     Search { hit: None, visited }
-}
-
-fn edges_from<S: AsRef<[String]>>(
-    file: &Path,
-    resolver: &Resolver,
-    specifiers: impl FnOnce() -> S,
-) -> Vec<PathBuf> {
-    resolver
-        .imports_of(file, || {
-            specifiers()
-                .as_ref()
-                .iter()
-                .filter_map(|specifier| resolver.resolve(file, specifier))
-                .collect()
-        })
-        .to_vec()
 }
 
 /// Rebuilds the chain from a root to `target`, root first.
@@ -271,4 +301,36 @@ fn trace_nodes(came_from: &AHashMap<Node, Option<Node>>, target: Node) -> Vec<No
     }
     path.reverse();
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Several anchors' searches walk the same files, and reading a file's imports
+    /// means parsing it, so a file is read once however often it is walked.
+    #[test]
+    fn a_file_walked_twice_is_read_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        std::fs::write(root.join("page.ts"), "import './button';\n").unwrap();
+        std::fs::write(root.join("button.ts"), "").unwrap();
+        let files = FileGraph::new(Arc::new(Resolver::new(
+            Arc::new(crate::config::Configs::new(&root)),
+            Arc::default(),
+            root.clone(),
+            Arc::default(),
+            Arc::default(),
+            crate::config::Lookup::default(),
+        )));
+
+        let page = root.join("page.ts");
+        let button = [root.join("button.ts")];
+        let first = files.edges_from(&page, || vec!["./button".to_string()]);
+        assert_eq!(&*first, &button);
+        let again = files.edges_from(&page, || -> Vec<String> {
+            panic!("the imports were read again")
+        });
+        assert_eq!(&*again, &button);
+    }
 }

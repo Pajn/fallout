@@ -15,6 +15,8 @@ pub mod factories;
 pub mod graph;
 pub mod lockfile;
 pub mod marks;
+#[cfg(test)]
+mod memory_fs;
 pub mod module;
 pub mod pure;
 pub mod query;
@@ -314,13 +316,15 @@ impl<'o> Run<'o> {
     fn engine(&self, bundler: config::Bundler) -> Engine {
         let (packages, repointing) = self.change.for_resolution();
         match self.options.granularity {
-            Granularity::File => Engine::File(Box::new(Resolver::new(
-                self.configs.clone(),
-                std::sync::Arc::new(Unresolved::default()),
-                self.root.clone(),
-                packages,
-                repointing,
-                bundler.lookup,
+            Granularity::File => Engine::File(Box::new(query::FileGraph::new(
+                std::sync::Arc::new(Resolver::new(
+                    self.configs.clone(),
+                    std::sync::Arc::new(Unresolved::default()),
+                    self.root.clone(),
+                    packages,
+                    repointing,
+                    bundler.lookup,
+                )),
             ))),
             Granularity::Symbol => {
                 let graph = graph::Graph::new(
@@ -332,7 +336,11 @@ impl<'o> Run<'o> {
                     repointing,
                 );
                 let marked = marks::marked_nodes(&graph, &self.change);
-                Engine::Symbol(Box::new((graph, marked)))
+                // Built once for the engine rather than once per search, so that the
+                // upstream searches of several anchors read each file once between
+                // them.
+                let files = graph.file_graph();
+                Engine::Symbol(Box::new((graph, marked, files)))
             }
         }
     }
@@ -346,11 +354,13 @@ impl<'o> Run<'o> {
     }
 }
 
-/// What answers the anchors of one bundler: a resolver for a file-level run, a node
-/// graph and what the change marks in it for a declaration-level one.
+/// What answers the anchors of one bundler: the imports file by file for a
+/// file-level run; for a declaration-level one, a node graph, what the change marks
+/// in it, and the imports file by file over the same resolver for the upstream
+/// search.
 enum Engine {
-    File(Box<Resolver>),
-    Symbol(Box<(graph::Graph, ahash::AHashSet<graph::Node>)>),
+    File(Box<query::FileGraph>),
+    Symbol(Box<(graph::Graph, ahash::AHashSet<graph::Node>, query::FileGraph)>),
 }
 
 struct Judged {
@@ -362,7 +372,7 @@ struct Judged {
 impl Engine {
     fn resolver(&self) -> &Resolver {
         match self {
-            Engine::File(resolver) => resolver,
+            Engine::File(files) => files.resolver(),
             Engine::Symbol(symbol) => symbol.0.resolver(),
         }
     }
@@ -382,17 +392,17 @@ impl Engine {
             };
         }
         match self {
-            Engine::File(resolver) => {
+            Engine::File(files) => {
                 let changed = run.change.files();
                 if only != Some(Direction::Upstream) {
-                    let search = query::downstream(anchors, &run.change, resolver, &run.reading);
+                    let search = query::downstream(anchors, &run.change, files, &run.reading);
                     visited.extend(search.visited);
                     if let Some(hit) = search.hit {
                         return affected(hit, visited);
                     }
                 }
                 if only != Some(Direction::Downstream) {
-                    let search = query::upstream(anchors, changed, resolver, &run.reading);
+                    let search = query::upstream(anchors, changed, files, &run.reading);
                     visited.extend(search.visited);
                     if let Some(hit) = search.hit {
                         return affected(hit, visited);
@@ -402,7 +412,7 @@ impl Engine {
             // Only the downstream search narrows; upstream keeps its file-level
             // answer, so a declaration run is never *less* sensitive than a file run.
             Engine::Symbol(symbol) => {
-                let (graph, marked) = symbol.as_ref();
+                let (graph, marked, files) = symbol.as_ref();
                 if only != Some(Direction::Upstream) {
                     let search = query::downstream_symbols(anchors, marked, &run.change, graph);
                     visited.extend(search.visited);
@@ -421,12 +431,8 @@ impl Engine {
                     }
                 }
                 if only != Some(Direction::Downstream) {
-                    let search = query::upstream(
-                        anchors,
-                        run.change.files(),
-                        graph.resolver(),
-                        graph.reading(),
-                    );
+                    let search =
+                        query::upstream(anchors, run.change.files(), files, graph.reading());
                     visited.extend(search.visited);
                     if let Some(hit) = search.hit {
                         return affected(hit, visited);
