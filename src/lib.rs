@@ -15,6 +15,8 @@ pub mod factories;
 pub mod graph;
 pub mod lockfile;
 pub mod marks;
+#[cfg(test)]
+mod memory_fs;
 pub mod module;
 pub mod pure;
 pub mod query;

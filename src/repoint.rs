@@ -65,11 +65,16 @@ impl Repointing {
         !self.before.files.is_empty()
     }
 
-    /// A file system that shows the tree before the change.
+    /// The disk as it was before the change.
     pub fn file_system(&self) -> BeforeFs {
+        self.over(FileSystemOs::new())
+    }
+
+    /// `base`, the tree as it is, as it was before the change.
+    pub fn over<Fs: FileSystem>(&self, base: Fs) -> BeforeFs<Fs> {
         BeforeFs {
             before: self.before.clone(),
-            os: FileSystemOs::new(),
+            base,
         }
     }
 
@@ -80,10 +85,12 @@ impl Repointing {
 }
 
 impl Before {
-    fn put(&mut self, path: PathBuf, content: Option<Arc<[u8]>>) {
+    /// Records what `path` held, where `is_dir` says which directories the tree as
+    /// it is still has.
+    fn put(&mut self, path: PathBuf, content: Option<Arc<[u8]>>, is_dir: impl Fn(&Path) -> bool) {
         if content.is_some() {
             for directory in path.ancestors().skip(1) {
-                if directory.is_dir() || !self.dirs.insert(directory.to_path_buf()) {
+                if is_dir(directory) || !self.dirs.insert(directory.to_path_buf()) {
                     break;
                 }
             }
@@ -143,15 +150,19 @@ pub fn repointing(
             if json && content.is_none() {
                 repointing.configs.push(path.clone());
             }
-            before.put(path, Some(content.unwrap_or_default().into_bytes().into()));
+            before.put(
+                path,
+                Some(content.unwrap_or_default().into_bytes().into()),
+                Path::is_dir,
+            );
         } else if added.contains(&path) {
-            before.put(path, None);
+            before.put(path, None, Path::is_dir);
         } else if json {
             match earlier {
                 // A file with no earlier version is one this change added.
                 Some(earlier) => {
                     let content = earlier.text(&path).map(|text| text.into_bytes().into());
-                    before.put(path, content);
+                    before.put(path, content, Path::is_dir);
                 }
                 None if is_config(&path) => repointing.configs.push(path),
                 None => {}
@@ -181,13 +192,13 @@ fn is_config(path: &Path) -> bool {
 ///
 /// One per resolver, because the answer is the resolver's: another bundler may
 /// resolve the same file otherwise.
-pub struct MovedImports {
+pub struct MovedImports<Fs = FileSystemOs> {
     repointing: Arc<Repointing>,
     /// The tree as it is, shared with the resolver.
-    now: Arc<Tree<FileSystemOs>>,
+    now: Arc<Tree<Fs>>,
     /// The tree as it was before the change, which only this asks about, and never
     /// on behalf of the unresolved report.
-    before: Tree<BeforeFs>,
+    before: Tree<BeforeFs<Fs>>,
     /// Where the `tsconfig.json` files above a file stop being looked for.
     root: PathBuf,
     /// The configuration files each tsconfig reads, itself first.
@@ -199,9 +210,9 @@ pub struct MovedImports {
     indices: RwLock<AHashMap<PathBuf, Arc<[usize]>>>,
 }
 
-impl MovedImports {
-    pub fn new(repointing: Arc<Repointing>, now: Arc<Tree<FileSystemOs>>, root: PathBuf) -> Self {
-        let before = now.over(repointing.file_system());
+impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
+    pub fn new(repointing: Arc<Repointing>, now: Arc<Tree<Fs>>, root: PathBuf) -> Self {
+        let before = now.over(repointing.over(now.fs().clone()));
         Self {
             repointing,
             now,
@@ -403,11 +414,12 @@ impl MovedImports {
     }
 }
 
-/// The tree before the change, for a resolver to look at.
+/// The tree before the change, for a resolver to look at: the tree as it is, with
+/// what the change made a difference to laid over it.
 #[derive(Clone)]
-pub struct BeforeFs {
+pub struct BeforeFs<Fs = FileSystemOs> {
     before: Arc<Before>,
-    os: FileSystemOs,
+    base: Fs,
 }
 
 /// What the tree before the change has at a path the change made a difference to.
@@ -417,7 +429,7 @@ enum Entry<'a> {
     Missing,
 }
 
-impl BeforeFs {
+impl<Fs: FileSystem> BeforeFs<Fs> {
     /// What was at `path`, if the change made a difference there.
     ///
     /// A path is recorded as its canonical form, and a resolver may ask by another
@@ -436,10 +448,10 @@ impl BeforeFs {
         if let Some(entry) = look(path) {
             return Some(entry);
         }
-        if self.os.symlink_metadata(path).is_ok() {
+        if self.base.symlink_metadata(path).is_ok() {
             return None;
         }
-        look(&canonical(path))
+        look(&canonical_in(&self.base, path))
     }
 }
 
@@ -447,11 +459,11 @@ fn not_found() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
 }
 
-impl FileSystem for BeforeFs {
+impl<Fs: FileSystem> FileSystem for BeforeFs<Fs> {
     fn new() -> Self {
         Self {
             before: Arc::default(),
-            os: FileSystemOs::new(),
+            base: Fs::new(),
         }
     }
 
@@ -459,7 +471,7 @@ impl FileSystem for BeforeFs {
         match self.entry(path) {
             Some(Entry::File(content)) => Ok(content.to_vec()),
             Some(_) => Err(not_found()),
-            None => self.os.read(path),
+            None => self.base.read(path),
         }
     }
 
@@ -468,7 +480,7 @@ impl FileSystem for BeforeFs {
             Some(Entry::File(content)) => String::from_utf8(content.to_vec())
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error)),
             Some(_) => Err(not_found()),
-            None => self.os.read_to_string(path),
+            None => self.base.read_to_string(path),
         }
     }
 
@@ -477,28 +489,28 @@ impl FileSystem for BeforeFs {
             Some(Entry::File(_)) => Ok(FileMetadata::new(true, false, false)),
             Some(Entry::Directory) => Ok(FileMetadata::new(false, true, false)),
             Some(Entry::Missing) => Err(not_found()),
-            None => self.os.metadata(path),
+            None => self.base.metadata(path),
         }
     }
 
     fn symlink_metadata(&self, path: &Path) -> io::Result<FileMetadata> {
         match self.entry(path) {
             Some(_) => self.metadata(path),
-            None => self.os.symlink_metadata(path),
+            None => self.base.symlink_metadata(path),
         }
     }
 
     fn read_link(&self, path: &Path) -> Result<PathBuf, ResolveError> {
-        self.os.read_link(path)
+        self.base.read_link(path)
     }
 
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
-        match self.os.canonicalize(path) {
+        match self.base.canonicalize(path) {
             Ok(real) => Ok(real),
             // A path that is only in the tree before the change is spelled the way
             // it was recorded, which is canonical.
             Err(error) => match self.entry(path) {
-                Some(Entry::File(_) | Entry::Directory) => Ok(canonical(path)),
+                Some(Entry::File(_) | Entry::Directory) => Ok(canonical_in(&self.base, path)),
                 _ => Err(error),
             },
         }
@@ -511,9 +523,18 @@ impl FileSystem for BeforeFs {
 /// name on Windows can be, a deleted file named from it would otherwise match no
 /// path the resolver produces.
 fn canonical(path: &Path) -> PathBuf {
+    canonical_in(&FileSystemOs::new(), path)
+}
+
+/// [`canonical`], as `fs` has it. Spelled without the `\\?\` prefix Windows adds,
+/// as oxc_resolver spells every path it returns.
+fn canonical_in(fs: &impl FileSystem, path: &Path) -> PathBuf {
     let path = normalize(path);
     for ancestor in path.ancestors() {
-        if let (Ok(real), Ok(rest)) = (dunce::canonicalize(ancestor), path.strip_prefix(ancestor)) {
+        let real = fs
+            .canonicalize(ancestor)
+            .map(|real| dunce::simplified(&real).to_path_buf());
+        if let (Ok(real), Ok(rest)) = (real, path.strip_prefix(ancestor)) {
             return if rest.as_os_str().is_empty() {
                 real
             } else {
@@ -543,6 +564,7 @@ pub fn normalize(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory_fs::{MemoryFs, at};
 
     #[test]
     fn the_tree_before_has_what_was_deleted_and_not_what_was_added() {
@@ -624,6 +646,45 @@ mod tests {
             .iter()
             .map(|specifier| specifier.to_string())
             .collect()
+    }
+
+    /// What a change did to a tree held in memory: the files it deleted, with what
+    /// they held, and the configs it changed with no earlier text to compare with.
+    fn changed(now: &MemoryFs, deleted: &[(&str, &str)], unknown: &[&str]) -> Arc<Repointing> {
+        let mut before = Before::default();
+        let is_dir = |path: &Path| now.metadata(path).is_ok_and(|found| found.is_dir());
+        for (path, text) in deleted {
+            before.put(at(path), Some(text.as_bytes().into()), is_dir);
+        }
+        Arc::new(Repointing {
+            before: Arc::new(before),
+            configs: unknown.iter().map(|path| at(path)).collect(),
+        })
+    }
+
+    /// The moved imports of a change to a tree held in memory.
+    fn in_memory(now: MemoryFs, change: Arc<Repointing>) -> MovedImports<MemoryFs> {
+        let now = Arc::new(Tree::new(
+            Arc::new(crate::config::Configs::new(&at(""))),
+            crate::config::Lookup::default(),
+            now,
+        ));
+        MovedImports::new(change, now, at(""))
+    }
+
+    #[test]
+    fn a_file_deleted_from_under_a_paths_mapping_moves_the_import() {
+        let now = MemoryFs::with(&[
+            (
+                "tsconfig.json",
+                r#"{ "compilerOptions": { "paths": { "@reduxjs/toolkit": ["./src/shims/toolkit.ts"] } } }"#,
+            ),
+            ("src/page.ts", ""),
+        ]);
+        let change = changed(&now, &[("src/shims/toolkit.ts", "")], &[]);
+        let moved = in_memory(now, change);
+        let imports = || specifiers(&["@reduxjs/toolkit", "./never-there"]);
+        assert_eq!(&*moved.moved(&at("src/page.ts"), imports), &[0]);
     }
 
     /// With no base revision a changed tsconfig has no earlier text, so the tree
