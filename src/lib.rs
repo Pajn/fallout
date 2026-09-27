@@ -334,6 +334,7 @@ impl<'o> Run<'o> {
                     self.root.clone(),
                     packages,
                     repointing,
+                    self.change.lost_exports(),
                 );
                 let marked = marks::marked_nodes(&graph, &self.change);
                 // Built once for the engine rather than once per search, so that the

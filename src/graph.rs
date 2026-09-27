@@ -119,13 +119,14 @@ pub struct Graph {
     names: RefCell<Vec<String>>,
     name_ids: RefCell<AHashMap<String, NameId>>,
     analyses: RefCell<AHashMap<FileId, Option<Rc<Analysed>>>>,
-    /// Names a file used to export and no longer does.
+    /// Names each file used to export and no longer does, by path. See
+    /// [`crate::change::Change::lost_exports`].
     ///
     /// Empty unless a base revision said so, since a departed name leaves no trace
-    /// in the file it left. Keeping them here lets `Export(f, name)` stay a node the
+    /// in the file it left. Knowing them lets `Export(f, name)` stay a node the
     /// consumers that ask for it still reach, so the mark that says it has gone
     /// reaches exactly those consumers and no others.
-    lost_exports: RefCell<AHashMap<FileId, AHashSet<NameId>>>,
+    lost_exports: AHashMap<PathBuf, Vec<String>>,
     /// The nodes of each file that read an import the change may have sent
     /// somewhere else. See [`crate::repoint`].
     repointed: RefCell<AHashMap<FileId, Rc<AHashSet<Node>>>>,
@@ -139,6 +140,7 @@ impl Graph {
         root: PathBuf,
         packages: std::sync::Arc<crate::lockfile::Changed>,
         repointing: std::sync::Arc<crate::repoint::Repointing>,
+        lost_exports: AHashMap<PathBuf, Vec<String>>,
     ) -> Self {
         Self {
             resolver: std::sync::Arc::new(Resolver::new(
@@ -156,7 +158,7 @@ impl Graph {
             names: RefCell::new(Vec::new()),
             name_ids: RefCell::new(AHashMap::default()),
             analyses: RefCell::new(AHashMap::default()),
-            lost_exports: RefCell::new(AHashMap::default()),
+            lost_exports,
             repointed: RefCell::new(AHashMap::default()),
         }
     }
@@ -222,30 +224,15 @@ impl Graph {
         self.names.borrow()[name.0 as usize].clone()
     }
 
-    /// Records that `file` no longer exports `name`, and returns the node that says
-    /// so.
-    pub fn lose_export(&self, file: FileId, name: &str) -> Node {
-        let name = self.name_id(name);
-        self.lost_exports
-            .borrow_mut()
-            .entry(file)
-            .or_default()
-            .insert(name);
-        Node::Export(file, name)
-    }
-
     fn has_lost(&self, file: FileId, name: NameId) -> bool {
-        self.lost_exports
-            .borrow()
-            .get(&file)
-            .is_some_and(|names| names.contains(&name))
+        self.lost(file).contains(&name)
     }
 
+    /// The names `file` no longer exports, interned when first asked about.
     fn lost(&self, file: FileId) -> Vec<NameId> {
         self.lost_exports
-            .borrow()
-            .get(&file)
-            .map(|names| names.iter().copied().collect())
+            .get(&self.path(file))
+            .map(|names| names.iter().map(|name| self.name_id(name)).collect())
             .unwrap_or_default()
     }
 
@@ -903,6 +890,7 @@ impl Default for Graph {
             PathBuf::from("."),
             std::sync::Arc::new(crate::lockfile::Changed::default()),
             std::sync::Arc::default(),
+            AHashMap::default(),
         )
     }
 }
@@ -957,14 +945,15 @@ fn extended(callee: &crate::module::Callee, path: &[String]) -> crate::module::C
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::change::Change;
     use crate::config::{Bundler, Configs};
 
-    /// A graph over a tree of the given files, and the directory holding them.
-    fn graph_for(files: &[(&str, &str)]) -> (tempfile::TempDir, Graph) {
+    /// A tree of the given files, and where it is.
+    pub(crate) fn tree(files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let root = dunce::canonicalize(dir.path()).unwrap();
         for (name, body) in files {
@@ -972,27 +961,51 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, body).unwrap();
         }
-        let graph = Graph::new(
-            Reading {
-                configs: Arc::new(Configs::new(&root)),
-                ignore_types: true,
-            },
+        (dir, root)
+    }
+
+    pub(crate) fn reading(root: &Path) -> Reading {
+        Reading {
+            configs: Arc::new(Configs::new(root)),
+            ignore_types: true,
+        }
+    }
+
+    /// A graph over the tree at `root`, built with what `change` gives one.
+    pub(crate) fn graph_of(root: &Path, change: &Change) -> Graph {
+        let (packages, repointing) = change.for_resolution();
+        Graph::new(
+            reading(root),
             Bundler::default(),
             Arc::default(),
-            root,
-            Arc::default(),
-            Arc::default(),
+            root.to_path_buf(),
+            packages,
+            repointing,
+            change.lost_exports(),
+        )
+    }
+
+    /// A graph over a tree of the given files, and the directory holding them.
+    pub(crate) fn graph_for(files: &[(&str, &str)]) -> (tempfile::TempDir, Graph) {
+        let (dir, root) = tree(files);
+        let change = Change::read(
+            &root,
+            crate::diff::ChangeSet::default(),
+            &[],
+            None,
+            reading(&root),
         );
+        let graph = graph_of(&root, &change);
         (dir, graph)
     }
 
     /// The file `name` of the tree `dir` holds.
-    fn file(graph: &Graph, dir: &tempfile::TempDir, name: &str) -> FileId {
+    pub(crate) fn file(graph: &Graph, dir: &tempfile::TempDir, name: &str) -> FileId {
         graph.file_id(&dunce::canonicalize(dir.path()).unwrap().join(name))
     }
 
     /// Every node a search from `anchor` could arrive at, the anchor included.
-    fn reach(graph: &Graph, anchor: FileId) -> AHashSet<Node> {
+    pub(crate) fn reach(graph: &Graph, anchor: FileId) -> AHashSet<Node> {
         let mut seen = AHashSet::default();
         let mut stack = vec![Node::File(anchor)];
         while let Some(node) = stack.pop() {
@@ -1036,6 +1049,52 @@ mod tests {
             }
         }
         assert_eq!(reach(&graph, legacy).len(), 1 + reach(&graph, a).len());
+    }
+
+    /// A name the base revision exported and this one does not leaves no trace in
+    /// the file, so the change says so and the graph is built knowing it. The node
+    /// standing for the name is reached by the readers still asking for it, a
+    /// namespace among them, and by nobody else.
+    #[test]
+    fn a_lost_export_is_reached_by_the_files_that_import_it() {
+        let (_dir, root) = tree(&[
+            ("lib.ts", "export const renamed = 1;\n"),
+            (
+                "user.ts",
+                "import { original } from './lib';\nexport const u = original;\n",
+            ),
+            (
+                "namespace.ts",
+                "import * as lib from './lib';\nexport const n = lib;\n",
+            ),
+            (
+                "other.ts",
+                "import { renamed } from './lib';\nexport const o = renamed;\n",
+            ),
+        ]);
+        let earlier: AHashMap<PathBuf, String> = [(
+            root.join("lib.ts"),
+            "export const original = 1;\n".to_string(),
+        )]
+        .into_iter()
+        .collect();
+        let change = Change::read(
+            &root,
+            crate::diff::ChangeSet::default(),
+            &[PathBuf::from("lib.ts")],
+            Some(Box::new(earlier)),
+            reading(&root),
+        );
+        let graph = graph_of(&root, &change);
+        let lost = Node::Export(
+            graph.file_id(&root.join("lib.ts")),
+            graph.name_id("original"),
+        );
+        let reaches = |name: &str| reach(&graph, graph.file_id(&root.join(name))).contains(&lost);
+
+        assert!(reaches("user.ts"));
+        assert!(reaches("namespace.ts"));
+        assert!(!reaches("other.ts"));
     }
 
     /// Parsing a file resolves its imports, and a search records the ones that

@@ -149,6 +149,23 @@ impl Change {
             .map(|(path, extent)| (path.as_path(), extent))
     }
 
+    /// The names each file exported before the change and no longer does, by path,
+    /// as the base version tells it.
+    ///
+    /// A departed name leaves no trace in the file it left, so nothing that reads the
+    /// file can find it. A graph is built knowing these instead, which keeps
+    /// `Export(f, name)` a node the consumers still asking for the name arrive at.
+    pub fn lost_exports(&self) -> AHashMap<PathBuf, Vec<String>> {
+        self.extents()
+            .filter_map(|(path, extent)| match extent {
+                Extent::Statements(comparison) if !comparison.lost_exports.is_empty() => {
+                    Some((path.to_path_buf(), comparison.lost_exports.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Every file whose extent is more than [`Extent::Unchanged`], for the searches
     /// that work file by file.
     pub fn files(&self) -> &AHashSet<PathBuf> {

@@ -57,9 +57,10 @@ fn mark_statements(graph: &Graph, file: FileId, comparison: &Comparison, out: &m
     };
 
     // A name that has gone is still a node, and one only the consumers that ask for
-    // it arrive at.
+    // it arrive at. The graph was built knowing it had gone, which is what keeps it
+    // one they can reach.
     for name in &comparison.lost_exports {
-        out.insert(graph.lose_export(file, name));
+        out.insert(Node::Export(file, graph.name_id(name)));
     }
 
     if comparison.init_differs {
