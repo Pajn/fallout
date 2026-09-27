@@ -56,7 +56,8 @@ Files the change deletes are dropped: they have no after version to reach.
 
 Exit codes: `0` — affected, run the tests. `1` — not affected. `2` — no answer: the
 arguments were invalid, an anchor is not there, a diff or a `fallout.toml` could not
-be read. Errors are written to stderr. With `--json` the answers are in the output,
+be read, or git finds no commit by the `--base` revision from the root. Errors are
+written to stderr. With `--json` the answers are in the output,
 so the exit code is `0` for any answer and `2` for none.
 
 ### One answer per anchor
@@ -528,6 +529,9 @@ compared as syntax rather than as text:
 git diff -U3 origin/main... | fallout --anchor src/pages/CheckoutPage.tsx \
   --diff - --base origin/main --granularity symbol
 ```
+
+A revision git cannot find from the root is no answer, exit code `2`: read as one
+holding no files, it would have every changed file taken as one the change added.
 
 Comments and formatting are not part of the comparison, so a change made only of
 those marks nothing at all. This is the one case where a file the diff names is

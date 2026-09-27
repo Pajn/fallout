@@ -2,8 +2,9 @@
 //!
 //! The exit code is the verdict: 0 when a change reaches the anchors, 1 when it
 //! does not, 2 when there is no answer — a bad argument, an anchor that is not there,
-//! a `fallout.toml` that cannot be read. With `--json` it says only whether there
-//! was an answer, since the answers are in the output: 0 or 2.
+//! a `fallout.toml` that cannot be read, a `--base` revision git cannot find. With
+//! `--json` it says only whether there was an answer, since the answers are in the
+//! output: 0 or 2.
 
 use std::ffi::OsString;
 use std::io::{Read, Write};
@@ -116,7 +117,8 @@ const NO_ANSWER: u8 = 2;
 ///
 /// `earlier` stands in for whatever `--base` names: when it is given, the versions
 /// of the files before the change are read from it and the revision is not read.
-/// Without it, a `--base` revision is read from git as usual.
+/// Without it, a `--base` revision is read from git as usual, and one git cannot
+/// find is no answer.
 ///
 /// # Panics
 ///
@@ -191,7 +193,19 @@ fn answer(
         granularity: cli.granularity,
         include_types: cli.include_types,
     };
-    let earlier = earlier.or_else(|| crate::earlier(&options));
+    // Earlier versions handed over are taken as they are. Only a revision read from
+    // git is checked, since git may not know it.
+    let earlier = match earlier {
+        Some(given) => Ok(Some(given)),
+        None => crate::earlier(&options),
+    };
+    let earlier = match earlier {
+        Ok(earlier) => earlier,
+        Err(error) => {
+            say_error!(err, "Error: {}", error);
+            return NO_ANSWER;
+        }
+    };
 
     // Paths are displayed against the root the run itself measured from, so what is
     // printed names exactly the files that were analysed.
