@@ -644,19 +644,6 @@ fn matches(pattern: &str, relative: &str) -> bool {
     }
 }
 
-impl Default for Resolver {
-    fn default() -> Self {
-        Self::new(
-            Arc::new(Configs::new(Path::new("."))),
-            Arc::new(Unresolved::default()),
-            PathBuf::from("."),
-            Arc::new(crate::lockfile::Changed::default()),
-            Arc::default(),
-            Lookup::default(),
-        )
-    }
-}
-
 /// Whether an alias written as `name` covers `specifier`, read the way the resolver
 /// reads it: `name$` only exactly, `name*` by what comes before the star, and a
 /// plain name exactly or as a directory.
