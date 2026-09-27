@@ -107,6 +107,7 @@ mod tests {
             root.clone(),
             Arc::default(),
             Arc::default(),
+            Default::default(),
         );
         let file = graph.file_id(&root.join(Path::new("slice.ts")));
         let analysed = graph.analysis(file).unwrap();

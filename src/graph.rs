@@ -61,6 +61,50 @@ pub struct Analysed {
     pub resolved: Vec<Option<FileId>>,
 }
 
+/// How far the analysis sees into one file, which every rule asks before any other
+/// question about it.
+pub enum View {
+    Fine(Fine),
+    /// A leaf, an asset, or a module the analyser gave up on. Nothing finer than the
+    /// file can be said about any of them, so the view does not tell them apart. It
+    /// keeps the analysis where there is one, because a coarse module's import list
+    /// can still be read.
+    Opaque(Option<Rc<Analysed>>),
+}
+
+impl View {
+    pub fn fine(self) -> Option<Fine> {
+        match self {
+            View::Fine(fine) => Some(fine),
+            View::Opaque(_) => None,
+        }
+    }
+}
+
+/// A file the analysis can see into. Only [`Graph::view`] makes one, and only of a
+/// file analysed finely, so what reads it never has to ask again.
+pub struct Fine {
+    file: FileId,
+    analysed: Rc<Analysed>,
+}
+
+impl Fine {
+    pub fn file(&self) -> FileId {
+        self.file
+    }
+
+    pub fn analysed(&self) -> &Analysed {
+        &self.analysed
+    }
+
+    pub fn module(&self) -> &FineModule {
+        self.analysed
+            .analysis
+            .as_fine()
+            .expect("a fine view holds a fine analysis")
+    }
+}
+
 pub struct Graph {
     /// Shared with the file graph the upstream search walks. See [`Graph::file_graph`].
     resolver: std::sync::Arc<Resolver>,
@@ -75,16 +119,14 @@ pub struct Graph {
     names: RefCell<Vec<String>>,
     name_ids: RefCell<AHashMap<String, NameId>>,
     analyses: RefCell<AHashMap<FileId, Option<Rc<Analysed>>>>,
-    /// Names a file used to export and no longer does.
+    /// Names each file used to export and no longer does, by path. See
+    /// [`crate::change::Change::lost_exports`].
     ///
     /// Empty unless a base revision said so, since a departed name leaves no trace
-    /// in the file it left. Keeping them here lets `Export(f, name)` stay a node the
+    /// in the file it left. Knowing them lets `Export(f, name)` stay a node the
     /// consumers that ask for it still reach, so the mark that says it has gone
     /// reaches exactly those consumers and no others.
-    lost_exports: RefCell<AHashMap<FileId, AHashSet<NameId>>>,
-    /// The nodes of each file that read an import the change may have sent
-    /// somewhere else. See [`crate::repoint`].
-    repointed: RefCell<AHashMap<FileId, Rc<AHashSet<Node>>>>,
+    lost_exports: AHashMap<PathBuf, Vec<String>>,
 }
 
 impl Graph {
@@ -95,6 +137,7 @@ impl Graph {
         root: PathBuf,
         packages: std::sync::Arc<crate::lockfile::Changed>,
         repointing: std::sync::Arc<crate::repoint::Repointing>,
+        lost_exports: AHashMap<PathBuf, Vec<String>>,
     ) -> Self {
         Self {
             resolver: std::sync::Arc::new(Resolver::new(
@@ -112,40 +155,22 @@ impl Graph {
             names: RefCell::new(Vec::new()),
             name_ids: RefCell::new(AHashMap::default()),
             analyses: RefCell::new(AHashMap::default()),
-            lost_exports: RefCell::new(AHashMap::default()),
-            repointed: RefCell::new(AHashMap::default()),
+            lost_exports,
         }
     }
 
-    /// The nodes of `file` that read an import the change may have sent to another
-    /// file, which are as changed as if the import had been rewritten.
-    pub fn repointed(&self, file: FileId) -> Rc<AHashSet<Node>> {
-        if let Some(known) = self.repointed.borrow().get(&file) {
-            return known.clone();
-        }
-        let mut nodes = AHashSet::default();
-        if let Some(analysed) = self.analysis(file) {
-            let path = self.path(file);
-            let moved: Vec<crate::module::SourceId> = self
-                .resolver
-                .moved(&path, || analysed.analysis.sources())
-                .iter()
-                .map(|&source| source as crate::module::SourceId)
-                .collect();
-            if !moved.is_empty() {
-                match analysed.analysis.as_fine() {
-                    Some(module) => {
-                        crate::marks::mark_sources(self, file, module, &moved, &mut nodes)
-                    }
-                    None => {
-                        nodes.insert(Node::File(file));
-                    }
-                }
-            }
-        }
-        let nodes = Rc::new(nodes);
-        self.repointed.borrow_mut().insert(file, nodes.clone());
-        nodes
+    /// The imports of `file` the change may have sent to another file, as this
+    /// graph's resolver resolves them. None for a file with no analysis, which
+    /// imports nothing.
+    pub fn moved_sources(&self, file: FileId) -> Vec<SourceId> {
+        let Some(analysed) = self.analysis(file) else {
+            return Vec::new();
+        };
+        self.resolver
+            .moved(&self.path(file), || analysed.analysis.sources())
+            .iter()
+            .map(|&source| source as SourceId)
+            .collect()
     }
 
     pub fn file_id(&self, path: &Path) -> FileId {
@@ -178,30 +203,15 @@ impl Graph {
         self.names.borrow()[name.0 as usize].clone()
     }
 
-    /// Records that `file` no longer exports `name`, and returns the node that says
-    /// so.
-    pub fn lose_export(&self, file: FileId, name: &str) -> Node {
-        let name = self.name_id(name);
-        self.lost_exports
-            .borrow_mut()
-            .entry(file)
-            .or_default()
-            .insert(name);
-        Node::Export(file, name)
-    }
-
     fn has_lost(&self, file: FileId, name: NameId) -> bool {
-        self.lost_exports
-            .borrow()
-            .get(&file)
-            .is_some_and(|names| names.contains(&name))
+        self.lost(file).contains(&name)
     }
 
+    /// The names `file` no longer exports, interned when first asked about.
     fn lost(&self, file: FileId) -> Vec<NameId> {
         self.lost_exports
-            .borrow()
-            .get(&file)
-            .map(|names| names.iter().copied().collect())
+            .get(&self.path(file))
+            .map(|names| names.iter().map(|name| self.name_id(name)).collect())
             .unwrap_or_default()
     }
 
@@ -255,88 +265,102 @@ impl Graph {
         analysed
     }
 
+    /// How far the analysis sees into `file`, analysing it if it has not been looked
+    /// at yet.
+    pub fn view(&self, file: FileId) -> View {
+        match self.analysis(file) {
+            Some(analysed) if analysed.analysis.as_fine().is_some() => {
+                View::Fine(Fine { file, analysed })
+            }
+            analysed => View::Opaque(analysed),
+        }
+    }
+
+    /// The fine view of `file` for looking a name up in it, if it has one.
+    ///
+    /// Only a source file can be fine, and any other is not parsed to find that out.
+    /// A search parses a file when it arrives at it, which is when the imports the
+    /// file makes are resolved and the ones that resolve nowhere are recorded; a
+    /// file it only names, and then stops short of, stays out of that record.
+    fn lookup(&self, file: FileId) -> Option<Fine> {
+        if !is_source_file(&self.path(file)) {
+            return None;
+        }
+        self.view(file).fine()
+    }
+
     fn target_of(&self, analysed: &Analysed, source: SourceId) -> Option<FileId> {
         analysed.resolved.get(source as usize).copied().flatten()
     }
 
     /// Everything `node` may depend on.
+    ///
+    /// Whether the file is opaque is decided here, once. Every node of an opaque file
+    /// other than `File(f)` stands for the whole of it, which is all anything can say
+    /// about it, and `File(f)` reaches each import wholesale, which is what the
+    /// file-level analysis has always done. The rules below see only fine files.
     pub fn edges(&self, node: Node) -> Vec<Node> {
+        let file = node.file();
+        let fine = match self.view(file) {
+            View::Fine(fine) => fine,
+            View::Opaque(analysed) => {
+                return match node {
+                    Node::File(_) => analysed
+                        .iter()
+                        .flat_map(|analysed| analysed.resolved.iter().flatten())
+                        .map(|target| Node::File(*target))
+                        .collect(),
+                    _ => vec![Node::File(file)],
+                };
+            }
+        };
         match node {
-            Node::File(file) => self.file_edges(file),
-            Node::Decl(file, decl) => self.decl_edges(file, decl),
-            Node::Export(file, name) => self.export_edges(file, name),
-            Node::Member(file, decl, member) => self.member_edges(file, decl, member),
-            Node::ModuleInit(file) => self.init_edges(file),
+            Node::File(_) => self.file_edges(&fine),
+            Node::Decl(_, decl) => self.decl_edges(&fine, decl),
+            Node::Export(_, name) => self.export_edges(&fine, name),
+            Node::Member(_, decl, member) => self.member_edges(&fine, decl, member),
+            Node::ModuleInit(_) => self.init_edges(&fine),
         }
     }
 
     /// `File(f)` depends on every other node of `f`.
-    fn file_edges(&self, file: FileId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-
-        match &analysed.analysis {
-            // A coarse module still has outgoing edges: its import list is
-            // extractable even when nothing else is. It reaches each dependency
-            // wholesale, which is what the file-level analysis has always done.
-            ModuleAnalysis::Coarse { .. } => analysed
-                .resolved
-                .iter()
-                .flatten()
-                .map(|target| Node::File(*target))
-                .collect(),
-            ModuleAnalysis::Fine(module) => {
-                let mut edges = Vec::with_capacity(module.decls.len() + module.exports.len() + 1);
-                for decl in 0..module.decls.len() {
-                    edges.push(Node::Decl(file, decl as DeclId));
-                }
-                for export in &module.exports {
-                    edges.push(Node::Export(file, self.name_id(&export.name)));
-                }
-                edges.push(Node::ModuleInit(file));
-                edges
-            }
+    fn file_edges(&self, fine: &Fine) -> Vec<Node> {
+        let (file, module) = (fine.file(), fine.module());
+        let mut edges = Vec::with_capacity(module.decls.len() + module.exports.len() + 1);
+        for decl in 0..module.decls.len() {
+            edges.push(Node::Decl(file, decl as DeclId));
         }
+        for export in &module.exports {
+            edges.push(Node::Export(file, self.name_id(&export.name)));
+        }
+        edges.push(Node::ModuleInit(file));
+        edges
     }
 
-    fn decl_edges(&self, file: FileId, decl: DeclId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return Vec::new();
-        };
+    fn decl_edges(&self, fine: &Fine, decl: DeclId) -> Vec<Node> {
+        let module = fine.module();
         let Some(entry) = module.decls.get(decl as usize) else {
             return Vec::new();
         };
 
-        self.reference_edges(
-            file,
-            &analysed,
-            module,
-            &entry.refs,
-            &entry.member_refs,
-            &entry.imports,
-        )
+        self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports)
     }
 
     /// The nodes a declaration's references, or a member's, point at.
     fn reference_edges(
         &self,
-        file: FileId,
-        analysed: &Analysed,
-        module: &FineModule,
+        fine: &Fine,
         refs: &[DeclId],
         member_refs: &[(DeclId, String)],
         imports: &[ImportRef],
     ) -> Vec<Node> {
+        let (file, analysed) = (fine.file(), fine.analysed());
         let mut edges = Vec::new();
         for &target in refs {
             edges.push(Node::Decl(file, target));
         }
         for (target, member) in member_refs {
-            edges.push(self.local_member(file, module, *target, member));
+            edges.push(self.local_member(fine, *target, member));
         }
         for import in imports {
             let Some(target) = self.target_of(analysed, import.source) else {
@@ -359,36 +383,18 @@ impl Graph {
         edges
     }
 
-    fn member_edges(&self, file: FileId, decl: DeclId, member: NameId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
-        };
+    fn member_edges(&self, fine: &Fine, decl: DeclId, member: NameId) -> Vec<Node> {
+        let (file, module) = (fine.file(), fine.module());
         let member = self.name(member);
         if member_of(module, decl, &member).is_none()
-            && let Some(deps) = self.factory_member(file, module, decl, &member)
+            && let Some(deps) = self.factory_member(fine, decl, &member)
         {
-            return self.reference_edges(
-                file,
-                &analysed,
-                module,
-                &deps.refs,
-                &deps.member_refs,
-                &deps.imports,
-            );
+            return self.reference_edges(fine, &deps.refs, &deps.member_refs, &deps.imports);
         }
         match member_of(module, decl, &member) {
             Some(entry) => {
-                let mut edges = self.reference_edges(
-                    file,
-                    &analysed,
-                    module,
-                    &entry.refs,
-                    &entry.member_refs,
-                    &entry.imports,
-                );
+                let mut edges =
+                    self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports);
                 // Called through the object, it may read any other property as
                 // `this`.
                 if entry.receiver {
@@ -404,19 +410,19 @@ impl Graph {
 
     /// A read of `member` off the declaration `decl` of the same file: that member
     /// where the object has it, and the whole declaration otherwise.
-    fn local_member(&self, file: FileId, module: &FineModule, decl: DeclId, member: &str) -> Node {
-        if self.has_member(file, module, decl, member) {
-            Node::Member(file, decl, self.name_id(member))
+    fn local_member(&self, fine: &Fine, decl: DeclId, member: &str) -> Node {
+        if self.has_member(fine, decl, member) {
+            Node::Member(fine.file(), decl, self.name_id(member))
         } else {
-            Node::Decl(file, decl)
+            Node::Decl(fine.file(), decl)
         }
     }
 
     /// Whether `member` of `decl` can be read on its own: a property of an object
     /// literal, or one a known factory's rule lists.
-    fn has_member(&self, file: FileId, module: &FineModule, decl: DeclId, member: &str) -> bool {
-        member_of(module, decl, member).is_some()
-            || self.factory_member(file, module, decl, member).is_some()
+    fn has_member(&self, fine: &Fine, decl: DeclId, member: &str) -> bool {
+        member_of(fine.module(), decl, member).is_some()
+            || self.factory_member(fine, decl, member).is_some()
     }
 
     /// What `member` of a factory call's result depends on, where the callee is a
@@ -424,13 +430,12 @@ impl Graph {
     /// the declaration depends on outside every argument.
     fn factory_member(
         &self,
-        file: FileId,
-        module: &FineModule,
+        fine: &Fine,
         decl: DeclId,
         member: &str,
     ) -> Option<crate::module::Deps> {
-        let call = module.decls.get(decl as usize)?.factory.as_ref()?;
-        let rule = self.made_by(file, decl)?;
+        let call = fine.module().decls.get(decl as usize)?.factory.as_ref()?;
+        let rule = self.made_by(fine.file(), decl)?;
         let args = rule.member(member)?;
         let mut deps = call.frame.clone();
         for &index in args {
@@ -447,19 +452,20 @@ impl Graph {
 
     /// The rule of the factory `decl` of `file` is the result of calling, if the
     /// callee is one.
+    ///
+    /// An opaque file has no declarations to ask about, and so no rule.
     pub fn made_by(&self, file: FileId, decl: DeclId) -> Option<&'static crate::factories::Rule> {
-        let analysed = self.analysis(file)?;
-        let module = analysed.analysis.as_fine()?;
-        let call = module.decls.get(decl as usize)?.factory.as_ref()?;
-        self.callee_rule(file, &call.callee, 0)
+        let fine = self.view(file).fine()?;
+        let call = fine.module().decls.get(decl as usize)?.factory.as_ref()?;
+        self.callee_rule(&fine, &call.callee, 0)
     }
 
-    /// The rule of the factory a callee written in `file` names, followed through
-    /// declarations that are other names for it and through the exports of the
-    /// modules it is imported from.
+    /// The rule of the factory a callee written in a fine file names, followed
+    /// through declarations that are other names for it and through the exports of
+    /// the modules it is imported from.
     fn callee_rule(
         &self,
-        file: FileId,
+        fine: &Fine,
         callee: &crate::module::Callee,
         depth: usize,
     ) -> Option<&'static crate::factories::Rule> {
@@ -469,24 +475,19 @@ impl Graph {
         if depth > 32 {
             return None;
         }
-        let analysed = self.analysis(file)?;
-        let module = analysed.analysis.as_fine()?;
+        let module = fine.module();
         match callee {
             Callee::Local { decl, path } => {
                 let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
-                self.callee_rule(file, &extended(derived, path), depth + 1)
+                self.callee_rule(fine, &extended(derived, path), depth + 1)
             }
             Callee::Import { source, name, path } => {
                 // Where the specifier lands in the project's own source, that is the
                 // module it names, whatever it is spelled as: a `paths` entry can
                 // map a package's name onto a shim.
-                if let Some(target) = self.target_of(&analysed, *source) {
+                if let Some(target) = self.target_of(fine.analysed(), *source) {
                     let target_path = self.path(target);
-                    if is_source_file(&target_path)
-                        && !target_path
-                            .components()
-                            .any(|part| part.as_os_str() == "node_modules")
-                    {
+                    if is_source_file(&target_path) && !crate::resolve::is_installed(&target_path) {
                         return self.export_rule(target, name, path, depth + 1);
                     }
                 }
@@ -499,7 +500,8 @@ impl Graph {
         }
     }
 
-    /// The rule of the factory `file` exports as `name`, read through `path`.
+    /// The rule of the factory `file` exports as `name`, read through `path`. An
+    /// opaque file exports nothing that can be named, and so no rule.
     fn export_rule(
         &self,
         file: FileId,
@@ -509,8 +511,8 @@ impl Graph {
     ) -> Option<&'static crate::factories::Rule> {
         use crate::module::Callee;
 
-        let analysed = self.analysis(file)?;
-        let module = analysed.analysis.as_fine()?;
+        let fine = self.view(file).fine()?;
+        let module = fine.module();
         // `import * as store from "./store"; store.createAsyncThunk(…)`.
         let (name, path) = match (name, path) {
             ("*", [first, rest @ ..]) => (first.as_str(), rest),
@@ -520,7 +522,7 @@ impl Graph {
         let Some(export) = module.export_named(name) else {
             // Through `export *`, one module at a time, and only where one star
             // could provide the name: a factory is known by where it comes from.
-            return match self.star_providers(file, name).as_slice() {
+            return match self.star_providers(&fine, name).as_slice() {
                 [Node::Export(next, _)] => self.export_rule(*next, name, path, depth + 1),
                 _ => None,
             };
@@ -528,10 +530,10 @@ impl Graph {
         match &export.target {
             ExportTarget::Local(decl) => {
                 let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
-                self.callee_rule(file, &extended(derived, path), depth + 1)
+                self.callee_rule(&fine, &extended(derived, path), depth + 1)
             }
             ExportTarget::Reexport { source, name } => self.callee_rule(
-                file,
+                &fine,
                 &Callee::Import {
                     source: *source,
                     name: name.clone(),
@@ -542,7 +544,7 @@ impl Graph {
             ExportTarget::ReexportAll { source } => {
                 let (first, rest) = path.split_first()?;
                 self.callee_rule(
-                    file,
+                    &fine,
                     &Callee::Import {
                         source: *source,
                         name: first.clone(),
@@ -562,43 +564,34 @@ impl Graph {
     /// A re-export is not followed: the statement that forwards the name is part of
     /// what the reader depends on, and only `Export` of the forwarding file says so.
     pub fn resolve_member(&self, file: FileId, export: &str, member: &str) -> Vec<Node> {
-        if is_source_file(&self.path(file))
-            && let Some(analysed) = self.analysis(file)
-            && let Some(module) = analysed.analysis.as_fine()
-            && let Some(ExportTarget::Local(decl)) = module.export_named(export).map(|e| &e.target)
-            && self.has_member(file, module, *decl, member)
+        if let Some(fine) = self.lookup(file)
+            && let Some(ExportTarget::Local(decl)) =
+                fine.module().export_named(export).map(|e| &e.target)
+            && self.has_member(&fine, *decl, member)
         {
             return vec![Node::Member(file, *decl, self.name_id(member))];
         }
         self.resolve_export(file, export)
     }
 
-    fn export_edges(&self, file: FileId, name: NameId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
-        };
-
+    fn export_edges(&self, fine: &Fine, name: NameId) -> Vec<Node> {
+        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let text = self.name(name);
         let mut edges = match module.export_named(&text).map(|e| &e.target) {
             Some(ExportTarget::Local(decl)) => vec![Node::Decl(file, *decl)],
             Some(ExportTarget::Reexport { source, name }) => {
-                match self.target_of(&analysed, *source) {
+                match self.target_of(analysed, *source) {
                     Some(target) => self.resolve_export(target, name),
                     None => Vec::new(),
                 }
             }
-            Some(ExportTarget::ReexportAll { source }) => {
-                match self.target_of(&analysed, *source) {
-                    Some(target) => self.all_exports(target),
-                    None => Vec::new(),
-                }
-            }
+            Some(ExportTarget::ReexportAll { source }) => match self.target_of(analysed, *source) {
+                Some(target) => self.all_exports(target),
+                None => Vec::new(),
+            },
             // Not in the table directly: it may arrive through `export *`.
             None => {
-                let providers = self.star_providers(file, &text);
+                let providers = self.star_providers(fine, &text);
                 if providers.is_empty() {
                     vec![Node::File(file)]
                 } else {
@@ -617,14 +610,8 @@ impl Graph {
         edges
     }
 
-    fn init_edges(&self, file: FileId) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
-        };
-
+    fn init_edges(&self, fine: &Fine) -> Vec<Node> {
+        let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let mut edges = Vec::new();
         // A module that declares itself free of side effects is claiming that these
         // statements do nothing observable. The claim covers its own code only, so
@@ -647,9 +634,7 @@ impl Graph {
                 match call {
                     Some(call) if self.made_by(file, decl).is_some() => {
                         edges.extend(self.reference_edges(
-                            file,
-                            &analysed,
-                            module,
+                            fine,
                             &call.frame.refs,
                             &call.frame.member_refs,
                             &call.frame.imports,
@@ -703,18 +688,12 @@ impl Graph {
     /// come from, and at the file behind each of its `export *` statements for the
     /// same reason: `File(target)` reaches the target's own nodes, not theirs.
     pub fn resolve_export(&self, file: FileId, name: &str) -> Vec<Node> {
-        if !is_source_file(&self.path(file)) {
-            return vec![Node::File(file)];
-        }
-        let Some(analysed) = self.analysis(file) else {
-            return vec![Node::File(file)];
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return vec![Node::File(file)];
+        let Some(fine) = self.lookup(file) else {
+            return vec![opaque_name(file)];
         };
 
         let id = self.name_id(name);
-        if module.export_named(name).is_some() || self.has_lost(file, id) {
+        if fine.module().export_named(name).is_some() || self.has_lost(file, id) {
             return vec![Node::Export(file, id)];
         }
 
@@ -732,96 +711,81 @@ impl Graph {
     }
 
     /// `File` of `file` and of every module behind its `export *` statements, one
-    /// star after another, with a cycle guard.
+    /// star after another, with a cycle guard. Only a fine file has stars to follow.
     fn behind_stars(&self, file: FileId, seen: &mut AHashSet<FileId>, out: &mut Vec<Node>) {
         if !seen.insert(file) {
             return;
         }
         out.push(Node::File(file));
-        let Some(analysed) = self.analysis(file) else {
+        let View::Fine(fine) = self.view(file) else {
             return;
         };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return;
-        };
-        for &source in &module.export_stars {
-            if let Some(target) = self.target_of(&analysed, source) {
+        for &source in &fine.module().export_stars {
+            if let Some(target) = self.target_of(fine.analysed(), source) {
                 self.behind_stars(target, seen, out);
             }
         }
     }
 
-    /// The modules behind `file`'s `export *` statements that could provide `name`,
-    /// each as the node a reader of the name goes on to.
+    /// The modules behind the `export *` statements of a fine file that could
+    /// provide `name`, each as the node a reader of the name goes on to.
     ///
     /// Every one is kept, not the first: a star that could hold any name does not
     /// say the name is there, so a later star that exports it may be where it comes
     /// from. A module the analysis sees inside is `Export(target, name)`, whether it
     /// exports the name itself or forwards it through stars of its own, so that each
     /// barrel on the way stays on the path and is evaluated there when imports are
-    /// deferred. A module it cannot see inside is `File(target)`.
-    fn star_providers(&self, file: FileId, name: &str) -> Vec<Node> {
-        let Some(analysed) = self.analysis(file) else {
-            return Vec::new();
-        };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return Vec::new();
-        };
+    /// deferred. A module it cannot see inside is what [`opaque_name`] says.
+    fn star_providers(&self, fine: &Fine, name: &str) -> Vec<Node> {
         let id = self.name_id(name);
         let mut providers = Vec::new();
-        for &source in &module.export_stars {
-            let Some(target) = self.target_of(&analysed, source) else {
+        for &source in &fine.module().export_stars {
+            let Some(target) = self.target_of(fine.analysed(), source) else {
                 continue;
             };
             // Each star is asked on its own, so that a module one of them has
             // already walked through is not hidden from the next.
             let mut seen = AHashSet::default();
-            seen.insert(file);
+            seen.insert(fine.file());
             if !self.could_provide(target, name, &mut seen) {
                 continue;
             }
-            let opaque = self
-                .analysis(target)
-                .is_none_or(|target| target.analysis.as_fine().is_none());
-            providers.push(if opaque {
-                Node::File(target)
-            } else {
-                Node::Export(target, id)
+            providers.push(match self.view(target) {
+                View::Fine(_) => Node::Export(target, id),
+                View::Opaque(_) => opaque_name(target),
             });
         }
         providers
     }
 
-    /// Whether `file` could provide `name`: it exports it, it has lost it, it is a
-    /// module the analysis cannot see inside, or one of its stars could, with a
-    /// cycle guard.
+    /// Whether `file` could provide `name`: it exports it, it has lost it, it is
+    /// opaque, or one of its stars could, with a cycle guard.
     ///
-    /// A module with no analysis, such as a JSON module or a file that could not be
-    /// read, and a coarse one, may hold any name. Nothing else links a barrel to
-    /// either: `export *` is not a bare import.
+    /// Nothing else links a barrel to an opaque module behind a star: `export *` is
+    /// not a bare import.
     fn could_provide(&self, file: FileId, name: &str, seen: &mut AHashSet<FileId>) -> bool {
         if !seen.insert(file) {
             return false;
         }
-        let Some(analysed) = self.analysis(file) else {
-            return true;
+        let fine = match self.view(file) {
+            View::Fine(fine) => fine,
+            // It could hold any name. See `opaque_name`.
+            View::Opaque(_) => return true,
         };
-        let Some(module) = analysed.analysis.as_fine() else {
-            return true;
-        };
-        if module.export_named(name).is_some() || self.has_lost(file, self.name_id(name)) {
+        if fine.module().export_named(name).is_some() || self.has_lost(file, self.name_id(name)) {
             return true;
         }
-        module.export_stars.iter().any(|&source| {
-            self.target_of(&analysed, source)
+        fine.module().export_stars.iter().any(|&source| {
+            self.target_of(fine.analysed(), source)
                 .is_some_and(|target| self.could_provide(target, name, seen))
         })
     }
 
     /// Every export of `file`, for a namespace import.
     fn all_exports(&self, file: FileId) -> Vec<Node> {
+        // Not parsed to find it opaque, for the reason `lookup` gives.
         if !is_source_file(&self.path(file)) {
-            return vec![Node::File(file)];
+            return vec![opaque_name(file)];
         }
         let mut seen = AHashSet::default();
         let mut nodes = Vec::new();
@@ -839,14 +803,14 @@ impl Graph {
         if !seen.insert(file) {
             return;
         }
-        let Some(analysed) = self.analysis(file) else {
-            out.push(Node::File(file));
-            return;
+        let fine = match self.view(file) {
+            View::Fine(fine) => fine,
+            View::Opaque(_) => {
+                out.push(opaque_name(file));
+                return;
+            }
         };
-        let Some(module) = analysed.analysis.as_fine() else {
-            out.push(Node::File(file));
-            return;
-        };
+        let (analysed, module) = (fine.analysed(), fine.module());
 
         for export in &module.exports {
             out.push(Node::Export(file, self.name_id(&export.name)));
@@ -857,7 +821,7 @@ impl Graph {
             out.push(Node::Export(file, name));
         }
         for &source in &module.export_stars {
-            if let Some(target) = self.target_of(&analysed, source) {
+            if let Some(target) = self.target_of(analysed, source) {
                 self.collect_exports(target, seen, out);
             }
         }
@@ -905,6 +869,7 @@ impl Default for Graph {
             PathBuf::from("."),
             std::sync::Arc::new(crate::lockfile::Changed::default()),
             std::sync::Arc::default(),
+            AHashMap::default(),
         )
     }
 }
@@ -918,6 +883,13 @@ pub fn display_path(path: &Path, root: &Path) -> String {
         .map(|c| c.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// What a name looked up in an opaque file reaches, for every rule that looks one
+/// up: the whole file. A leaf, an asset, a JSON module or a module the analyser
+/// gave up on could hold any name, so it could be where the name comes from.
+fn opaque_name(file: FileId) -> Node {
+    Node::File(file)
 }
 
 /// The member `member` of the declaration `decl`, if its properties can be read
@@ -952,8 +924,226 @@ fn extended(callee: &crate::module::Callee, path: &[String]) -> crate::module::C
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use crate::change::Change;
+    use crate::config::{Bundler, Configs};
+
+    /// A tree of the given files, and where it is.
+    pub(crate) fn tree(files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
+        for (name, body) in files {
+            let path = root.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        (dir, root)
+    }
+
+    pub(crate) fn reading(root: &Path) -> Reading {
+        Reading {
+            configs: Arc::new(Configs::new(root)),
+            ignore_types: true,
+        }
+    }
+
+    /// A graph over the tree at `root`, built with what `change` gives one.
+    pub(crate) fn graph_of(root: &Path, change: &Change) -> Graph {
+        let (packages, repointing) = change.for_resolution();
+        Graph::new(
+            reading(root),
+            Bundler::default(),
+            Arc::default(),
+            root.to_path_buf(),
+            packages,
+            repointing,
+            change.lost_exports(),
+        )
+    }
+
+    /// A graph over a tree of the given files, and the directory holding them.
+    pub(crate) fn graph_for(files: &[(&str, &str)]) -> (tempfile::TempDir, Graph) {
+        let (dir, root) = tree(files);
+        let change = Change::read(
+            &root,
+            crate::diff::ChangeSet::default(),
+            &[],
+            None,
+            reading(&root),
+        );
+        let graph = graph_of(&root, &change);
+        (dir, graph)
+    }
+
+    /// The file `name` of the tree `dir` holds.
+    pub(crate) fn file(graph: &Graph, dir: &tempfile::TempDir, name: &str) -> FileId {
+        graph.file_id(&dunce::canonicalize(dir.path()).unwrap().join(name))
+    }
+
+    /// Every node a search from `anchor` could arrive at, the anchor included.
+    pub(crate) fn reach(graph: &Graph, anchor: FileId) -> AHashSet<Node> {
+        let mut seen = AHashSet::default();
+        let mut stack = vec![Node::File(anchor)];
+        while let Some(node) = stack.pop() {
+            if seen.insert(node) {
+                stack.extend(graph.edges(node));
+            }
+        }
+        seen
+    }
+
+    /// Nothing finer than the file can be said about an opaque one, so whatever
+    /// names a part of it reaches the whole, and the whole reaches what it imports.
+    /// A leaf and a module the analyser gave up on are the same to a reader.
+    #[test]
+    fn every_node_of_an_opaque_file_reaches_only_the_file() {
+        let (dir, graph) = graph_for(&[
+            (
+                "legacy.js",
+                "const a = require('./a');\nObject.assign(module.exports, { a });\n",
+            ),
+            ("a.ts", "export const a = 1;\n"),
+            ("data.json", "{}\n"),
+        ]);
+        let legacy = file(&graph, &dir, "legacy.js");
+        let a = file(&graph, &dir, "a.ts");
+        let data = file(&graph, &dir, "data.json");
+        assert!(graph.analysis(legacy).unwrap().analysis.as_fine().is_none());
+        assert!(graph.analysis(data).is_none());
+
+        assert_eq!(graph.edges(Node::File(legacy)), vec![Node::File(a)]);
+        assert_eq!(graph.edges(Node::File(data)), Vec::<Node>::new());
+        let name = graph.name_id("a");
+        for opaque in [legacy, data] {
+            for node in [
+                Node::Decl(opaque, 0),
+                Node::Export(opaque, name),
+                Node::Member(opaque, 0, name),
+                Node::ModuleInit(opaque),
+            ] {
+                assert_eq!(graph.edges(node), vec![Node::File(opaque)], "{node:?}");
+            }
+        }
+        assert_eq!(reach(&graph, legacy).len(), 1 + reach(&graph, a).len());
+    }
+
+    /// A name the base revision exported and this one does not leaves no trace in
+    /// the file, so the change says so and the graph is built knowing it. The node
+    /// standing for the name is reached by the readers still asking for it, a
+    /// namespace among them, and by nobody else.
+    #[test]
+    fn a_lost_export_is_reached_by_the_files_that_import_it() {
+        let (_dir, root) = tree(&[
+            ("lib.ts", "export const renamed = 1;\n"),
+            (
+                "user.ts",
+                "import { original } from './lib';\nexport const u = original;\n",
+            ),
+            (
+                "namespace.ts",
+                "import * as lib from './lib';\nexport const n = lib;\n",
+            ),
+            (
+                "other.ts",
+                "import { renamed } from './lib';\nexport const o = renamed;\n",
+            ),
+        ]);
+        let earlier: AHashMap<PathBuf, String> = [(
+            root.join("lib.ts"),
+            "export const original = 1;\n".to_string(),
+        )]
+        .into_iter()
+        .collect();
+        let change = Change::read(
+            &root,
+            crate::diff::ChangeSet::default(),
+            &[PathBuf::from("lib.ts")],
+            Some(Box::new(earlier)),
+            reading(&root),
+        );
+        let graph = graph_of(&root, &change);
+        let lost = Node::Export(
+            graph.file_id(&root.join("lib.ts")),
+            graph.name_id("original"),
+        );
+        let reaches = |name: &str| reach(&graph, graph.file_id(&root.join(name))).contains(&lost);
+
+        assert!(reaches("user.ts"));
+        assert!(reaches("namespace.ts"));
+        assert!(!reaches("other.ts"));
+    }
+
+    /// Parsing a file resolves its imports, and a search records the ones that
+    /// resolve nowhere for the files it arrives at, so naming a file that cannot be
+    /// fine must not parse it.
+    #[test]
+    fn looking_a_name_up_in_a_stylesheet_does_not_parse_it() {
+        let (dir, graph) = graph_for(&[("theme.css", "@import './missing.css';\n")]);
+        let theme = file(&graph, &dir, "theme.css");
+
+        assert_eq!(graph.resolve_export(theme, "x"), vec![Node::File(theme)]);
+        assert_eq!(
+            graph.resolve_member(theme, "x", "y"),
+            vec![Node::File(theme)]
+        );
+        assert_eq!(graph.all_exports(theme), vec![Node::File(theme)]);
+        assert!(!graph.analyses.borrow().contains_key(&theme));
+    }
+
+    /// However a name is read out of an opaque file — imported, re-exported, taken
+    /// as a namespace, read as a member, passed along by `export *`, or called as a
+    /// factory — what the reader reaches is the whole file.
+    #[test]
+    fn a_search_reaches_into_fine_files_only() {
+        let (dir, graph) = graph_for(&[
+            (
+                "page.ts",
+                "import { a, helper } from './barrel';\n\
+                 import { thing, make } from './legacy';\n\
+                 import * as legacy from './legacy';\n\
+                 import * as data from './data.json';\n\
+                 import styles from './page.css';\n\
+                 export const made = make('x', () => 1);\n\
+                 export const Page = () => [a, helper, thing.member, legacy.x, data, styles, made];\n",
+            ),
+            (
+                "barrel.ts",
+                "export * from './gone';\nexport * from './a';\nexport * from './legacy';\n\
+                 export { helper as renamed } from './legacy';\n",
+            ),
+            ("a.ts", "import './page.css';\nexport const a = 1;\n"),
+            (
+                "legacy.js",
+                "const a = require('./a');\nObject.assign(module.exports, { a });\n",
+            ),
+            ("data.json", "{}\n"),
+            ("page.css", ".page { color: red; }\n"),
+        ]);
+        let page = file(&graph, &dir, "page.ts");
+        let reached = reach(&graph, page);
+
+        assert!(reached.contains(&Node::File(file(&graph, &dir, "legacy.js"))));
+        assert!(reached.contains(&Node::File(file(&graph, &dir, "data.json"))));
+        for node in reached {
+            match node {
+                Node::File(_) => {}
+                // Importing a source module runs it, and the edge says so before
+                // asking whether the module could be read. What it arrives at is
+                // the whole file all the same.
+                Node::ModuleInit(file) if graph.view(file).fine().is_none() => {
+                    assert_eq!(graph.edges(node), vec![Node::File(file)]);
+                }
+                _ => assert!(
+                    graph.view(node.file()).fine().is_some(),
+                    "{}",
+                    graph.render(node, Path::new("/"))
+                ),
+            }
+        }
+    }
 
     /// A graph over a project written to a temporary directory, which the caller
     /// keeps alive for as long as the graph reads from it.

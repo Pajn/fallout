@@ -313,7 +313,7 @@ impl<'o> Run<'o> {
         groups
     }
 
-    fn engine(&self, bundler: config::Bundler) -> Engine {
+    fn engine(&self, bundler: config::Bundler) -> Engine<'_> {
         let (packages, repointing) = self.change.for_resolution();
         match self.options.granularity {
             Granularity::File => Engine::File(Box::new(query::FileGraph::new(
@@ -334,13 +334,14 @@ impl<'o> Run<'o> {
                     self.root.clone(),
                     packages,
                     repointing,
+                    self.change.lost_exports(),
                 );
-                let marked = marks::marked_nodes(&graph, &self.change);
+                let marks = marks::Marks::new(&graph, &self.change);
                 // Built once for the engine rather than once per search, so that the
                 // upstream searches of several anchors read each file once between
                 // them.
                 let files = graph.file_graph();
-                Engine::Symbol(Box::new((graph, marked, files)))
+                Engine::Symbol(Box::new((graph, marks, files)))
             }
         }
     }
@@ -358,9 +359,9 @@ impl<'o> Run<'o> {
 /// file-level run; for a declaration-level one, a node graph, what the change marks
 /// in it, and the imports file by file over the same resolver for the upstream
 /// search.
-enum Engine {
+enum Engine<'c> {
     File(Box<query::FileGraph>),
-    Symbol(Box<(graph::Graph, ahash::AHashSet<graph::Node>, query::FileGraph)>),
+    Symbol(Box<(graph::Graph, marks::Marks<'c>, query::FileGraph)>),
 }
 
 struct Judged {
@@ -369,7 +370,7 @@ struct Judged {
     visited: ahash::AHashSet<PathBuf>,
 }
 
-impl Engine {
+impl Engine<'_> {
     fn resolver(&self) -> &Resolver {
         match self {
             Engine::File(files) => files.resolver(),
@@ -412,9 +413,9 @@ impl Engine {
             // Only the downstream search narrows; upstream keeps its file-level
             // answer, so a declaration run is never *less* sensitive than a file run.
             Engine::Symbol(symbol) => {
-                let (graph, marked, files) = symbol.as_ref();
+                let (graph, marks, files) = symbol.as_ref();
                 if only != Some(Direction::Upstream) {
-                    let search = query::downstream_symbols(anchors, marked, &run.change, graph);
+                    let search = query::downstream_symbols(anchors, marks, graph);
                     visited.extend(search.visited);
                     if let Some(nodes) = search.hit {
                         let path = nodes.iter().map(|node| graph.path(node.file())).collect();

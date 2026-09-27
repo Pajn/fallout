@@ -9,24 +9,93 @@
 //! differs. Without one, the diff's line ranges are laid over the statement spans,
 //! which says roughly what differs and guesses at the rest.
 
-use ahash::AHashSet;
+use std::cell::RefCell;
+use std::path::Path;
+use std::rc::Rc;
+
+use ahash::{AHashMap, AHashSet};
 
 use crate::change::{Change, Extent};
 use crate::diff::LineRange;
-use crate::graph::{FileId, Graph, Node};
+use crate::graph::{FileId, Fine, Graph, Node, View};
 use crate::module::compare::Comparison;
-use crate::module::{
-    Decl, DeclId, Export, ExportTarget, FineModule, LineTable, ModuleAnalysis, Span,
-};
+use crate::module::{Decl, DeclId, Export, ExportTarget, FineModule, LineTable, SourceId, Span};
 
-/// Every node the change marks, at declaration granularity.
+/// What the change marks in one graph.
+///
+/// Most of it is worked out up front, from what the change says of each file it
+/// names. What reads an import the change moved is worked out for each file when a
+/// search first asks about it: a moved import can be in a file the change never
+/// touched, and finding them all would mean resolving every import in the tree.
+pub struct Marks<'c> {
+    change: &'c Change,
+    /// Every node the change marks from the extents of the files it names.
+    marked: AHashSet<Node>,
+    /// The nodes of each file that read an import the change may have sent
+    /// somewhere else. See [`crate::repoint`].
+    repointed: RefCell<AHashMap<FileId, Rc<AHashSet<Node>>>>,
+}
+
+impl<'c> Marks<'c> {
+    pub fn new(graph: &Graph, change: &'c Change) -> Self {
+        Self {
+            change,
+            marked: marked_nodes(graph, change.extents()),
+            repointed: RefCell::new(AHashMap::default()),
+        }
+    }
+
+    /// Whether a search that arrives at `node` has arrived at the change.
+    ///
+    /// A node standing for a changed package is marked whole. `File(f)` is the
+    /// umbrella: marking it says "something in f changed, and we cannot say what".
+    /// Every node of `f` is therefore marked with it, or a search that reaches only
+    /// a declaration would miss a whole-file change.
+    pub fn is_marked(&self, graph: &Graph, node: Node) -> bool {
+        let file = node.file();
+        if self.change.marks_package(&graph.path(file)) {
+            return true;
+        }
+        let umbrella = Node::File(file);
+        self.marked.contains(&node)
+            || self.marked.contains(&umbrella)
+            || self.repointed(graph, file).contains(&node)
+            || self.repointed(graph, file).contains(&umbrella)
+    }
+
+    /// The nodes of `file` that read an import the change may have sent to another
+    /// file, which are as changed as if the import had been rewritten.
+    fn repointed(&self, graph: &Graph, file: FileId) -> Rc<AHashSet<Node>> {
+        if let Some(known) = self.repointed.borrow().get(&file) {
+            return known.clone();
+        }
+        let mut nodes = AHashSet::default();
+        let moved = graph.moved_sources(file);
+        if !moved.is_empty() {
+            match graph.view(file) {
+                View::Fine(fine) => mark_sources(graph, &fine, &moved, &mut nodes),
+                View::Opaque(_) => {
+                    nodes.insert(Node::File(file));
+                }
+            }
+        }
+        let nodes = Rc::new(nodes);
+        self.repointed.borrow_mut().insert(file, nodes.clone());
+        nodes
+    }
+}
+
+/// Every node the extents mark, at declaration granularity.
 ///
 /// A file whose whole extent the change reaches — a binary file, a rename, a path
 /// given with `--changed` — marks `File(f)`, which is the file-level behaviour and
 /// stays available forever.
-pub fn marked_nodes(graph: &Graph, change: &Change) -> AHashSet<Node> {
+fn marked_nodes<'e>(
+    graph: &Graph,
+    extents: impl IntoIterator<Item = (&'e Path, &'e Extent)>,
+) -> AHashSet<Node> {
     let mut marked = AHashSet::default();
-    for (path, extent) in change.extents() {
+    for (path, extent) in extents {
         let id = graph.file_id(path);
         match extent {
             // Nothing observable differs: a reworded comment, a reflowed expression.
@@ -47,19 +116,17 @@ fn mark_statements(graph: &Graph, file: FileId, comparison: &Comparison, out: &m
     // Knowing exactly what changed is no use in a file with no interior to put it in:
     // a consumer of a module the analyser gave up on reaches one node, so that is the
     // node to mark.
-    let Some(module) = graph.analysis(file) else {
+    let Some(fine) = graph.view(file).fine() else {
         out.insert(Node::File(file));
         return;
     };
-    let Some(module) = module.analysis.as_fine() else {
-        out.insert(Node::File(file));
-        return;
-    };
+    let module = fine.module();
 
     // A name that has gone is still a node, and one only the consumers that ask for
-    // it arrive at.
+    // it arrive at. The graph was built knowing it had gone, which is what keeps it
+    // one they can reach.
     for name in &comparison.lost_exports {
-        out.insert(graph.lose_export(file, name));
+        out.insert(Node::Export(file, graph.name_id(name)));
     }
 
     if comparison.init_differs {
@@ -77,15 +144,13 @@ fn mark_statements(graph: &Graph, file: FileId, comparison: &Comparison, out: &m
 }
 
 fn mark_ranges(graph: &Graph, file: FileId, ranges: &[LineRange], out: &mut AHashSet<Node>) {
-    let Some(analysed) = graph.analysis(file) else {
-        // A leaf has no interior to attribute a line to.
+    // A leaf, or a module the analyser gave up on, has no interior to attribute a
+    // line to.
+    let Some(fine) = graph.view(file).fine() else {
         out.insert(Node::File(file));
         return;
     };
-    let Some(module) = analysed.analysis.as_fine() else {
-        out.insert(Node::File(file));
-        return;
-    };
+    let (analysed, module) = (fine.analysed(), fine.module());
 
     for range in ranges {
         // Nothing on these lines runs, so whatever changed on them was a type. Only
@@ -284,13 +349,8 @@ fn byte_range(table: &LineTable, range: LineRange) -> (u32, u32) {
 /// which argument is not worth telling apart for a change this rare. An
 /// `export *` of one takes the whole file, since which names it brings is exactly
 /// what moved.
-pub fn mark_sources(
-    graph: &Graph,
-    file: FileId,
-    module: &FineModule,
-    sources: &[crate::module::SourceId],
-    out: &mut AHashSet<Node>,
-) {
+fn mark_sources(graph: &Graph, fine: &Fine, sources: &[SourceId], out: &mut AHashSet<Node>) {
+    let (file, module) = (fine.file(), fine.module());
     let reads = |imports: &[crate::module::ImportRef]| {
         imports
             .iter()
@@ -337,9 +397,152 @@ pub fn mark_sources(
     }
 }
 
-/// Whether a file's analysis can support declaration-level marks at all.
-pub fn is_fine(graph: &Graph, file: FileId) -> bool {
-    graph
-        .analysis(file)
-        .is_some_and(|a| matches!(a.analysis, ModuleAnalysis::Fine(_)))
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::diff::ChangeSet;
+    use crate::graph::tests::{graph_of, reading, tree};
+
+    /// Every node `file` has, as its own `File(f)` reaches them.
+    fn nodes_of(graph: &Graph, file: FileId) -> Vec<Node> {
+        let mut nodes = graph.edges(Node::File(file));
+        assert!(!nodes.is_empty());
+        nodes.push(Node::File(file));
+        nodes
+    }
+
+    /// Marking `File(f)` says something in f changed and nothing finer, so a search
+    /// that arrives at any part of f has arrived at the change.
+    #[test]
+    fn every_node_of_a_file_marked_whole_counts_as_marked() {
+        let (_dir, root) = tree(&[
+            ("page.ts", "export const a = 1;\nexport const b = 2;\n"),
+            ("other.ts", "export const c = 3;\n"),
+        ]);
+        let change = Change::read(
+            &root,
+            ChangeSet::default(),
+            &[PathBuf::from("page.ts")],
+            None,
+            reading(&root),
+        );
+        let graph = graph_of(&root, &change);
+        let marks = Marks::new(&graph, &change);
+
+        let page = graph.file_id(&root.join("page.ts"));
+        for node in nodes_of(&graph, page) {
+            assert!(marks.is_marked(&graph, node), "{node:?}");
+        }
+        let other = graph.file_id(&root.join("other.ts"));
+        for node in nodes_of(&graph, other) {
+            assert!(!marks.is_marked(&graph, node), "{node:?}");
+        }
+    }
+
+    /// Marking one file reads only the graph, never what marking another wrote, so
+    /// the order the change lists its files in cannot matter.
+    #[test]
+    fn marks_come_out_the_same_whatever_order_the_extents_are_in() {
+        let slice = |kind: &str| {
+            format!(
+                "import {{ createAsyncThunk }} from './store';\n\
+                 export const t = createAsyncThunk('{kind}', async () => 1);\n"
+            )
+        };
+        let (_dir, root) = tree(&[
+            (
+                "lib.ts",
+                "export const renamed = 1;\nexport const kept = 2;\n",
+            ),
+            (
+                "store.ts",
+                "export * from './lib';\nexport * from './redux';\n",
+            ),
+            (
+                "redux.ts",
+                "import { createAsyncThunk as base } from '@reduxjs/toolkit';\n\
+                 export const createAsyncThunk = base.withTypes<{ state: unknown }>();\n",
+            ),
+            ("slice.ts", &slice("a/now")),
+            ("page.ts", "export const p = 1;\n"),
+            ("util.ts", "export const a = 1;\n\nexport const b = 2;\n"),
+        ]);
+        let earlier: AHashMap<PathBuf, String> = [
+            (
+                root.join("lib.ts"),
+                "export const original = 1;\nexport const kept = 2;\n".to_string(),
+            ),
+            (root.join("slice.ts"), slice("a/then")),
+        ]
+        .into_iter()
+        .collect();
+        let change = Change::read(
+            &root,
+            ChangeSet {
+                files: vec![crate::diff::ChangedFile {
+                    path: PathBuf::from("util.ts"),
+                    change: crate::diff::FileChange::Modified {
+                        ranges: vec![LineRange { start: 3, len: 1 }],
+                    },
+                }],
+                ..Default::default()
+            },
+            &[
+                PathBuf::from("lib.ts"),
+                PathBuf::from("slice.ts"),
+                PathBuf::from("page.ts"),
+            ],
+            Some(Box::new(earlier)),
+            reading(&root),
+        );
+        let extents: Vec<(&Path, &Extent)> = change.extents().collect();
+        assert_eq!(extents.len(), 4);
+
+        // A graph of its own for each order, so that nothing one order analysed
+        // is there for the next to find.
+        let marks = |order: &[usize]| -> Vec<String> {
+            let graph = graph_of(&root, &change);
+            let marked = marked_nodes(&graph, order.iter().map(|&index| extents[index]));
+            let mut rendered: Vec<String> = marked
+                .into_iter()
+                .map(|node| graph.render(node, &root))
+                .collect();
+            rendered.sort();
+            rendered
+        };
+        let expected = marks(&[0, 1, 2, 3]);
+        assert!(expected.contains(&"Export(lib.ts, original)".to_string()));
+        assert!(expected.contains(&"Member(slice.ts, t.pending)".to_string()));
+        assert!(expected.contains(&"File(page.ts)".to_string()));
+        for order in [[3, 2, 1, 0], [1, 3, 0, 2], [2, 0, 3, 1]] {
+            assert_eq!(marks(&order), expected, "{order:?}");
+        }
+    }
+
+    /// An `export *` whose module moved brings a set of names nobody can list, so
+    /// the whole file is marked, and with it every part of the file.
+    #[test]
+    fn every_node_of_a_file_repointed_whole_counts_as_marked() {
+        let (_dir, root) = tree(&[(
+            "barrel.ts",
+            "export * from './shim';\nexport const b = 1;\n",
+        )]);
+        // Named and not there, so deleted: `./shim` resolved to it before.
+        let change = Change::read(
+            &root,
+            ChangeSet::default(),
+            &[PathBuf::from("shim.ts")],
+            None,
+            reading(&root),
+        );
+        let graph = graph_of(&root, &change);
+        let marks = Marks::new(&graph, &change);
+
+        let barrel = graph.file_id(&root.join("barrel.ts"));
+        for node in nodes_of(&graph, barrel) {
+            assert!(marks.is_marked(&graph, node), "{node:?}");
+        }
+    }
 }
