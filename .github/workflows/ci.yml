@@ -47,6 +47,12 @@ jobs:
       # Every test binary runs even after one fails, for the same reason.
       - run: cargo test --no-fail-fast --locked --target ${{ matrix.target }}
 
+      # The whole suite again, against the optimised build a release ships, so
+      # what optimisation alone changes shows before a release does. The spawned
+      # tests run that build's binary. One platform is enough.
+      - if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo test --release --no-fail-fast --locked --target ${{ matrix.target }}
+
   lint:
     runs-on: ubuntu-24.04
     steps:

@@ -1,0 +1,123 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== apps/web/page.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, file granularity):
+  File(apps/web/page.tsx)
+  File(apps/web/badge.tsx)
+  File(apps/web/theme.ts)
+  File(packages/log/logger.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/web/page.tsx)","File(apps/web/badge.tsx)","File(apps/web/theme.ts)","File(packages/log/logger.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/web/page.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, file granularity):
+  File(apps/web/page.tsx)
+  File(apps/web/badge.tsx)
+  File(apps/web/theme.ts)
+  File(packages/log/logger.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/web/page.tsx)","File(apps/web/badge.tsx)","File(apps/web/theme.ts)","File(packages/log/logger.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/web/page.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/page.tsx)
+  ModuleInit(apps/web/page.tsx)
+  ModuleInit(apps/web/badge.tsx)
+  ModuleInit(apps/web/theme.ts)
+  ModuleInit(packages/log/logger.ts)
+  Decl(packages/log/logger.ts, createPrefix)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/web/page.tsx)","ModuleInit(apps/web/page.tsx)","ModuleInit(apps/web/badge.tsx)","ModuleInit(apps/web/theme.ts)","ModuleInit(packages/log/logger.ts)","Decl(packages/log/logger.ts, createPrefix)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/page.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/page.tsx)
+  ModuleInit(apps/web/page.tsx)
+  ModuleInit(apps/web/badge.tsx)
+  ModuleInit(apps/web/theme.ts)
+  ModuleInit(packages/log/logger.ts)
+  Decl(packages/log/logger.ts, createPrefix)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/web/page.tsx)","ModuleInit(apps/web/page.tsx)","ModuleInit(apps/web/badge.tsx)","ModuleInit(apps/web/theme.ts)","ModuleInit(packages/log/logger.ts)","Decl(packages/log/logger.ts, createPrefix)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/page.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/page.tsx)
+  ModuleInit(apps/web/page.tsx)
+  ModuleInit(apps/web/badge.tsx)
+  ModuleInit(apps/web/theme.ts)
+  ModuleInit(packages/log/logger.ts)
+  Decl(packages/log/logger.ts, createPrefix)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/web/page.tsx)","ModuleInit(apps/web/page.tsx)","ModuleInit(apps/web/badge.tsx)","ModuleInit(apps/web/theme.ts)","ModuleInit(packages/log/logger.ts)","Decl(packages/log/logger.ts, createPrefix)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/page.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/page.tsx)
+  ModuleInit(apps/web/page.tsx)
+  ModuleInit(apps/web/badge.tsx)
+  ModuleInit(apps/web/theme.ts)
+  ModuleInit(packages/log/logger.ts)
+  Decl(packages/log/logger.ts, createPrefix)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/web/page.tsx)","ModuleInit(apps/web/page.tsx)","ModuleInit(apps/web/badge.tsx)","ModuleInit(apps/web/theme.ts)","ModuleInit(packages/log/logger.ts)","Decl(packages/log/logger.ts, createPrefix)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/mobile/page.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, file granularity):
+  File(apps/mobile/page.tsx)
+  File(apps/mobile/badge.tsx)
+  File(apps/mobile/theme.ts)
+  File(packages/log/logger.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/mobile/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/mobile/page.tsx)","File(apps/mobile/badge.tsx)","File(apps/mobile/theme.ts)","File(packages/log/logger.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/mobile/page.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/log/logger.ts"
+Path (downstream, file granularity):
+  File(apps/mobile/page.tsx)
+  File(apps/mobile/badge.tsx)
+  File(apps/mobile/theme.ts)
+  File(packages/log/logger.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/mobile/page.tsx","affected":true,"direction":"downstream","changed":"packages/log/logger.ts","path":["File(apps/mobile/page.tsx)","File(apps/mobile/badge.tsx)","File(apps/mobile/theme.ts)","File(packages/log/logger.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/mobile/page.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/mobile/page.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== apps/mobile/page.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/mobile/page.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== apps/mobile/page.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/mobile/page.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== apps/mobile/page.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/mobile/page.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

@@ -1,0 +1,65 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/CountPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/counter.ts"
+Path (downstream, file granularity):
+  File(src/pages/CountPage.tsx)
+  File(src/lib/counter.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/counter.ts","path":["File(src/pages/CountPage.tsx)","File(src/lib/counter.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/counter.ts"
+Path (downstream, file granularity):
+  File(src/pages/CountPage.tsx)
+  File(src/lib/counter.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/counter.ts","path":["File(src/pages/CountPage.tsx)","File(src/lib/counter.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Member(src/lib/counter.ts, counter.read)
+  Member(src/lib/counter.ts, counter.bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Member(src/lib/counter.ts, counter.read)","Member(src/lib/counter.ts, counter.bump)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Member(src/lib/counter.ts, counter.read)
+  Member(src/lib/counter.ts, counter.bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Member(src/lib/counter.ts, counter.read)","Member(src/lib/counter.ts, counter.bump)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Member(src/lib/counter.ts, counter.read)
+  Member(src/lib/counter.ts, counter.bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Member(src/lib/counter.ts, counter.read)","Member(src/lib/counter.ts, counter.bump)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Member(src/lib/counter.ts, counter.read)
+  Member(src/lib/counter.ts, counter.bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Member(src/lib/counter.ts, counter.read)","Member(src/lib/counter.ts, counter.bump)"],"granularity":"symbol","unresolved":[]}]}

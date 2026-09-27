@@ -1,0 +1,61 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/cases/plan-badge.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/store/session.ts"
+Path (downstream, file granularity):
+  File(src/cases/plan-badge.cases.tsx)
+  File(src/store/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plan-badge.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/session.ts","path":["File(src/cases/plan-badge.cases.tsx)","File(src/store/session.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/plan-badge.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/store/session.ts"
+Path (downstream, file granularity):
+  File(src/cases/plan-badge.cases.tsx)
+  File(src/store/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plan-badge.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/session.ts","path":["File(src/cases/plan-badge.cases.tsx)","File(src/store/session.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/plan-badge.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/store/session.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/store/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plan-badge.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/session.ts","path":["File(src/cases/plan-badge.cases.tsx)","ModuleInit(src/cases/plan-badge.cases.tsx)","ModuleInit(src/store/session.ts)"],"granularity":"symbol","unresolved":[{"specifier":"@reduxjs/toolkit","kind":"alias","in_repo":true,"from":["src/store/session.ts"]}]}]}
+
+== src/cases/plan-badge.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/store/session.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/store/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plan-badge.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/session.ts","path":["File(src/cases/plan-badge.cases.tsx)","ModuleInit(src/cases/plan-badge.cases.tsx)","ModuleInit(src/store/session.ts)"],"granularity":"symbol","unresolved":[{"specifier":"@reduxjs/toolkit","kind":"alias","in_repo":true,"from":["src/store/session.ts"]}]}]}
+
+== src/cases/plan-badge.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/store/session.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/store/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plan-badge.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/session.ts","path":["File(src/cases/plan-badge.cases.tsx)","ModuleInit(src/cases/plan-badge.cases.tsx)","ModuleInit(src/store/session.ts)"],"granularity":"symbol","unresolved":[{"specifier":"@reduxjs/toolkit","kind":"alias","in_repo":true,"from":["src/store/session.ts"]}]}]}
+
+== src/cases/plan-badge.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/store/session.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/cases/plan-badge.cases.tsx)
+  ModuleInit(src/store/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plan-badge.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/session.ts","path":["File(src/cases/plan-badge.cases.tsx)","ModuleInit(src/cases/plan-badge.cases.tsx)","ModuleInit(src/store/session.ts)"],"granularity":"symbol","unresolved":[{"specifier":"@reduxjs/toolkit","kind":"alias","in_repo":true,"from":["src/store/session.ts"]}]}]}

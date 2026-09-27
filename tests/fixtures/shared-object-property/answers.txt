@@ -1,0 +1,45 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/VolumePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/player.ts"
+Path (downstream, file granularity):
+  File(src/pages/VolumePage.tsx)
+  File(src/state/player.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VolumePage.tsx","affected":true,"direction":"downstream","changed":"src/state/player.ts","path":["File(src/pages/VolumePage.tsx)","File(src/state/player.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/VolumePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/player.ts"
+Path (downstream, file granularity):
+  File(src/pages/VolumePage.tsx)
+  File(src/state/player.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VolumePage.tsx","affected":true,"direction":"downstream","changed":"src/state/player.ts","path":["File(src/pages/VolumePage.tsx)","File(src/state/player.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/VolumePage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VolumePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/VolumePage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VolumePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/VolumePage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VolumePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/VolumePage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VolumePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

@@ -1,0 +1,39 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/CheckoutPage.tsx [file]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CheckoutPage.tsx","affected":false,"granularity":"file","unresolved":[]}]}
+
+== src/pages/CheckoutPage.tsx [file] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CheckoutPage.tsx","affected":false,"granularity":"file","unresolved":[]}]}
+
+== src/pages/CheckoutPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CheckoutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CheckoutPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CheckoutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CheckoutPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CheckoutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CheckoutPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CheckoutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

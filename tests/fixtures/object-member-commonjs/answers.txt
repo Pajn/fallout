@@ -1,0 +1,149 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/DatePage.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, file granularity):
+  File(src/pages/DatePage.js)
+  File(src/lib/utils.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/DatePage.js)","File(src/lib/utils.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DatePage.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, file granularity):
+  File(src/pages/DatePage.js)
+  File(src/lib/utils.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/DatePage.js)","File(src/lib/utils.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DatePage.js [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.js [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.js [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.js [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DestructuredPage.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, file granularity):
+  File(src/pages/DestructuredPage.js)
+  File(src/lib/utils.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DestructuredPage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/DestructuredPage.js)","File(src/lib/utils.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DestructuredPage.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, file granularity):
+  File(src/pages/DestructuredPage.js)
+  File(src/lib/utils.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DestructuredPage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/DestructuredPage.js)","File(src/lib/utils.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DestructuredPage.js [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DestructuredPage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DestructuredPage.js [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DestructuredPage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DestructuredPage.js [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DestructuredPage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DestructuredPage.js [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DestructuredPage.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, file granularity):
+  File(src/pages/PricePage.js)
+  File(src/lib/utils.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/PricePage.js)","File(src/lib/utils.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PricePage.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, file granularity):
+  File(src/pages/PricePage.js)
+  File(src/lib/utils.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/PricePage.js)","File(src/lib/utils.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PricePage.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.js)
+  Decl(src/pages/PricePage.js, lib)
+  Member(src/lib/utils.js, exports.utils.formatPrice)
+  Decl(src/lib/utils.js, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/PricePage.js)","Decl(src/pages/PricePage.js, lib)","Member(src/lib/utils.js, exports.utils.formatPrice)","Decl(src/lib/utils.js, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.js)
+  Decl(src/pages/PricePage.js, lib)
+  Member(src/lib/utils.js, exports.utils.formatPrice)
+  Decl(src/lib/utils.js, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/PricePage.js)","Decl(src/pages/PricePage.js, lib)","Member(src/lib/utils.js, exports.utils.formatPrice)","Decl(src/lib/utils.js, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.js)
+  Decl(src/pages/PricePage.js, lib)
+  Member(src/lib/utils.js, exports.utils.formatPrice)
+  Decl(src/lib/utils.js, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/PricePage.js)","Decl(src/pages/PricePage.js, lib)","Member(src/lib/utils.js, exports.utils.formatPrice)","Decl(src/lib/utils.js, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.js"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.js)
+  Decl(src/pages/PricePage.js, lib)
+  Member(src/lib/utils.js, exports.utils.formatPrice)
+  Decl(src/lib/utils.js, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.js","affected":true,"direction":"downstream","changed":"src/lib/utils.js","path":["File(src/pages/PricePage.js)","Decl(src/pages/PricePage.js, lib)","Member(src/lib/utils.js, exports.utils.formatPrice)","Decl(src/lib/utils.js, formatPrice)"],"granularity":"symbol","unresolved":[]}]}

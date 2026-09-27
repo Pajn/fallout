@@ -1,0 +1,45 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/LimitPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/limits.ts"
+Path (downstream, file granularity):
+  File(src/pages/LimitPage.tsx)
+  File(src/state/limits.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LimitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/limits.ts","path":["File(src/pages/LimitPage.tsx)","File(src/state/limits.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LimitPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/limits.ts"
+Path (downstream, file granularity):
+  File(src/pages/LimitPage.tsx)
+  File(src/state/limits.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LimitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/limits.ts","path":["File(src/pages/LimitPage.tsx)","File(src/state/limits.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LimitPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LimitPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LimitPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LimitPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LimitPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LimitPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LimitPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LimitPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

@@ -1,0 +1,477 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== direct.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(direct.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"direct.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(direct.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== direct.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(direct.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"direct.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(direct.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== direct.js [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"direct.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== direct.js [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"direct.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== direct.js [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"direct.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== direct.js [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"direct.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== bound.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(bound.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"bound.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(bound.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== bound.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(bound.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"bound.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(bound.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== bound.js [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"bound.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== bound.js [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"bound.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== bound.js [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"bound.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== bound.js [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"bound.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== destructured.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(destructured.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"destructured.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(destructured.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== destructured.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(destructured.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"destructured.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(destructured.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== destructured.js [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"destructured.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== destructured.js [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"destructured.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== destructured.js [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"destructured.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== destructured.js [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"destructured.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== used.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(used.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"used.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(used.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== used.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(used.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"used.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(used.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== used.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(used.js)
+  Decl(used.js, spare)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"used.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(used.js)","Decl(used.js, spare)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== used.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(used.js)
+  Decl(used.js, spare)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"used.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(used.js)","Decl(used.js, spare)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== used.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(used.js)
+  Decl(used.js, spare)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"used.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(used.js)","Decl(used.js, spare)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== used.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(used.js)
+  Decl(used.js, spare)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"used.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(used.js)","Decl(used.js, spare)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== escape.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(escape.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"escape.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(escape.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== escape.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(escape.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"escape.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(escape.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== escape.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(escape.js)
+  Decl(escape.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"escape.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(escape.js)","Decl(escape.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== escape.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(escape.js)
+  Decl(escape.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"escape.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(escape.js)","Decl(escape.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== escape.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(escape.js)
+  Decl(escape.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"escape.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(escape.js)","Decl(escape.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== escape.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(escape.js)
+  Decl(escape.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"escape.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(escape.js)","Decl(escape.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== dynamic.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(dynamic.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"dynamic.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(dynamic.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== dynamic.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(dynamic.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"dynamic.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(dynamic.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== dynamic.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(dynamic.js)
+  Decl(dynamic.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"dynamic.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(dynamic.js)","Decl(dynamic.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== dynamic.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(dynamic.js)
+  Decl(dynamic.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"dynamic.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(dynamic.js)","Decl(dynamic.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== dynamic.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(dynamic.js)
+  Decl(dynamic.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"dynamic.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(dynamic.js)","Decl(dynamic.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== dynamic.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(dynamic.js)
+  Decl(dynamic.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"dynamic.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(dynamic.js)","Decl(dynamic.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== reassigned.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(reassigned.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"reassigned.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(reassigned.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== reassigned.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(reassigned.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"reassigned.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(reassigned.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== reassigned.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(reassigned.js)
+  Decl(reassigned.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"reassigned.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(reassigned.js)","Decl(reassigned.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== reassigned.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(reassigned.js)
+  Decl(reassigned.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"reassigned.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(reassigned.js)","Decl(reassigned.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== reassigned.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(reassigned.js)
+  Decl(reassigned.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"reassigned.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(reassigned.js)","Decl(reassigned.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== reassigned.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(reassigned.js)
+  Decl(reassigned.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"reassigned.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(reassigned.js)","Decl(reassigned.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== rest.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(rest.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"rest.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(rest.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== rest.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(rest.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"rest.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(rest.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== rest.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(rest.js)
+  Decl(rest.js, used)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"rest.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(rest.js)","Decl(rest.js, used)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== rest.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(rest.js)
+  Decl(rest.js, used)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"rest.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(rest.js)","Decl(rest.js, used)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== rest.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(rest.js)
+  Decl(rest.js, used)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"rest.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(rest.js)","Decl(rest.js, used)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== rest.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(rest.js)
+  Decl(rest.js, used)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"rest.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(rest.js)","Decl(rest.js, used)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== exported.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(exported.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"exported.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(exported.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== exported.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, file granularity):
+  File(exported.js)
+  File(lib.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"exported.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(exported.js)","File(lib.js)"],"granularity":"file","unresolved":[]}]}
+
+== exported.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(exported.js)
+  Decl(exported.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"exported.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(exported.js)","Decl(exported.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== exported.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(exported.js)
+  Decl(exported.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"exported.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(exported.js)","Decl(exported.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== exported.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(exported.js)
+  Decl(exported.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"exported.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(exported.js)","Decl(exported.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}
+
+== exported.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "lib.js"
+Path (downstream, symbol granularity):
+  File(exported.js)
+  Decl(exported.js, lib)
+  Export(lib.js, spare)
+-- --json: exit 0
+{"anchors":[{"anchor":"exported.js","affected":true,"direction":"downstream","changed":"lib.js","path":["File(exported.js)","Decl(exported.js, lib)","Export(lib.js, spare)"],"granularity":"symbol","unresolved":[]}]}

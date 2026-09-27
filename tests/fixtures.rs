@@ -6,15 +6,25 @@
 //!
 //! No fixture hand-writes a diff: the input shape is exactly what CI produces from
 //! git, so the diff parser is exercised by every case rather than by unit tests alone.
+//!
+//! The tool runs in this process, through the command line's own entry point, and
+//! what the harness reads is what a user would see: the verdict in the exit code
+//! and the path in the explained lines. A run that compares against a base revision
+//! is handed the `before` tree as the earlier version of each file, which is what
+//! the same run reads from git. See `base.rs` for the test that holds the two alike.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
+use ahash::AHashMap;
+use fallout::base::Earlier;
+use fallout::{canonical_root, cli};
 use serde::Deserialize;
-
-const BINARY: &str = env!("CARGO_BIN_EXE_fallout");
 
 /// One cumulative refinement level from the roadmap.
 ///
@@ -25,8 +35,12 @@ const BINARY: &str = env!("CARGO_BIN_EXE_fallout");
 struct Level {
     name: &'static str,
     args: &'static [&'static str],
-    /// Compares each file against an earlier version of itself, so it needs that
-    /// version to exist in git.
+    /// Compares each file against an earlier version of itself, as `--base` does, so
+    /// the run is handed the `before` tree as those versions.
+    ///
+    /// The level's arguments leave `--base` out: a revision named here would be read
+    /// from whatever repository the harness runs in, which knows nothing of the
+    /// fixture.
     versioned: bool,
     /// The level this one may only ever narrow from.
     ///
@@ -53,7 +67,7 @@ const LEVELS: &[Level] = &[
     },
     Level {
         name: "base",
-        args: &["--granularity", "symbol", "--base", "HEAD"],
+        args: &["--granularity", "symbol"],
         versioned: true,
         narrows_from: Some("file"),
     },
@@ -73,13 +87,17 @@ fn position(name: &str) -> usize {
         .unwrap_or_else(|| panic!("no such level: {name}"))
 }
 
+/// A key the harness does not know is refused rather than ignored, since an
+/// expectation nobody checks reads exactly like one that holds.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Expect {
     #[serde(default)]
     anchor: Vec<AnchorExpect>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AnchorExpect {
     path: String,
     /// `true` is a must-flag: the soundness contract, held at every level from
@@ -128,46 +146,64 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-/// One fixture, prepared once: the generated diff, and the `after` tree laid over a
-/// repository whose `HEAD` holds `before`, which is what a `--base` run reads.
+/// One fixture, prepared once: the generated diff, and the earlier version of each
+/// file as a `--base` run would read it.
 struct Case {
     dir: PathBuf,
     expect: Expect,
+    /// Written under the build's own directory for test files, which lasts as long
+    /// as the build does, since nothing held in a `static` is ever dropped to clean
+    /// up after itself.
     diff: PathBuf,
-    versioned: PathBuf,
-    /// Deletes both of the above when the case goes out of scope.
-    _keep: tempfile::TempDir,
+    /// The `before` tree by the path each file has under the `after` tree, as a run
+    /// rooted there names it. A file that is not text is left out, as git's is, and
+    /// an added file is simply absent.
+    earlier: AHashMap<PathBuf, String>,
 }
 
 impl Case {
     fn load(dir: PathBuf) -> Self {
-        let keep = tempfile::tempdir().expect("temp dir");
-        let diff = keep.path().join("generated.diff");
+        let diffs = Path::new(env!("CARGO_TARGET_TMPDIR")).join("fixtures");
+        fs::create_dir_all(&diffs).expect("a directory for generated diffs");
+        let name = dir.file_name().expect("a fixture has a name");
+        let diff = diffs.join(name).with_extension("diff");
+        // Written aside and moved into place, so that another build's tests writing
+        // the same diff at the same moment never leave a run reading half of one.
+        let aside = diff.with_extension(format!("diff.{}", std::process::id()));
         fs::write(
-            &diff,
+            &aside,
             generate_diff(&dir.join("before"), &dir.join("after")),
         )
         .expect("writing generated diff");
+        fs::rename(&aside, &diff).expect("moving generated diff into place");
 
-        let versioned = keep.path().join("repo");
-        build_repo(&dir, &versioned);
+        let root = canonical_root(&dir.join("after"));
+        let earlier = collect_tree(&dir.join("before"))
+            .into_iter()
+            .filter_map(|(relative, content)| {
+                Some((root.join(relative), String::from_utf8(content).ok()?))
+            })
+            .collect();
 
         Self {
             expect: read_expect(&dir),
             dir,
             diff,
-            versioned,
-            _keep: keep,
+            earlier,
         }
     }
 
-    /// Where a level runs the tool.
-    fn root(&self, level: Level) -> PathBuf {
-        if level.versioned {
-            self.versioned.clone()
-        } else {
-            self.dir.join("after")
-        }
+    /// Where every level runs the tool: the `after` tree, in place.
+    fn root(&self) -> PathBuf {
+        self.dir.join("after")
+    }
+
+    /// What a level compares each file against, if it compares at all. Each run has
+    /// its own, since an [`Earlier`] is not shared between threads.
+    fn earlier(&self, level: Level) -> Option<Box<dyn Earlier>> {
+        level
+            .versioned
+            .then(|| Box::new(self.earlier.clone()) as Box<dyn Earlier>)
     }
 
     fn name(&self) -> String {
@@ -175,70 +211,54 @@ impl Case {
     }
 }
 
-fn cases() -> Vec<Case> {
-    fixture_cases().into_iter().map(Case::load).collect()
+/// Every fixture, loaded once for all the tests in this file.
+fn cases() -> &'static [Case] {
+    static CASES: OnceLock<Vec<Case>> = OnceLock::new();
+    CASES.get_or_init(|| fixture_cases().into_iter().map(Case::load).collect())
 }
 
-/// A repository holding the fixture's `before` tree as its only commit, with the
-/// `after` tree checked out over the top: the shape a real `--base` run sees.
-fn build_repo(case: &Path, repo: &Path) {
-    fs::create_dir_all(repo).expect("creating fixture repository");
-    copy_tree(&case.join("before"), repo);
-    git(repo, &["init", "--quiet"]);
-    git(repo, &["add", "--all", "--force"]);
-    git(
-        repo,
-        &["commit", "--quiet", "--allow-empty", "--message", "before"],
-    );
-
-    clear_tree(repo);
-    copy_tree(&case.join("after"), repo);
-}
-
-/// The fixture repository stands alone: no identity, ignore list, hook or signing
-/// setting from anywhere else takes part in making its one commit.
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .args(["-c", "user.name=fallout"])
-        .args(["-c", "user.email=fallout@example.invalid"])
-        .args(["-c", "commit.gpgsign=false"])
-        .args(["-c", "core.excludesFile=/dev/null"])
-        .args(["-c", "core.hooksPath=/dev/null"])
-        .args(args)
-        .status()
-        .expect("running git");
+/// Runs `test` over every fixture, and names each fixture it failed on.
+///
+/// A panic in one fixture does not stop the others, so a change that breaks several
+/// says so in one run, and one raised by the tool rather than by an assertion still
+/// says which fixture raised it.
+fn each_case(test: impl Fn(&Case)) {
+    let failed: Vec<String> = cases()
+        .iter()
+        .filter_map(|case| {
+            let panic = panic::catch_unwind(AssertUnwindSafe(|| test(case))).err()?;
+            let message = panic
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| panic.downcast_ref::<&str>().copied())
+                .unwrap_or("a panic with no message");
+            Some(format!("{}:\n{}", case.name(), message))
+        })
+        .collect();
     assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        repo.display()
+        failed.is_empty(),
+        "{} fixture(s) failed:\n\n{}",
+        failed.len(),
+        failed.join("\n\n")
     );
 }
 
-fn copy_tree(source: &Path, destination: &Path) {
-    for (relative, content) in collect_tree(source) {
-        let path = destination.join(relative);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("creating fixture directory");
-        }
-        fs::write(&path, content).expect("writing fixture file");
-    }
-}
+/// What one run wrote and ended with: the exit code, stdout and stderr.
+type Said = (u8, String, String);
 
-/// Empties the working tree without touching the history it was committed to.
-fn clear_tree(repo: &Path) {
-    for entry in fs::read_dir(repo).expect("readable repository") {
-        let path = entry.expect("readable entry").path();
-        if path.file_name().is_some_and(|name| name == ".git") {
-            continue;
-        }
-        if path.is_dir() {
-            fs::remove_dir_all(&path).expect("removing fixture directory");
-        } else {
-            fs::remove_file(&path).expect("removing fixture file");
-        }
-    }
+/// Runs by their whole command line and whether they were handed the tree before,
+/// which between them are everything a run's answer depends on.
+type Made = HashMap<(Vec<OsString>, bool), Said>;
+
+/// Every run made so far, shared by the tests in this file, so that a run several
+/// of them ask for is made once.
+fn made() -> MutexGuard<'static, Made> {
+    static MADE: OnceLock<Mutex<Made>> = OnceLock::new();
+    MADE.get_or_init(Mutex::default)
+        .lock()
+        // A test that failed while holding the table left it as it was, since
+        // nothing panics between reading and writing it.
+        .unwrap_or_else(PoisonError::into_inner)
 }
 
 fn fixture_cases() -> Vec<PathBuf> {
@@ -342,6 +362,33 @@ fn generate_diff(before: &Path, after: &Path) -> String {
     diff
 }
 
+/// Runs the command line in this process against the case's `after` tree, at
+/// `level`, for `anchor`, with `args` besides. Gives back the exit code and what was
+/// written to stdout and stderr. A run some test has already made is not made again.
+fn execute(case: &Case, anchor: &str, level: Level, args: Vec<OsString>) -> Said {
+    let mut line: Vec<OsString> = vec!["fallout".into(), "--anchor".into(), anchor.into()];
+    line.extend(["--root".into(), case.root().into()]);
+    line.extend(level.args.iter().map(OsString::from));
+    line.extend(args);
+
+    let key = (line, level.versioned);
+    if let Some(said) = made().get(&key) {
+        return said.clone();
+    }
+    // Made without holding the table, so the tests running beside this one are not
+    // kept waiting. Two of them asking for the same run at once both make it, and
+    // get the same answer.
+    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+    let code = cli::execute(&key.0, case.earlier(level), &mut stdout, &mut stderr);
+    let said = (
+        code,
+        String::from_utf8_lossy(&stdout).into_owned(),
+        String::from_utf8_lossy(&stderr).into_owned(),
+    );
+    made().insert(key, said.clone());
+    said
+}
+
 fn run(case: &Case, anchor: &str, level: Level) -> Outcome {
     run_with(case, anchor, level, &[])
 }
@@ -349,24 +396,10 @@ fn run(case: &Case, anchor: &str, level: Level) -> Outcome {
 /// The same, with arguments beyond the level's own. Only a test about how types are
 /// read has any to add.
 fn run_with(case: &Case, anchor: &str, level: Level, extra: &[&str]) -> Outcome {
-    let root = case.root(level);
-    let mut cmd = Command::new(BINARY);
-    cmd.current_dir(&root)
-        .arg("--anchor")
-        .arg(anchor)
-        .arg("--root")
-        .arg(&root)
-        .arg("--diff")
-        .arg(&case.diff)
-        .arg("--explain")
-        .args(level.args)
-        .args(extra);
+    let mut args: Vec<OsString> = vec!["--diff".into(), case.diff.clone().into()];
+    args.extend(["--explain"].iter().chain(extra).map(OsString::from));
+    let (code, stdout, stderr) = execute(case, anchor, level, args);
 
-    let output = cmd.output().expect("running fallout");
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    let code = output.status.code().unwrap_or(-1);
     assert!(
         code == 0 || code == 1,
         "{} [{}] anchor {}: unexpected exit {}\nstdout: {}\nstderr: {}",
@@ -396,10 +429,10 @@ fn run_with(case: &Case, anchor: &str, level: Level, extra: &[&str]) -> Outcome 
 
 #[test]
 fn fixtures_match_their_expectations() {
-    for case in cases() {
+    each_case(|case| {
         for anchor in &case.expect.anchor {
             for level in anchor.levels() {
-                let outcome = run(&case, &anchor.path, *level);
+                let outcome = run(case, &anchor.path, *level);
 
                 assert_eq!(
                     outcome.affected,
@@ -429,18 +462,18 @@ fn fixtures_match_their_expectations() {
                 }
             }
         }
-    }
+    });
 }
 
 /// Section 7.2, invariant 2: every must-flag expectation holds at every level,
 /// including the coarsest. This is the test-shaped form of the soundness contract.
 #[test]
 fn positives_survive_every_level() {
-    for case in cases() {
+    each_case(|case| {
         for anchor in case.expect.anchor.iter().filter(|a| a.affected) {
             for level in anchor.levels() {
                 assert!(
-                    run(&case, &anchor.path, *level).affected,
+                    run(case, &anchor.path, *level).affected,
                     "{} [{}] anchor {}: a must-flag case was missed",
                     case.name(),
                     level.name,
@@ -448,18 +481,18 @@ fn positives_survive_every_level() {
                 );
             }
         }
-    }
+    });
 }
 
 /// Section 7.2, invariants 1 and 3: a refinement may only ever remove verdicts from
 /// the level it narrows, and the file level is an upper bound on every other.
 #[test]
 fn refinements_only_narrow() {
-    for case in cases() {
+    each_case(|case| {
         for anchor in &case.expect.anchor {
             let verdicts: Vec<bool> = LEVELS
                 .iter()
-                .map(|level| run(&case, &anchor.path, *level).affected)
+                .map(|level| run(case, &anchor.path, *level).affected)
                 .collect();
 
             for (index, fine) in LEVELS.iter().enumerate() {
@@ -476,7 +509,7 @@ fn refinements_only_narrow() {
                 );
             }
         }
-    }
+    });
 }
 
 /// A diff and the equivalent `--changed` list must agree at file granularity.
@@ -485,7 +518,7 @@ fn refinements_only_narrow() {
 /// what keeps the backward-compatible path honest as `--diff` takes over.
 #[test]
 fn diff_and_changed_paths_agree() {
-    for case in cases() {
+    each_case(|case| {
         let before = collect_tree(&case.dir.join("before"));
         let after_tree = collect_tree(&case.dir.join("after"));
         // As `git diff --name-only` lists them: deleted files too.
@@ -499,20 +532,13 @@ fn diff_and_changed_paths_agree() {
 
         for anchor in &case.expect.anchor {
             for level in LEVELS {
-                let via_diff = run(&case, &anchor.path, *level).affected;
+                let via_diff = run(case, &anchor.path, *level).affected;
 
-                let root = case.root(*level);
-                let mut cmd = Command::new(BINARY);
-                cmd.current_dir(&root)
-                    .arg("--anchor")
-                    .arg(&anchor.path)
-                    .arg("--root")
-                    .arg(&root)
-                    .args(level.args);
-                for path in &changed {
-                    cmd.arg("--changed").arg(path);
-                }
-                let via_changed = cmd.output().expect("running fallout").status.code() == Some(0);
+                let args = changed
+                    .iter()
+                    .flat_map(|path| ["--changed".into(), path.into()])
+                    .collect();
+                let via_changed = execute(case, &anchor.path, *level, args).0 == 0;
 
                 assert!(
                     via_changed || !via_diff,
@@ -523,7 +549,7 @@ fn diff_and_changed_paths_agree() {
                 );
             }
         }
-    }
+    });
 }
 
 /// Section 7.2, invariant 1 again, for the reading rather than the level: ignoring
@@ -531,12 +557,12 @@ fn diff_and_changed_paths_agree() {
 /// ones written about types, so every case in the suite tests how types are read.
 #[test]
 fn the_default_narrows_from_a_read_as_written() {
-    for case in cases() {
+    each_case(|case| {
         for anchor in &case.expect.anchor {
             for level in LEVELS {
                 let as_written =
-                    run_with(&case, &anchor.path, *level, &["--include-types"]).affected;
-                let default = run(&case, &anchor.path, *level).affected;
+                    run_with(case, &anchor.path, *level, &["--include-types"]).affected;
+                let default = run(case, &anchor.path, *level).affected;
                 assert!(
                     as_written || !default,
                     "{} [{}] anchor {}: the default reports affected but --include-types does not",
@@ -546,7 +572,7 @@ fn the_default_narrows_from_a_read_as_written() {
                 );
             }
         }
-    }
+    });
 }
 
 /// A must-skip written about types has to be the erasure's doing.
@@ -560,7 +586,7 @@ fn the_default_narrows_from_a_read_as_written() {
 /// [`positives_survive_every_level`] already holds it at every level.
 #[test]
 fn a_types_case_needs_types_ignored() {
-    for case in cases() {
+    each_case(|case| {
         for anchor in case
             .expect
             .anchor
@@ -569,12 +595,93 @@ fn a_types_case_needs_types_ignored() {
         {
             let level = anchor.levels()[0];
             assert!(
-                run_with(&case, &anchor.path, level, &["--include-types"]).affected,
+                run_with(case, &anchor.path, level, &["--include-types"]).affected,
                 "{} [{}] anchor {}: reads the same whether or not types are ignored",
                 case.name(),
                 level.name,
                 anchor.path
             );
         }
+    });
+}
+
+/// Everything the tool says about a fixture: for each anchor it names, at every
+/// level and read both ways, the exit code, the explained verdict and the JSON.
+///
+/// The expectations say what must hold; this says what does, down to the byte, so
+/// that a change to what a user sees cannot pass unnoticed because no expectation
+/// happened to look at it. A change meant to alter it is blessed: see
+/// [`answers_match_their_snapshots`].
+fn answers(case: &Case) -> String {
+    let mut text = String::from(
+        "# What fallout says about this fixture, written by tests/fixtures.rs. For each\n\
+         # anchor, at every level and read both ways: the exit code and output of a run\n\
+         # with --explain, then of one with --json.\n",
+    );
+    for anchor in &case.expect.anchor {
+        for level in LEVELS {
+            for reading in [None, Some("--include-types")] {
+                text.push_str(&format!("\n== {} [{}]", anchor.path, level.name));
+                if let Some(flag) = reading {
+                    text.push_str(&format!(" {flag}"));
+                }
+                text.push('\n');
+                for shape in ["--explain", "--json"] {
+                    let mut args: Vec<OsString> = vec!["--diff".into(), case.diff.clone().into()];
+                    args.extend([shape].into_iter().chain(reading).map(OsString::from));
+                    let (code, stdout, stderr) = execute(case, &anchor.path, *level, args);
+                    text.push_str(&format!("-- {shape}: exit {code}\n{stdout}"));
+                    if !stderr.is_empty() {
+                        text.push_str(&format!("-- stderr\n{stderr}"));
+                    }
+                }
+            }
+        }
     }
+    text
+}
+
+/// Each fixture's answers are what its `answers.txt` records.
+///
+/// `FALLOUT_BLESS=1 cargo test --test fixtures` writes what the tool says now in
+/// place of what was recorded, for a change that means to alter it. The diff of
+/// the files is then the change a user would see.
+#[test]
+fn answers_match_their_snapshots() {
+    let bless = std::env::var_os("FALLOUT_BLESS").is_some_and(|value| value == "1");
+    // Blessing rewrites what is recorded, which a CI run must never do quietly.
+    assert!(
+        !(bless && std::env::var_os("CI").is_some()),
+        "FALLOUT_BLESS is set in CI, where the recorded answers are checked, not written"
+    );
+    each_case(|case| {
+        let path = case.dir.join("answers.txt");
+        let now = answers(case);
+        if bless {
+            fs::write(&path, &now).unwrap_or_else(|e| panic!("writing {}: {e}", path.display()));
+            return;
+        }
+        // A checkout that writes line endings its own way changes nothing recorded.
+        let recorded = match fs::read_to_string(&path) {
+            Ok(text) => text.replace("\r\n", "\n"),
+            Err(error) => panic!(
+                "{} cannot be read ({error}). A new fixture gets one with \
+                 `FALLOUT_BLESS=1 cargo test --test fixtures`.",
+                path.display()
+            ),
+        };
+        if recorded != now {
+            let difference = similar::TextDiff::from_lines(&recorded, &now)
+                .unified_diff()
+                .context_radius(2)
+                .header("recorded", "now")
+                .to_string();
+            panic!(
+                "{} does not record what the tool says now. If the change is meant, \
+                 bless it with `FALLOUT_BLESS=1 cargo test --test fixtures` and review \
+                 the diff.\n{difference}",
+                path.display()
+            );
+        }
+    });
 }

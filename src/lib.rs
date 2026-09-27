@@ -127,7 +127,39 @@ pub fn canonical_root(root: &Path) -> PathBuf {
 }
 
 pub fn analyse(options: &Options) -> Result<Outcome, Error> {
-    let run = Run::new(options)?;
+    analyse_with(options, earlier(options))
+}
+
+/// As [`analyse`], with the earlier versions of the files handed over rather than
+/// read from the revision `options.base` names, which is ignored. With `None` there
+/// are none, and the change is read from the diff and the changed paths alone.
+///
+/// This is how a caller with no repository to hand, a test say, gives a run what a
+/// `--base` run would read from git. `earlier` has to hold every text file of the
+/// tree before the change: a file it has no text for is taken as one the change
+/// added. See [`base::Earlier::text`].
+pub fn analyse_with(
+    options: &Options,
+    earlier: Option<Box<dyn base::Earlier>>,
+) -> Result<Outcome, Error> {
+    analysed(options, earlier).map(|(outcome, _)| outcome)
+}
+
+/// The earlier versions `options.base` names, read from git.
+pub(crate) fn earlier(options: &Options) -> Option<Box<dyn base::Earlier>> {
+    options
+        .base
+        .as_deref()
+        .map(|reference| Box::new(base::Base::new(reference)) as Box<dyn base::Earlier>)
+}
+
+/// [`analyse_with`]'s answer, and the root the run measured it from, so that the
+/// command line displays paths against the same directory the analysis read.
+pub(crate) fn analysed(
+    options: &Options,
+    earlier: Option<Box<dyn base::Earlier>>,
+) -> Result<(Outcome, PathBuf), Error> {
+    let run = Run::new(options, earlier)?;
     // The set is affected if any one of its anchors is. Anchors whose bundlers agree
     // are asked together, on one graph; the first group affected is the answer.
     let mut verdict = Verdict::NotAffected;
@@ -141,10 +173,11 @@ pub fn analyse(options: &Options) -> Result<Outcome, Error> {
         }
     }
     run.finish()?;
-    Ok(Outcome {
+    let outcome = Outcome {
         verdict,
         unresolved: run.unresolved.sorted(),
-    })
+    };
+    Ok((outcome, run.root))
 }
 
 /// One anchor's answer, as [`analyse_each`] gives it.
@@ -173,7 +206,25 @@ pub struct UnresolvedImport {
 /// Every anchor sharing a bundler is answered on the same graph, so each module is
 /// read and resolved once however many anchors reach it.
 pub fn analyse_each(options: &Options) -> Result<Vec<AnchorOutcome>, Error> {
-    let run = Run::new(options)?;
+    analyse_each_with(options, earlier(options))
+}
+
+/// As [`analyse_each`], with the earlier versions of the files handed over rather
+/// than read from the revision `options.base` names, which is ignored. See
+/// [`analyse_with`].
+pub fn analyse_each_with(
+    options: &Options,
+    earlier: Option<Box<dyn base::Earlier>>,
+) -> Result<Vec<AnchorOutcome>, Error> {
+    analysed_each(options, earlier).map(|(answers, _)| answers)
+}
+
+/// [`analyse_each_with`]'s answers, and the root the run measured them from.
+pub(crate) fn analysed_each(
+    options: &Options,
+    earlier: Option<Box<dyn base::Earlier>>,
+) -> Result<(Vec<AnchorOutcome>, PathBuf), Error> {
+    let run = Run::new(options, earlier)?;
     let mut answers: Vec<AnchorOutcome> = Vec::with_capacity(run.anchors.len());
     for (bundler, anchors) in run.groups() {
         let engine = run.engine(bundler);
@@ -217,7 +268,7 @@ pub fn analyse_each(options: &Options) -> Result<Vec<AnchorOutcome>, Error> {
             .iter()
             .position(|anchor| *anchor == answer.anchor)
     });
-    Ok(answers)
+    Ok((answers, run.root))
 }
 
 /// What every question in one run shares: the anchors, the change, and the
@@ -236,7 +287,7 @@ struct Run<'o> {
 }
 
 impl<'o> Run<'o> {
-    fn new(options: &'o Options) -> Result<Self, Error> {
+    fn new(options: &'o Options, earlier: Option<Box<dyn base::Earlier>>) -> Result<Self, Error> {
         if options.anchors.is_empty() {
             return Err(Error::NoAnchors);
         }
@@ -273,10 +324,6 @@ impl<'o> Run<'o> {
             configs: configs.clone(),
             ignore_types: !options.include_types,
         };
-        let earlier = options
-            .base
-            .as_deref()
-            .map(|reference| Box::new(base::Base::new(reference)) as Box<dyn base::Earlier>);
         let change = change::Change::read(
             &root,
             change_set,

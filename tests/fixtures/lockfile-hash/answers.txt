@@ -1,0 +1,133 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/ChartPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "node_modules/charting"
+Path (downstream, file granularity):
+  File(src/pages/ChartPage.tsx)
+  File(node_modules/charting)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ChartPage.tsx","affected":true,"direction":"downstream","changed":"node_modules/charting","path":["File(src/pages/ChartPage.tsx)","File(node_modules/charting)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ChartPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "node_modules/charting"
+Path (downstream, file granularity):
+  File(src/pages/ChartPage.tsx)
+  File(node_modules/charting)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ChartPage.tsx","affected":true,"direction":"downstream","changed":"node_modules/charting","path":["File(src/pages/ChartPage.tsx)","File(node_modules/charting)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ChartPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "node_modules/charting"
+Path (downstream, symbol granularity):
+  File(src/pages/ChartPage.tsx)
+  Decl(src/pages/ChartPage.tsx, default)
+  File(node_modules/charting)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ChartPage.tsx","affected":true,"direction":"downstream","changed":"node_modules/charting","path":["File(src/pages/ChartPage.tsx)","Decl(src/pages/ChartPage.tsx, default)","File(node_modules/charting)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ChartPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "node_modules/charting"
+Path (downstream, symbol granularity):
+  File(src/pages/ChartPage.tsx)
+  Decl(src/pages/ChartPage.tsx, default)
+  File(node_modules/charting)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ChartPage.tsx","affected":true,"direction":"downstream","changed":"node_modules/charting","path":["File(src/pages/ChartPage.tsx)","Decl(src/pages/ChartPage.tsx, default)","File(node_modules/charting)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ChartPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "node_modules/charting"
+Path (downstream, symbol granularity):
+  File(src/pages/ChartPage.tsx)
+  Decl(src/pages/ChartPage.tsx, default)
+  File(node_modules/charting)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ChartPage.tsx","affected":true,"direction":"downstream","changed":"node_modules/charting","path":["File(src/pages/ChartPage.tsx)","Decl(src/pages/ChartPage.tsx, default)","File(node_modules/charting)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ChartPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "node_modules/charting"
+Path (downstream, symbol granularity):
+  File(src/pages/ChartPage.tsx)
+  Decl(src/pages/ChartPage.tsx, default)
+  File(node_modules/charting)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ChartPage.tsx","affected":true,"direction":"downstream","changed":"node_modules/charting","path":["File(src/pages/ChartPage.tsx)","Decl(src/pages/ChartPage.tsx, default)","File(node_modules/charting)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PlotPage.tsx [file]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PlotPage.tsx","affected":false,"granularity":"file","unresolved":[{"specifier":"@vendor/plot","kind":"missing-package","in_repo":false,"from":["src/pages/PlotPage.tsx"]}]}]}
+
+== src/pages/PlotPage.tsx [file] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PlotPage.tsx","affected":false,"granularity":"file","unresolved":[{"specifier":"@vendor/plot","kind":"missing-package","in_repo":false,"from":["src/pages/PlotPage.tsx"]}]}]}
+
+== src/pages/PlotPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PlotPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"@vendor/plot","kind":"missing-package","in_repo":false,"from":["src/pages/PlotPage.tsx"]}]}]}
+
+== src/pages/PlotPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PlotPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"@vendor/plot","kind":"missing-package","in_repo":false,"from":["src/pages/PlotPage.tsx"]}]}]}
+
+== src/pages/PlotPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PlotPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"@vendor/plot","kind":"missing-package","in_repo":false,"from":["src/pages/PlotPage.tsx"]}]}]}
+
+== src/pages/PlotPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PlotPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"@vendor/plot","kind":"missing-package","in_repo":false,"from":["src/pages/PlotPage.tsx"]}]}]}
+
+== src/pages/AboutPage.tsx [file]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"file","unresolved":[{"specifier":"stable-dep","kind":"missing-package","in_repo":false,"from":["src/pages/AboutPage.tsx"]}]}]}
+
+== src/pages/AboutPage.tsx [file] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"file","unresolved":[{"specifier":"stable-dep","kind":"missing-package","in_repo":false,"from":["src/pages/AboutPage.tsx"]}]}]}
+
+== src/pages/AboutPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"stable-dep","kind":"missing-package","in_repo":false,"from":["src/pages/AboutPage.tsx"]}]}]}
+
+== src/pages/AboutPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"stable-dep","kind":"missing-package","in_repo":false,"from":["src/pages/AboutPage.tsx"]}]}]}
+
+== src/pages/AboutPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"stable-dep","kind":"missing-package","in_repo":false,"from":["src/pages/AboutPage.tsx"]}]}]}
+
+== src/pages/AboutPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"stable-dep","kind":"missing-package","in_repo":false,"from":["src/pages/AboutPage.tsx"]}]}]}

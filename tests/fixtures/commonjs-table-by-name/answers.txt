@@ -1,0 +1,61 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/OtherPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/legacy/util.js"
+Path (downstream, file granularity):
+  File(src/pages/OtherPage.tsx)
+  File(src/legacy/util.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OtherPage.tsx","affected":true,"direction":"downstream","changed":"src/legacy/util.js","path":["File(src/pages/OtherPage.tsx)","File(src/legacy/util.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/OtherPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/legacy/util.js"
+Path (downstream, file granularity):
+  File(src/pages/OtherPage.tsx)
+  File(src/legacy/util.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OtherPage.tsx","affected":true,"direction":"downstream","changed":"src/legacy/util.js","path":["File(src/pages/OtherPage.tsx)","File(src/legacy/util.js)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/OtherPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/legacy/util.js"
+Path (downstream, symbol granularity):
+  File(src/pages/OtherPage.tsx)
+  Decl(src/pages/OtherPage.tsx, OtherPage)
+  File(src/legacy/util.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OtherPage.tsx","affected":true,"direction":"downstream","changed":"src/legacy/util.js","path":["File(src/pages/OtherPage.tsx)","Decl(src/pages/OtherPage.tsx, OtherPage)","File(src/legacy/util.js)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/OtherPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/legacy/util.js"
+Path (downstream, symbol granularity):
+  File(src/pages/OtherPage.tsx)
+  Decl(src/pages/OtherPage.tsx, OtherPage)
+  File(src/legacy/util.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OtherPage.tsx","affected":true,"direction":"downstream","changed":"src/legacy/util.js","path":["File(src/pages/OtherPage.tsx)","Decl(src/pages/OtherPage.tsx, OtherPage)","File(src/legacy/util.js)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/OtherPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/legacy/util.js"
+Path (downstream, symbol granularity):
+  File(src/pages/OtherPage.tsx)
+  Decl(src/pages/OtherPage.tsx, OtherPage)
+  File(src/legacy/util.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OtherPage.tsx","affected":true,"direction":"downstream","changed":"src/legacy/util.js","path":["File(src/pages/OtherPage.tsx)","Decl(src/pages/OtherPage.tsx, OtherPage)","File(src/legacy/util.js)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/OtherPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/legacy/util.js"
+Path (downstream, symbol granularity):
+  File(src/pages/OtherPage.tsx)
+  Decl(src/pages/OtherPage.tsx, OtherPage)
+  File(src/legacy/util.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OtherPage.tsx","affected":true,"direction":"downstream","changed":"src/legacy/util.js","path":["File(src/pages/OtherPage.tsx)","Decl(src/pages/OtherPage.tsx, OtherPage)","File(src/legacy/util.js)"],"granularity":"symbol","unresolved":[]}]}

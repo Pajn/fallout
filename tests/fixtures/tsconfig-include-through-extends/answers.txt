@@ -1,0 +1,55 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== app/src/page.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "app/src/page.ts"
+Path (downstream, file granularity):
+  File(app/src/page.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"app/src/page.ts","affected":true,"direction":"downstream","changed":"app/src/page.ts","path":["File(app/src/page.ts)"],"granularity":"file","unresolved":[]}]}
+
+== app/src/page.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "app/src/page.ts"
+Path (downstream, file granularity):
+  File(app/src/page.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"app/src/page.ts","affected":true,"direction":"downstream","changed":"app/src/page.ts","path":["File(app/src/page.ts)"],"granularity":"file","unresolved":[]}]}
+
+== app/src/page.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "app/src/page.ts"
+Path (downstream, symbol granularity):
+  File(app/src/page.ts)
+  Decl(app/src/page.ts, page)
+-- --json: exit 0
+{"anchors":[{"anchor":"app/src/page.ts","affected":true,"direction":"downstream","changed":"app/src/page.ts","path":["File(app/src/page.ts)","Decl(app/src/page.ts, page)"],"granularity":"symbol","unresolved":[]}]}
+
+== app/src/page.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "app/src/page.ts"
+Path (downstream, symbol granularity):
+  File(app/src/page.ts)
+  Decl(app/src/page.ts, page)
+-- --json: exit 0
+{"anchors":[{"anchor":"app/src/page.ts","affected":true,"direction":"downstream","changed":"app/src/page.ts","path":["File(app/src/page.ts)","Decl(app/src/page.ts, page)"],"granularity":"symbol","unresolved":[]}]}
+
+== app/src/page.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "app/src/page.ts"
+Path (downstream, symbol granularity):
+  File(app/src/page.ts)
+  Decl(app/src/page.ts, page)
+-- --json: exit 0
+{"anchors":[{"anchor":"app/src/page.ts","affected":true,"direction":"downstream","changed":"app/src/page.ts","path":["File(app/src/page.ts)","Decl(app/src/page.ts, page)"],"granularity":"symbol","unresolved":[]}]}
+
+== app/src/page.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "app/src/page.ts"
+Path (downstream, symbol granularity):
+  File(app/src/page.ts)
+  Decl(app/src/page.ts, page)
+-- --json: exit 0
+{"anchors":[{"anchor":"app/src/page.ts","affected":true,"direction":"downstream","changed":"app/src/page.ts","path":["File(app/src/page.ts)","Decl(app/src/page.ts, page)"],"granularity":"symbol","unresolved":[]}]}
