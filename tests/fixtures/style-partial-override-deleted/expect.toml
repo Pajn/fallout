@@ -1,0 +1,13 @@
+# `@use "tokens/colors"` is tried beside the stylesheet before it is tried as a
+# package, and as the partial `tokens/_colors` after the name as written. The app's
+# own partial, which stood in for the package's, is deleted, so the same line now
+# finds `node_modules/tokens/_colors.scss`. Neither the stylesheet nor the package
+# changed: only the import moved.
+[[anchor]]
+path = "src/pages/ThemedPage.tsx"
+affected = true
+
+# A page that imports no stylesheet is not reached by an import one of them moved.
+[[anchor]]
+path = "src/pages/PlainPage.tsx"
+affected = false
