@@ -1,0 +1,12 @@
+# A barrel's first `export *` is from a JSON module the analysis cannot see
+# inside, so any name could come from it, but that does not settle where a name
+# comes from: the next star may export it too. The edit to `x` behind the second
+# star reaches the page importing `x`. `y` is unchanged, so the page importing it
+# must not hear about the edit.
+[[anchor]]
+path = "src/page.ts"
+affected = true
+
+[[anchor]]
+path = "src/other-page.ts"
+affected = false

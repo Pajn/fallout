@@ -1,0 +1,20 @@
+# A barrel can `export *` from a file the analysis cannot see inside, here a JSON
+# module. Which names it contributes is unknown, so a name the barrel does not
+# declare itself may be any of them, and the edit to the JSON reaches the page
+# importing `primary`. `other` is declared by the barrel, so the page importing it
+# must not hear about the JSON.
+[[anchor]]
+path = "src/page.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/page.ts)",
+    "Decl(src/page.ts, Page)",
+    "Export(src/barrel.ts, primary)",
+    "File(src/tokens.json)",
+]
+
+[[anchor]]
+path = "src/other-page.ts"
+affected = false
