@@ -1,0 +1,105 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/DatePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, file granularity):
+  File(src/pages/DatePage.tsx)
+  File(src/utils/helpers.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/DatePage.tsx)","File(src/utils/helpers.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, file granularity):
+  File(src/pages/DatePage.tsx)
+  File(src/utils/helpers.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/DatePage.tsx)","File(src/utils/helpers.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LegacyPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, file granularity):
+  File(src/pages/LegacyPage.tsx)
+  File(src/utils/helpers.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LegacyPage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/LegacyPage.tsx)","File(src/utils/helpers.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LegacyPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, file granularity):
+  File(src/pages/LegacyPage.tsx)
+  File(src/utils/helpers.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LegacyPage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/LegacyPage.tsx)","File(src/utils/helpers.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LegacyPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LegacyPage.tsx)
+  Decl(src/pages/LegacyPage.tsx, LegacyPage)
+  File(src/utils/helpers.ts)
+  Decl(src/utils/helpers.ts, formatAmount)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LegacyPage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/LegacyPage.tsx)","Decl(src/pages/LegacyPage.tsx, LegacyPage)","File(src/utils/helpers.ts)","Decl(src/utils/helpers.ts, formatAmount)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LegacyPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LegacyPage.tsx)
+  Decl(src/pages/LegacyPage.tsx, LegacyPage)
+  File(src/utils/helpers.ts)
+  Decl(src/utils/helpers.ts, formatAmount)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LegacyPage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/LegacyPage.tsx)","Decl(src/pages/LegacyPage.tsx, LegacyPage)","File(src/utils/helpers.ts)","Decl(src/utils/helpers.ts, formatAmount)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LegacyPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LegacyPage.tsx)
+  Decl(src/pages/LegacyPage.tsx, LegacyPage)
+  Export(src/utils/helpers.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LegacyPage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/LegacyPage.tsx)","Decl(src/pages/LegacyPage.tsx, LegacyPage)","Export(src/utils/helpers.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LegacyPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/helpers.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LegacyPage.tsx)
+  Decl(src/pages/LegacyPage.tsx, LegacyPage)
+  Export(src/utils/helpers.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LegacyPage.tsx","affected":true,"direction":"downstream","changed":"src/utils/helpers.ts","path":["File(src/pages/LegacyPage.tsx)","Decl(src/pages/LegacyPage.tsx, LegacyPage)","Export(src/utils/helpers.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}

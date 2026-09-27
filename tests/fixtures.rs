@@ -604,3 +604,79 @@ fn a_types_case_needs_types_ignored() {
         }
     });
 }
+
+/// Everything the tool says about a fixture: for each anchor it names, at every
+/// level and read both ways, the exit code, the explained verdict and the JSON.
+///
+/// The expectations say what must hold; this says what does, down to the byte, so
+/// that a change to what a user sees cannot pass unnoticed because no expectation
+/// happened to look at it. A change meant to alter it is blessed: see
+/// [`answers_match_their_snapshots`].
+fn answers(case: &Case) -> String {
+    let mut text = String::from(
+        "# What fallout says about this fixture, written by tests/fixtures.rs. For each\n\
+         # anchor, at every level and read both ways: the exit code and output of a run\n\
+         # with --explain, then of one with --json.\n",
+    );
+    for anchor in &case.expect.anchor {
+        for level in LEVELS {
+            for reading in [None, Some("--include-types")] {
+                text.push_str(&format!("\n== {} [{}]", anchor.path, level.name));
+                if let Some(flag) = reading {
+                    text.push_str(&format!(" {flag}"));
+                }
+                text.push('\n');
+                for shape in ["--explain", "--json"] {
+                    let mut args: Vec<OsString> = vec!["--diff".into(), case.diff.clone().into()];
+                    args.extend([shape].into_iter().chain(reading).map(OsString::from));
+                    let (code, stdout, stderr) = execute(case, &anchor.path, *level, args);
+                    text.push_str(&format!("-- {shape}: exit {code}\n{stdout}"));
+                    if !stderr.is_empty() {
+                        text.push_str(&format!("-- stderr\n{stderr}"));
+                    }
+                }
+            }
+        }
+    }
+    text
+}
+
+/// Each fixture's answers are what its `answers.txt` records.
+///
+/// `FALLOUT_BLESS=1 cargo test --test fixtures` writes what the tool says now in
+/// place of what was recorded, for a change that means to alter it. The diff of
+/// the files is then the change a user would see.
+#[test]
+fn answers_match_their_snapshots() {
+    let bless = std::env::var_os("FALLOUT_BLESS").is_some_and(|value| value == "1");
+    each_case(|case| {
+        let path = case.dir.join("answers.txt");
+        let now = answers(case);
+        if bless {
+            fs::write(&path, &now).unwrap_or_else(|e| panic!("writing {}: {e}", path.display()));
+            return;
+        }
+        // A checkout that writes line endings its own way changes nothing recorded.
+        let recorded = match fs::read_to_string(&path) {
+            Ok(text) => text.replace("\r\n", "\n"),
+            Err(error) => panic!(
+                "{} cannot be read ({error}). A new fixture gets one with \
+                 `FALLOUT_BLESS=1 cargo test --test fixtures`.",
+                path.display()
+            ),
+        };
+        if recorded != now {
+            let difference = similar::TextDiff::from_lines(&recorded, &now)
+                .unified_diff()
+                .context_radius(2)
+                .header("recorded", "now")
+                .to_string();
+            panic!(
+                "{} does not record what the tool says now. If the change is meant, \
+                 bless it with `FALLOUT_BLESS=1 cargo test --test fixtures` and review \
+                 the diff.\n{difference}",
+                path.display()
+            );
+        }
+    });
+}

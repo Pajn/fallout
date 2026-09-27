@@ -1,0 +1,115 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== apps/web/PanelPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "apps/web/make.ts"
+Path (downstream, file granularity):
+  File(apps/web/PanelPage.tsx)
+  File(apps/web/panel.tsx)
+  File(apps/web/make.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/PanelPage.tsx","affected":true,"direction":"downstream","changed":"apps/web/make.ts","path":["File(apps/web/PanelPage.tsx)","File(apps/web/panel.tsx)","File(apps/web/make.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/web/PanelPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "apps/web/make.ts"
+Path (downstream, file granularity):
+  File(apps/web/PanelPage.tsx)
+  File(apps/web/panel.tsx)
+  File(apps/web/make.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/PanelPage.tsx","affected":true,"direction":"downstream","changed":"apps/web/make.ts","path":["File(apps/web/PanelPage.tsx)","File(apps/web/panel.tsx)","File(apps/web/make.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/web/PanelPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "apps/web/make.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/panel.tsx)
+  Decl(apps/web/panel.tsx, panel)
+  Export(apps/web/make.ts, build)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/PanelPage.tsx","affected":true,"direction":"downstream","changed":"apps/web/make.ts","path":["File(apps/web/PanelPage.tsx)","ModuleInit(apps/web/PanelPage.tsx)","ModuleInit(apps/web/panel.tsx)","Decl(apps/web/panel.tsx, panel)","Export(apps/web/make.ts, build)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/PanelPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "apps/web/make.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/panel.tsx)
+  Decl(apps/web/panel.tsx, panel)
+  Export(apps/web/make.ts, build)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/PanelPage.tsx","affected":true,"direction":"downstream","changed":"apps/web/make.ts","path":["File(apps/web/PanelPage.tsx)","ModuleInit(apps/web/PanelPage.tsx)","ModuleInit(apps/web/panel.tsx)","Decl(apps/web/panel.tsx, panel)","Export(apps/web/make.ts, build)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/PanelPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "apps/web/make.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/panel.tsx)
+  Decl(apps/web/panel.tsx, panel)
+  Export(apps/web/make.ts, build)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/PanelPage.tsx","affected":true,"direction":"downstream","changed":"apps/web/make.ts","path":["File(apps/web/PanelPage.tsx)","ModuleInit(apps/web/PanelPage.tsx)","ModuleInit(apps/web/panel.tsx)","Decl(apps/web/panel.tsx, panel)","Export(apps/web/make.ts, build)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/PanelPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "apps/web/make.ts"
+Path (downstream, symbol granularity):
+  File(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/PanelPage.tsx)
+  ModuleInit(apps/web/panel.tsx)
+  Decl(apps/web/panel.tsx, panel)
+  Export(apps/web/make.ts, build)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/PanelPage.tsx","affected":true,"direction":"downstream","changed":"apps/web/make.ts","path":["File(apps/web/PanelPage.tsx)","ModuleInit(apps/web/PanelPage.tsx)","ModuleInit(apps/web/panel.tsx)","Decl(apps/web/panel.tsx, panel)","Export(apps/web/make.ts, build)"],"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/HomePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/ui/make.ts"
+Path (downstream, file granularity):
+  File(apps/web/HomePage.tsx)
+  File(packages/ui/card.tsx)
+  File(packages/ui/make.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/HomePage.tsx","affected":true,"direction":"downstream","changed":"packages/ui/make.ts","path":["File(apps/web/HomePage.tsx)","File(packages/ui/card.tsx)","File(packages/ui/make.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/web/HomePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "packages/ui/make.ts"
+Path (downstream, file granularity):
+  File(apps/web/HomePage.tsx)
+  File(packages/ui/card.tsx)
+  File(packages/ui/make.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/HomePage.tsx","affected":true,"direction":"downstream","changed":"packages/ui/make.ts","path":["File(apps/web/HomePage.tsx)","File(packages/ui/card.tsx)","File(packages/ui/make.ts)"],"granularity":"file","unresolved":[]}]}
+
+== apps/web/HomePage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/HomePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/HomePage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/HomePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/HomePage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/HomePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== apps/web/HomePage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"apps/web/HomePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

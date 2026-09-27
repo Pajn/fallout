@@ -1,0 +1,57 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/BoardPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/board.ts"
+Path (downstream, file granularity):
+  File(src/pages/BoardPage.tsx)
+  File(src/model/board.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoardPage.tsx","affected":true,"direction":"downstream","changed":"src/model/board.ts","path":["File(src/pages/BoardPage.tsx)","File(src/model/board.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BoardPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/board.ts"
+Path (downstream, file granularity):
+  File(src/pages/BoardPage.tsx)
+  File(src/model/board.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoardPage.tsx","affected":true,"direction":"downstream","changed":"src/model/board.ts","path":["File(src/pages/BoardPage.tsx)","File(src/model/board.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BoardPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/board.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoardPage.tsx)
+  ModuleInit(src/pages/BoardPage.tsx)
+  ModuleInit(src/model/board.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoardPage.tsx","affected":true,"direction":"downstream","changed":"src/model/board.ts","path":["File(src/pages/BoardPage.tsx)","ModuleInit(src/pages/BoardPage.tsx)","ModuleInit(src/model/board.ts)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BoardPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/board.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoardPage.tsx)
+  ModuleInit(src/pages/BoardPage.tsx)
+  ModuleInit(src/model/board.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoardPage.tsx","affected":true,"direction":"downstream","changed":"src/model/board.ts","path":["File(src/pages/BoardPage.tsx)","ModuleInit(src/pages/BoardPage.tsx)","ModuleInit(src/model/board.ts)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BoardPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoardPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BoardPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/board.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoardPage.tsx)
+  ModuleInit(src/pages/BoardPage.tsx)
+  ModuleInit(src/model/board.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoardPage.tsx","affected":true,"direction":"downstream","changed":"src/model/board.ts","path":["File(src/pages/BoardPage.tsx)","ModuleInit(src/pages/BoardPage.tsx)","ModuleInit(src/model/board.ts)"],"granularity":"symbol","unresolved":[]}]}

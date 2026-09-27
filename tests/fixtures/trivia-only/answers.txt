@@ -1,0 +1,53 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/PricePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/format.ts"
+Path (downstream, file granularity):
+  File(src/pages/PricePage.tsx)
+  File(src/utils/format.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/utils/format.ts","path":["File(src/pages/PricePage.tsx)","File(src/utils/format.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/format.ts"
+Path (downstream, file granularity):
+  File(src/pages/PricePage.tsx)
+  File(src/utils/format.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/utils/format.ts","path":["File(src/pages/PricePage.tsx)","File(src/utils/format.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/format.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.tsx)
+  Decl(src/pages/PricePage.tsx, PricePage)
+  Export(src/utils/format.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/utils/format.ts","path":["File(src/pages/PricePage.tsx)","Decl(src/pages/PricePage.tsx, PricePage)","Export(src/utils/format.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/utils/format.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.tsx)
+  Decl(src/pages/PricePage.tsx, PricePage)
+  Export(src/utils/format.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/utils/format.ts","path":["File(src/pages/PricePage.tsx)","Decl(src/pages/PricePage.tsx, PricePage)","Export(src/utils/format.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

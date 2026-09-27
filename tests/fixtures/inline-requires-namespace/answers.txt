@@ -1,0 +1,79 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/HomePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/registry.ts"
+Path (downstream, file granularity):
+  File(src/pages/HomePage.tsx)
+  File(src/components/badge.tsx)
+  File(src/lib/registry.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HomePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/registry.ts","path":["File(src/pages/HomePage.tsx)","File(src/components/badge.tsx)","File(src/lib/registry.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/HomePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/registry.ts"
+Path (downstream, file granularity):
+  File(src/pages/HomePage.tsx)
+  File(src/components/badge.tsx)
+  File(src/lib/registry.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HomePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/registry.ts","path":["File(src/pages/HomePage.tsx)","File(src/components/badge.tsx)","File(src/lib/registry.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/HomePage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/registry.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/HomePage.tsx)
+  Decl(src/pages/HomePage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, registry)
+  ModuleInit(src/lib/registry.ts)
+  Decl(src/lib/registry.ts, register)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HomePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/registry.ts","path":["File(src/pages/HomePage.tsx)","Decl(src/pages/HomePage.tsx, default)","Export(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, registry)","ModuleInit(src/lib/registry.ts)","Decl(src/lib/registry.ts, register)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HomePage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/registry.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/HomePage.tsx)
+  Decl(src/pages/HomePage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, registry)
+  ModuleInit(src/lib/registry.ts)
+  Decl(src/lib/registry.ts, register)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HomePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/registry.ts","path":["File(src/pages/HomePage.tsx)","Decl(src/pages/HomePage.tsx, default)","Export(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, registry)","ModuleInit(src/lib/registry.ts)","Decl(src/lib/registry.ts, register)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HomePage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/registry.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/HomePage.tsx)
+  Decl(src/pages/HomePage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, registry)
+  ModuleInit(src/lib/registry.ts)
+  Decl(src/lib/registry.ts, register)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HomePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/registry.ts","path":["File(src/pages/HomePage.tsx)","Decl(src/pages/HomePage.tsx, default)","Export(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, registry)","ModuleInit(src/lib/registry.ts)","Decl(src/lib/registry.ts, register)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HomePage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/registry.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/HomePage.tsx)
+  Decl(src/pages/HomePage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, Badge)
+  Decl(src/components/badge.tsx, registry)
+  ModuleInit(src/lib/registry.ts)
+  Decl(src/lib/registry.ts, register)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HomePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/registry.ts","path":["File(src/pages/HomePage.tsx)","Decl(src/pages/HomePage.tsx, default)","Export(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, Badge)","Decl(src/components/badge.tsx, registry)","ModuleInit(src/lib/registry.ts)","Decl(src/lib/registry.ts, register)"],"granularity":"symbol","unresolved":[]}]}

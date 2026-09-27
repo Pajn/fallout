@@ -1,0 +1,65 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/VersionPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/VersionPage.tsx)
+  File(src/state/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VersionPage.tsx","affected":true,"direction":"downstream","changed":"src/state/client.ts","path":["File(src/pages/VersionPage.tsx)","File(src/state/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/VersionPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/VersionPage.tsx)
+  File(src/state/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VersionPage.tsx","affected":true,"direction":"downstream","changed":"src/state/client.ts","path":["File(src/pages/VersionPage.tsx)","File(src/state/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/VersionPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/VersionPage.tsx)
+  ModuleInit(src/pages/VersionPage.tsx)
+  ModuleInit(src/state/client.ts)
+  Decl(src/state/client.ts, client)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VersionPage.tsx","affected":true,"direction":"downstream","changed":"src/state/client.ts","path":["File(src/pages/VersionPage.tsx)","ModuleInit(src/pages/VersionPage.tsx)","ModuleInit(src/state/client.ts)","Decl(src/state/client.ts, client)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/VersionPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/VersionPage.tsx)
+  ModuleInit(src/pages/VersionPage.tsx)
+  ModuleInit(src/state/client.ts)
+  Decl(src/state/client.ts, client)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VersionPage.tsx","affected":true,"direction":"downstream","changed":"src/state/client.ts","path":["File(src/pages/VersionPage.tsx)","ModuleInit(src/pages/VersionPage.tsx)","ModuleInit(src/state/client.ts)","Decl(src/state/client.ts, client)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/VersionPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/VersionPage.tsx)
+  ModuleInit(src/pages/VersionPage.tsx)
+  ModuleInit(src/state/client.ts)
+  Decl(src/state/client.ts, client)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VersionPage.tsx","affected":true,"direction":"downstream","changed":"src/state/client.ts","path":["File(src/pages/VersionPage.tsx)","ModuleInit(src/pages/VersionPage.tsx)","ModuleInit(src/state/client.ts)","Decl(src/state/client.ts, client)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/VersionPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/VersionPage.tsx)
+  ModuleInit(src/pages/VersionPage.tsx)
+  ModuleInit(src/state/client.ts)
+  Decl(src/state/client.ts, client)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/VersionPage.tsx","affected":true,"direction":"downstream","changed":"src/state/client.ts","path":["File(src/pages/VersionPage.tsx)","ModuleInit(src/pages/VersionPage.tsx)","ModuleInit(src/state/client.ts)","Decl(src/state/client.ts, client)"],"granularity":"symbol","unresolved":[]}]}

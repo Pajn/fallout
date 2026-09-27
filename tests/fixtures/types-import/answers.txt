@@ -1,0 +1,100 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/ShapePage.tsx [file]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShapePage.tsx","affected":false,"granularity":"file","unresolved":[]}]}
+
+== src/pages/ShapePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, file granularity):
+  File(src/pages/ShapePage.tsx)
+  File(src/model/shape.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShapePage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/ShapePage.tsx)","File(src/model/shape.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ShapePage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShapePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShapePage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShapePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShapePage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShapePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShapePage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShapePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DrawPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, file granularity):
+  File(src/pages/DrawPage.tsx)
+  File(src/model/shape.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DrawPage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/DrawPage.tsx)","File(src/model/shape.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DrawPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, file granularity):
+  File(src/pages/DrawPage.tsx)
+  File(src/model/shape.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DrawPage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/DrawPage.tsx)","File(src/model/shape.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DrawPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/DrawPage.tsx)
+  Decl(src/pages/DrawPage.tsx, default)
+  Export(src/model/shape.ts, draw)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DrawPage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/DrawPage.tsx)","Decl(src/pages/DrawPage.tsx, default)","Export(src/model/shape.ts, draw)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DrawPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/DrawPage.tsx)
+  Decl(src/pages/DrawPage.tsx, default)
+  Export(src/model/shape.ts, draw)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DrawPage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/DrawPage.tsx)","Decl(src/pages/DrawPage.tsx, default)","Export(src/model/shape.ts, draw)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DrawPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/DrawPage.tsx)
+  Decl(src/pages/DrawPage.tsx, default)
+  Export(src/model/shape.ts, draw)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DrawPage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/DrawPage.tsx)","Decl(src/pages/DrawPage.tsx, default)","Export(src/model/shape.ts, draw)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DrawPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/model/shape.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/DrawPage.tsx)
+  Decl(src/pages/DrawPage.tsx, default)
+  Export(src/model/shape.ts, draw)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DrawPage.tsx","affected":true,"direction":"downstream","changed":"src/model/shape.ts","path":["File(src/pages/DrawPage.tsx)","Decl(src/pages/DrawPage.tsx, default)","Export(src/model/shape.ts, draw)"],"granularity":"symbol","unresolved":[]}]}

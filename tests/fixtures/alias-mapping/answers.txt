@@ -1,0 +1,155 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/AliasPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badge.tsx"
+Path (downstream, file granularity):
+  File(src/pages/AliasPage.tsx)
+  File(src/components/badge.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AliasPage.tsx","affected":true,"direction":"downstream","changed":"src/components/badge.tsx","path":["File(src/pages/AliasPage.tsx)","File(src/components/badge.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AliasPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badge.tsx"
+Path (downstream, file granularity):
+  File(src/pages/AliasPage.tsx)
+  File(src/components/badge.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AliasPage.tsx","affected":true,"direction":"downstream","changed":"src/components/badge.tsx","path":["File(src/pages/AliasPage.tsx)","File(src/components/badge.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AliasPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badge.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/AliasPage.tsx)
+  Decl(src/pages/AliasPage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AliasPage.tsx","affected":true,"direction":"downstream","changed":"src/components/badge.tsx","path":["File(src/pages/AliasPage.tsx)","Decl(src/pages/AliasPage.tsx, default)","Export(src/components/badge.tsx, Badge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AliasPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badge.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/AliasPage.tsx)
+  Decl(src/pages/AliasPage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AliasPage.tsx","affected":true,"direction":"downstream","changed":"src/components/badge.tsx","path":["File(src/pages/AliasPage.tsx)","Decl(src/pages/AliasPage.tsx, default)","Export(src/components/badge.tsx, Badge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AliasPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badge.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/AliasPage.tsx)
+  Decl(src/pages/AliasPage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AliasPage.tsx","affected":true,"direction":"downstream","changed":"src/components/badge.tsx","path":["File(src/pages/AliasPage.tsx)","Decl(src/pages/AliasPage.tsx, default)","Export(src/components/badge.tsx, Badge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AliasPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badge.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/AliasPage.tsx)
+  Decl(src/pages/AliasPage.tsx, default)
+  Export(src/components/badge.tsx, Badge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AliasPage.tsx","affected":true,"direction":"downstream","changed":"src/components/badge.tsx","path":["File(src/pages/AliasPage.tsx)","Decl(src/pages/AliasPage.tsx, default)","Export(src/components/badge.tsx, Badge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AssetPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "static/cover.svg"
+Path (downstream, file granularity):
+  File(src/pages/AssetPage.tsx)
+  File(static/cover.svg)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AssetPage.tsx","affected":true,"direction":"downstream","changed":"static/cover.svg","path":["File(src/pages/AssetPage.tsx)","File(static/cover.svg)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AssetPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "static/cover.svg"
+Path (downstream, file granularity):
+  File(src/pages/AssetPage.tsx)
+  File(static/cover.svg)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AssetPage.tsx","affected":true,"direction":"downstream","changed":"static/cover.svg","path":["File(src/pages/AssetPage.tsx)","File(static/cover.svg)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AssetPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "static/cover.svg"
+Path (downstream, symbol granularity):
+  File(src/pages/AssetPage.tsx)
+  Decl(src/pages/AssetPage.tsx, default)
+  File(static/cover.svg)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AssetPage.tsx","affected":true,"direction":"downstream","changed":"static/cover.svg","path":["File(src/pages/AssetPage.tsx)","Decl(src/pages/AssetPage.tsx, default)","File(static/cover.svg)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AssetPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "static/cover.svg"
+Path (downstream, symbol granularity):
+  File(src/pages/AssetPage.tsx)
+  Decl(src/pages/AssetPage.tsx, default)
+  File(static/cover.svg)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AssetPage.tsx","affected":true,"direction":"downstream","changed":"static/cover.svg","path":["File(src/pages/AssetPage.tsx)","Decl(src/pages/AssetPage.tsx, default)","File(static/cover.svg)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AssetPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "static/cover.svg"
+Path (downstream, symbol granularity):
+  File(src/pages/AssetPage.tsx)
+  Decl(src/pages/AssetPage.tsx, default)
+  File(static/cover.svg)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AssetPage.tsx","affected":true,"direction":"downstream","changed":"static/cover.svg","path":["File(src/pages/AssetPage.tsx)","Decl(src/pages/AssetPage.tsx, default)","File(static/cover.svg)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AssetPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "static/cover.svg"
+Path (downstream, symbol granularity):
+  File(src/pages/AssetPage.tsx)
+  Decl(src/pages/AssetPage.tsx, default)
+  File(static/cover.svg)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AssetPage.tsx","affected":true,"direction":"downstream","changed":"static/cover.svg","path":["File(src/pages/AssetPage.tsx)","Decl(src/pages/AssetPage.tsx, default)","File(static/cover.svg)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AboutPage.tsx [file]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"file","unresolved":[]}]}
+
+== src/pages/AboutPage.tsx [file] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"file","unresolved":[]}]}
+
+== src/pages/AboutPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AboutPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AboutPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AboutPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AboutPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

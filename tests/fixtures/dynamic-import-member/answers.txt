@@ -1,0 +1,45 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/LazyPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/panels/heavy.ts"
+Path (downstream, file granularity):
+  File(src/pages/LazyPage.tsx)
+  File(src/panels/heavy.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LazyPage.tsx","affected":true,"direction":"downstream","changed":"src/panels/heavy.ts","path":["File(src/pages/LazyPage.tsx)","File(src/panels/heavy.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LazyPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/panels/heavy.ts"
+Path (downstream, file granularity):
+  File(src/pages/LazyPage.tsx)
+  File(src/panels/heavy.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LazyPage.tsx","affected":true,"direction":"downstream","changed":"src/panels/heavy.ts","path":["File(src/pages/LazyPage.tsx)","File(src/panels/heavy.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LazyPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LazyPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LazyPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LazyPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LazyPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LazyPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LazyPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LazyPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

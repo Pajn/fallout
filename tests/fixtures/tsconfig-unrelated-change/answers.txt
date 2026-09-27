@@ -1,0 +1,101 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/rating.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/rating.ts"
+Path (downstream, file granularity):
+  File(src/pages/rating.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/rating.ts","affected":true,"direction":"downstream","changed":"src/pages/rating.ts","path":["File(src/pages/rating.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/rating.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/rating.ts"
+Path (downstream, file granularity):
+  File(src/pages/rating.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/rating.ts","affected":true,"direction":"downstream","changed":"src/pages/rating.ts","path":["File(src/pages/rating.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/rating.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/rating.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/rating.ts)
+  Decl(src/pages/rating.ts, rating)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/rating.ts","affected":true,"direction":"downstream","changed":"src/pages/rating.ts","path":["File(src/pages/rating.ts)","Decl(src/pages/rating.ts, rating)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/rating.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/rating.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/rating.ts)
+  Decl(src/pages/rating.ts, rating)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/rating.ts","affected":true,"direction":"downstream","changed":"src/pages/rating.ts","path":["File(src/pages/rating.ts)","Decl(src/pages/rating.ts, rating)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/rating.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/rating.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/rating.ts)
+  Decl(src/pages/rating.ts, rating)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/rating.ts","affected":true,"direction":"downstream","changed":"src/pages/rating.ts","path":["File(src/pages/rating.ts)","Decl(src/pages/rating.ts, rating)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/rating.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/rating.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/rating.ts)
+  Decl(src/pages/rating.ts, rating)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/rating.ts","affected":true,"direction":"downstream","changed":"src/pages/rating.ts","path":["File(src/pages/rating.ts)","Decl(src/pages/rating.ts, rating)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/form.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/form.ts"
+Path (downstream, file granularity):
+  File(src/pages/form.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/form.ts","affected":true,"direction":"downstream","changed":"src/pages/form.ts","path":["File(src/pages/form.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/form.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/form.ts"
+Path (downstream, file granularity):
+  File(src/pages/form.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/form.ts","affected":true,"direction":"downstream","changed":"src/pages/form.ts","path":["File(src/pages/form.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/form.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/form.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/form.ts)
+  Decl(src/pages/form.ts, submit)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/form.ts","affected":true,"direction":"downstream","changed":"src/pages/form.ts","path":["File(src/pages/form.ts)","Decl(src/pages/form.ts, submit)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/form.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/pages/form.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/form.ts)
+  Decl(src/pages/form.ts, submit)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/form.ts","affected":true,"direction":"downstream","changed":"src/pages/form.ts","path":["File(src/pages/form.ts)","Decl(src/pages/form.ts, submit)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/form.ts [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/form.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/form.ts [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/form.ts","affected":false,"granularity":"symbol","unresolved":[]}]}

@@ -1,0 +1,61 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/page.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/header.ts"
+Path (downstream, file granularity):
+  File(src/page.ts)
+  File(src/header.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","File(src/header.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/page.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/header.ts"
+Path (downstream, file granularity):
+  File(src/page.ts)
+  File(src/header.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","File(src/header.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/page.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/header.ts"
+Path (downstream, symbol granularity):
+  File(src/page.ts)
+  ModuleInit(src/page.ts)
+  ModuleInit(src/header.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+
+== src/page.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/header.ts"
+Path (downstream, symbol granularity):
+  File(src/page.ts)
+  ModuleInit(src/page.ts)
+  ModuleInit(src/header.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+
+== src/page.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/header.ts"
+Path (downstream, symbol granularity):
+  File(src/page.ts)
+  ModuleInit(src/page.ts)
+  ModuleInit(src/header.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+
+== src/page.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/header.ts"
+Path (downstream, symbol granularity):
+  File(src/page.ts)
+  ModuleInit(src/page.ts)
+  ModuleInit(src/header.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}

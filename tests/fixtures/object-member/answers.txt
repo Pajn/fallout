@@ -1,0 +1,107 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/DatePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, file granularity):
+  File(src/pages/DatePage.tsx)
+  File(src/lib/utils.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/DatePage.tsx)","File(src/lib/utils.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, file granularity):
+  File(src/pages/DatePage.tsx)
+  File(src/lib/utils.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/DatePage.tsx)","File(src/lib/utils.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/DatePage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/DatePage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, file granularity):
+  File(src/pages/PricePage.tsx)
+  File(src/lib/utils.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/PricePage.tsx)","File(src/lib/utils.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, file granularity):
+  File(src/pages/PricePage.tsx)
+  File(src/lib/utils.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/PricePage.tsx)","File(src/lib/utils.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.tsx)
+  Decl(src/pages/PricePage.tsx, PricePage)
+  Member(src/lib/utils.ts, utils.formatPrice)
+  Decl(src/lib/utils.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/PricePage.tsx)","Decl(src/pages/PricePage.tsx, PricePage)","Member(src/lib/utils.ts, utils.formatPrice)","Decl(src/lib/utils.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.tsx)
+  Decl(src/pages/PricePage.tsx, PricePage)
+  Member(src/lib/utils.ts, utils.formatPrice)
+  Decl(src/lib/utils.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/PricePage.tsx)","Decl(src/pages/PricePage.tsx, PricePage)","Member(src/lib/utils.ts, utils.formatPrice)","Decl(src/lib/utils.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.tsx)
+  Decl(src/pages/PricePage.tsx, PricePage)
+  Member(src/lib/utils.ts, utils.formatPrice)
+  Decl(src/lib/utils.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/PricePage.tsx)","Decl(src/pages/PricePage.tsx, PricePage)","Member(src/lib/utils.ts, utils.formatPrice)","Decl(src/lib/utils.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/PricePage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/utils.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/PricePage.tsx)
+  Decl(src/pages/PricePage.tsx, PricePage)
+  Member(src/lib/utils.ts, utils.formatPrice)
+  Decl(src/lib/utils.ts, formatPrice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PricePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/utils.ts","path":["File(src/pages/PricePage.tsx)","Decl(src/pages/PricePage.tsx, PricePage)","Member(src/lib/utils.ts, utils.formatPrice)","Decl(src/lib/utils.ts, formatPrice)"],"granularity":"symbol","unresolved":[]}]}

@@ -1,0 +1,55 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/views/page.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/views/page.ts"
+Path (downstream, file granularity):
+  File(src/views/page.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/views/page.ts","affected":true,"direction":"downstream","changed":"src/views/page.ts","path":["File(src/views/page.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/views/page.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/views/page.ts"
+Path (downstream, file granularity):
+  File(src/views/page.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/views/page.ts","affected":true,"direction":"downstream","changed":"src/views/page.ts","path":["File(src/views/page.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/views/page.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/views/page.ts"
+Path (downstream, symbol granularity):
+  File(src/views/page.ts)
+  Decl(src/views/page.ts, view)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/views/page.ts","affected":true,"direction":"downstream","changed":"src/views/page.ts","path":["File(src/views/page.ts)","Decl(src/views/page.ts, view)"],"granularity":"symbol","unresolved":[{"specifier":"./template","kind":"path","in_repo":true,"from":["src/views/page.ts"]}]}]}
+
+== src/views/page.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/views/page.ts"
+Path (downstream, symbol granularity):
+  File(src/views/page.ts)
+  Decl(src/views/page.ts, view)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/views/page.ts","affected":true,"direction":"downstream","changed":"src/views/page.ts","path":["File(src/views/page.ts)","Decl(src/views/page.ts, view)"],"granularity":"symbol","unresolved":[{"specifier":"./template","kind":"path","in_repo":true,"from":["src/views/page.ts"]}]}]}
+
+== src/views/page.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/views/page.ts"
+Path (downstream, symbol granularity):
+  File(src/views/page.ts)
+  Decl(src/views/page.ts, view)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/views/page.ts","affected":true,"direction":"downstream","changed":"src/views/page.ts","path":["File(src/views/page.ts)","Decl(src/views/page.ts, view)"],"granularity":"symbol","unresolved":[{"specifier":"./template","kind":"path","in_repo":true,"from":["src/views/page.ts"]}]}]}
+
+== src/views/page.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/views/page.ts"
+Path (downstream, symbol granularity):
+  File(src/views/page.ts)
+  Decl(src/views/page.ts, view)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/views/page.ts","affected":true,"direction":"downstream","changed":"src/views/page.ts","path":["File(src/views/page.ts)","Decl(src/views/page.ts, view)"],"granularity":"symbol","unresolved":[{"specifier":"./template","kind":"path","in_repo":true,"from":["src/views/page.ts"]}]}]}
