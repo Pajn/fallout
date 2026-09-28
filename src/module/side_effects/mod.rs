@@ -912,6 +912,9 @@ mod tests {
             // A call in the module body is proven whole when its argument is one.
             "import { memo } from './memo'; function make(x) { return { x }; }
             export const C = make(memo(1));",
+            // An import read directly is an argument the proof can read.
+            "import { memo, base } from './memo'; function make() { return memo(base); }
+            export const C = make();",
         ] {
             assert!(!declaring_runs(source, &memo_listed()), "{source}");
             assert!(declaring_runs(source, &PureList::default()), "{source}");

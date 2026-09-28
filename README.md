@@ -260,11 +260,12 @@ with simple parameters. A body is a run of `const` locals, `if` statements that
 return, statements such as `console.log(value);` that are one of the expressions
 below, and a final return. It accepts literals (including negative numbers and
 templates with no interpolation), reads of parameters and locals, reads of top-level
-`const` primitives and of functions, plain array and object construction,
-conditionals, logical operators, strict equality, `Object.freeze` of a literal, the
-global functions above, and calls to other proven helpers. For example, `const make =
-(value) => ({ value })` makes `const item = make("item")` independent of unrelated
-exports. Consumers of `item` still depend on `make` and any helpers it calls.
+`const` primitives and of functions, direct reads of imported bindings, plain array and
+object construction, conditionals, logical operators, strict equality, `Object.freeze`
+of a literal, the global functions above, and calls to other proven helpers. For
+example, `const make = (value) => ({ value })` makes `const item = make("item")`
+independent of unrelated exports. Consumers of `item` still depend on `make` and any
+helpers it calls.
 
 A helper may also call what the module body may: a callee named by a `pure` entry and
 a call annotated `/* @__PURE__ */`. An entry is matched as it is everywhere else, by
@@ -277,14 +278,24 @@ base.method()` is trusted as it is in the module body. They clear the call and n
 more: its arguments must still be proven, so `memo(value)` qualifies and
 `memo(register())` does not.
 
-The proof also checks argument evaluation. Literals, top-level `const` primitives and
-calls to proven helpers qualify; other variable arguments remain conservative. A throw
-is not a side effect, but a throw in the module body stops the module loading, and
-every importer with it. A helper is only ever proven on behalf of a call written in
-the module body, which runs its body there, so nothing the call evaluates may throw,
-in the helper or out of it, beyond the calls a claim above is trusted for. A value
-converted to a number must not be a BigInt, and a parameter may not be converted at
-all, since it could be one, or a symbol. Functions
+A helper may read an imported binding directly, as the module body may, so given
+`import { base } from "./tokens"`, `(n) => ({ base, n })` is proven. The binding is
+matched by what it resolves to, so a parameter or a local named `base` is not the
+import. Reading a member through an import, as `theme.colors.primary` or `ns.value`
+does, is not proven inside a helper, and neither is calling an import unless a claim
+above clears it. An imported value is not known to be a primitive, so it is not
+proven where it would be converted, as in `String(base)`. A read during an import
+cycle that would throw, because the imported module has not run yet, goes unseen, as
+it does in the module body (see [Known gaps](#known-gaps)).
+
+The proof also checks argument evaluation. Literals, top-level `const` primitives,
+direct reads of imports and calls to proven helpers qualify; other variable arguments
+remain conservative. A throw is not a side effect, but a throw in the module body stops
+the module loading, and every importer with it. A helper is only ever proven on behalf
+of a call written in the module body, which runs its body there, so nothing the call
+evaluates may throw, in the helper or out of it, beyond the calls a claim above is
+trusted for. A value converted to a number must not be a BigInt, and a parameter may
+not be converted at all, since it could be one, or a symbol. Functions
 that throw on some arguments — `decodeURI("%")`, `String.fromCodePoint(-1)`,
 `new Array(-1)`, a `WeakMap` or `WeakSet` given a primitive key — are not proven. And
 order matters: a `const` does not exist until its declaration runs, and calling or
@@ -950,6 +961,9 @@ app owns.
 - At `symbol` granularity, a getter, an iterator or a proxy that does something on load
   can be missed, since reading a property and the like is taken to run nothing — see
   [Granularity](#granularity).
+- At `symbol` granularity, reading an import is taken to run nothing, in the module body
+  and in a local helper. During an import cycle a `let`, `const` or class read before
+  its own module has run throws, and that can be missed.
 - Single-file component formats such as `.vue` and `.svelte` are treated as leaves rather
   than parsed.
 - Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer

@@ -1,0 +1,17 @@
+# A local helper whose body reads an imported constant. Reading an import runs
+# nothing, in a helper as in the module body, so `size(…)` runs nothing on load and
+# an edit to it reaches only the page that reads `small`.
+[[anchor]]
+path = "label.js"
+affected = false
+
+[[anchor]]
+path = "small.js"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(small.js)",
+    "Decl(small.js, page)",
+    "Export(sizes.js, small)",
+]
