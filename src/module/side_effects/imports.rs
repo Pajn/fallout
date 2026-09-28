@@ -72,6 +72,11 @@ impl<'c> Imports<'c> {
         self.pure.contains(source, &path)
     }
 
+    /// Does `identifier` read an import binding of the file?
+    pub(super) fn is_import(&self, identifier: &IdentifierReference<'_>) -> bool {
+        self.of(identifier).is_some()
+    }
+
     /// The import `identifier` reads, as `(module specifier, exported name)`, or
     /// `None` when it reads anything else.
     fn of(&self, identifier: &IdentifierReference<'_>) -> Option<(&'c str, &'c str)> {

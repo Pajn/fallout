@@ -1,0 +1,7 @@
+# The soundness pair to local-pure-calls-pure-import. The same helper, spelt the
+# same way, but its `memo` comes from `./lib/memo`, which no entry names, and does
+# something on the way past. An entry is honoured only where the callee is the import
+# it names, inside a helper as in the module body, so this one still flags.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = true

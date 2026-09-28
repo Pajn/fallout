@@ -266,13 +266,23 @@ global functions above, and calls to other proven helpers. For example, `const m
 (value) => ({ value })` makes `const item = make("item")` independent of unrelated
 exports. Consumers of `item` still depend on `make` and any helpers it calls.
 
+A helper may also call what the module body may: a callee named by a `pure` entry and
+a call annotated `/* @__PURE__ */`. An entry is matched as it is everywhere else, by
+the import binding the callee is reached from and only where the entry applies to the
+file (see [Where a claim applies](#where-a-claim-applies)), so a parameter or a local
+called `memo` is not covered. Both are claims rather than proofs, and inside the proof
+they are trusted not to throw, as bundlers trust them when they drop such a call. They
+clear the call and nothing more: its arguments must still be proven, so `memo(value)`
+qualifies and `memo(register())` does not.
+
 The proof also checks argument evaluation. Literals, top-level `const` primitives and
 calls to proven helpers qualify; other variable arguments remain conservative. A throw
 is not a side effect, but a throw in the module body stops the module loading, and
 every importer with it. A helper is only ever proven on behalf of a call written in
 the module body, which runs its body there, so nothing the call evaluates may throw,
-in the helper or out of it. A value converted to a number must not be a BigInt, and a
-parameter may not be converted at all, since it could be one, or a symbol. Functions
+in the helper or out of it, beyond the calls a claim above is trusted for. A value
+converted to a number must not be a BigInt, and a parameter may not be converted at
+all, since it could be one, or a symbol. Functions
 that throw on some arguments — `decodeURI("%")`, `String.fromCodePoint(-1)`,
 `new Array(-1)`, a `WeakMap` or `WeakSet` given a primitive key — are not proven. And
 order matters: a `const` does not exist until its declaration runs, and calling or

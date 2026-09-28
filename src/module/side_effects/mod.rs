@@ -186,10 +186,10 @@ fn readable_from(ctx: &Ctx<'_>) -> AHashMap<SymbolId, u32> {
 /// A call or a construction the local-helper proof covers whole is not walked
 /// again. Everything that proof accepts is an expression this walk finds nothing
 /// in: it takes no write, `delete`, update, `await` or tagged template, no call or
-/// construction it has not proven itself, no function or class, and no binding
-/// read before its declaration has run, since each proof holds only from the end
-/// of the latest declaration it depends on and a call written earlier is not
-/// proven.
+/// construction that neither it nor the list nor an annotation clears, no function
+/// or class, and no binding read before its declaration has run, since each proof
+/// holds only from the end of the latest declaration it depends on and a call
+/// written earlier is not proven.
 struct Detector<'s, 'c, 'a> {
     effects: &'s SideEffects<'c, 'a>,
     impure: bool,
@@ -441,10 +441,11 @@ mod tests {
     use oxc_span::SourceType;
 
     use super::SideEffects;
+    use crate::config::Configs;
     use crate::module::decls::collect_imports;
     use crate::module::parse::{Ctx, collect_sources};
     use crate::module::{FineModule, ModuleAnalysis, Reading, parse::analyse_source};
-    use crate::pure::PureList;
+    use crate::pure::{PureCall, PureList};
     use std::path::Path;
 
     fn module(source: &str) -> Box<FineModule> {
@@ -883,6 +884,129 @@ mod tests {
         for source in [
             "import { memo } from 'react'; export const v = /* @__PURE__ */ register(memo(1));",
             "export const v = /* @__PURE__ */ register(other());",
+        ] {
+            assert!(declaring_runs(source, &none), "{source}");
+        }
+    }
+
+    /// The project's list with one entry of its own, `./memo#memo`.
+    fn memo_listed() -> PureList {
+        PureList::of(false, PureCall::parse("./memo#memo").into_iter().collect())
+    }
+
+    #[test]
+    fn a_helper_calling_a_pure_listed_import_is_proven() {
+        for source in [
+            "import { memo } from './memo'; function make(v) { return memo(v); }
+            export const C = make(1);",
+            "import { memo } from './memo'; const make = (v) => memo({ v });
+            export const C = make('a');",
+            "import { memo } from './memo'; function make(v) { const m = memo([v]); return m; }
+            export const C = make(1);",
+            // The argument is proven as any other, and a helper call is one it proves.
+            "import { memo } from './memo'; const wrap = (v) => ({ v });
+            function make(v) { return memo(wrap(v)); } export const C = make(1);",
+            // An import is bound before anything in the module runs.
+            "function make(v) { return memo(v); } export const C = make(1);
+            import { memo } from './memo';",
+            // A call in the module body is proven whole when its argument is one.
+            "import { memo } from './memo'; function make(x) { return { x }; }
+            export const C = make(memo(1));",
+        ] {
+            assert!(!declaring_runs(source, &memo_listed()), "{source}");
+            assert!(declaring_runs(source, &PureList::default()), "{source}");
+        }
+        // The entry's whole path is matched, members and all.
+        let source = "import * as React from 'react'; function make(v) { return React.memo(v); }
+            export const C = make(1);";
+        assert!(!declaring_runs(source, &PureList::builtin()), "{source}");
+        assert!(declaring_runs(source, &PureList::default()), "{source}");
+    }
+
+    #[test]
+    fn a_helper_calling_a_pure_listed_name_that_is_not_the_import_is_not_proven() {
+        for source in [
+            // A parameter or a local named like the import is somebody else's value.
+            "import { memo } from './memo'; function make(memo) { return memo(1); }
+            export const C = make(1);",
+            "import { memo } from './memo'; function make() { const memo = 1; return memo(1); }
+            export const C = make();",
+            "import { memo } from './memo'; const make = (memo) => memo(1);
+            export const C = make(1);",
+            // The list clears the call, not what its arguments run.
+            "import { memo } from './memo'; function make() { return memo(register()); }
+            export const C = make();",
+            "import { memo, obj } from './memo'; function make() { return memo(obj.x); }
+            export const C = make();",
+            // An entry speaks only for the import it names.
+            "import { memo } from './other'; function make(v) { return memo(v); }
+            export const C = make(1);",
+            "import memo from './memo'; function make(v) { return memo(v); }
+            export const C = make(1);",
+            // A call to something else of the same module is not the listed one.
+            "import { memo, other } from './memo'; function make(v) { return other(v); }
+            export const C = make(1);",
+        ] {
+            assert!(declaring_runs(source, &memo_listed()), "{source}");
+        }
+        // React's entries do not speak for a `memo` of the project's own.
+        let source = "import { memo } from './memo'; function make(v) { return memo(v); }
+            export const C = make(1);";
+        assert!(declaring_runs(source, &PureList::builtin()), "{source}");
+    }
+
+    #[test]
+    fn a_helper_calling_a_pure_listed_import_is_proven_only_below_the_claim() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let package = dir.path().join("packages/ui");
+        std::fs::create_dir_all(&package).expect("a directory");
+        std::fs::write(package.join("fallout.toml"), "pure = [\"./memo#memo\"]\n")
+            .expect("writing the config");
+        let reading = Reading {
+            configs: std::sync::Arc::new(Configs::new(dir.path())),
+            ignore_types: true,
+        };
+        let source = "import { memo } from './memo'; function make(v) { return memo(v); }
+            export const C = make(1);";
+        let init = |path: &Path| {
+            let (ModuleAnalysis::Fine(module), _) = analyse_source(path, source, &reading).unwrap()
+            else {
+                panic!("expected fine module: {source}")
+            };
+            module
+                .init_decls
+                .iter()
+                .map(|&id| module.decls[id as usize].name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(init(&package.join("card.ts")).is_empty());
+        assert!(init(&dir.path().join("apps/web/panel.ts")).contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn a_pure_annotation_in_a_helper_clears_its_call_and_not_its_arguments() {
+        let none = PureList::default();
+        for source in [
+            "import { build } from './build'; function make(v) { return /* @__PURE__ */ build(v); }
+            export const C = make(1);",
+            "import * as b from './build'; const make = (v) => /* @__PURE__ */ b.build({ v });
+            export const C = make(1);",
+            "function make(v) { /* @__PURE__ */ track(v); return v; } export const C = make(1);",
+            "function make(f) { return /* @__PURE__ */ f(1); } export const C = make(1);",
+        ] {
+            assert!(!declaring_runs(source, &none), "{source}");
+        }
+        for source in [
+            "import { build } from './build';
+            function make() { return /* @__PURE__ */ build(register()); } export const C = make();",
+            "import { build, obj } from './build';
+            function make() { return /* @__PURE__ */ build(obj.x); } export const C = make();",
+            // Without the annotation the call is unknown.
+            "import { build } from './build'; function make(v) { return build(v); }
+            export const C = make(1);",
+            // Calling a `const` before its declaration has run throws, annotated or not.
+            "function make(v) { return /* @__PURE__ */ build(v); } export const C = make(1);
+            const build = (v) => register(v);",
         ] {
             assert!(declaring_runs(source, &none), "{source}");
         }

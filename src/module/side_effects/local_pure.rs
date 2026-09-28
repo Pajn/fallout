@@ -5,7 +5,10 @@
 //! a function expression. Its body is a run of `const` locals, `if`s that return,
 //! statements such as `console.log(value);` whose expression is itself provable,
 //! and a final return, built from the expressions below. A call is pure where the
-//! callee is a proven helper and every argument is itself provable.
+//! callee is a proven helper, or one the project's list or a `/* @__PURE__ */`
+//! annotation clears, and every argument is itself provable. The list and the
+//! annotation speak for the call alone, so its arguments are proven here as any
+//! other's.
 //!
 //! A proven call must also not throw. A throw is not a side effect, but every call
 //! this is asked about is written in the module body, and runs whatever helpers it
@@ -191,11 +194,12 @@ impl<'c, 'a> LocalPure<'c, 'a> {
 
     /// How much of a top-level call is proven to run nothing where it is written.
     ///
-    /// A call to a proven helper, or to a global without side effects, is proven
-    /// whole: its arguments are handed to code that may convert or return them, so
-    /// they are held to this proof too. `Object.freeze` of a literal made on the
-    /// spot is proven only as a call, since freezing is invisible to anyone but the
-    /// literal's holder and never reads what the literal holds.
+    /// A call to a proven helper, to a global without side effects, or to a callee
+    /// the list or an annotation clears, is proven whole: its arguments are handed to
+    /// code that may convert or return them, so they are held to this proof too.
+    /// `Object.freeze` of a literal made on the spot is proven only as a call, since
+    /// freezing is invisible to anyone but the literal's holder and never reads what
+    /// the literal holds.
     pub(super) fn call(&self, call: &CallExpression<'_>) -> Option<Proof> {
         if self
             .call_ready(call, &Locals::default())
@@ -235,15 +239,60 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             // holder, and the literal's contents are proven as any other.
             return self.expression(literal, locals);
         } else {
-            let Expression::Identifier(id) = &call.callee else {
-                return None;
-            };
-            *self.proven.get(&self.symbol(id)?)?
+            self.callee_ready(call, locals)?
         };
         for argument in &call.arguments {
             ready = ready.max(self.expression(argument.as_expression()?, locals)?);
         }
         Some(ready)
+    }
+
+    /// From where calling `call`'s callee runs nothing, what its arguments run
+    /// aside.
+    ///
+    /// A proven helper does from where it becomes callable. So does a callee the
+    /// project's list names, reached from the import the entry names, which is bound
+    /// before anything in the module runs, and any callee of a call annotated
+    /// `/* @__PURE__ */`. Those two are claims rather than proofs, and are trusted
+    /// not to throw either, as bundlers trust them when they drop such a call. The
+    /// annotation speaks for the call and not for reading the callee, so a callee
+    /// read before its declaration has run is not proven.
+    fn callee_ready(&self, call: &CallExpression<'_>, locals: &Locals) -> Option<Ready> {
+        if let Expression::Identifier(id) = &call.callee
+            && let Some(&ready) = self.symbol(id).and_then(|symbol| self.proven.get(&symbol))
+        {
+            return Some(ready);
+        }
+        if self.imports.listed(&call.callee) {
+            return Some(0);
+        }
+        if call.pure {
+            return self.root_ready(&call.callee, locals);
+        }
+        None
+    }
+
+    /// From where reading the binding at the root of an annotated callee `a.b.c`
+    /// does not throw: a parameter or a local, an import, or a top-level function
+    /// or `const` primitive once its declaration has run. A global is trusted to
+    /// exist, as the annotation is trusted for the call. Reading the members after
+    /// the root is assumed to run nothing, as reading a property is everywhere else.
+    fn root_ready(&self, expr: &Expression<'_>, locals: &Locals) -> Option<Ready> {
+        let root = match expr {
+            Expression::Identifier(id) => id,
+            Expression::StaticMemberExpression(member) => {
+                return self.root_ready(&member.object, locals);
+            }
+            _ => return None,
+        };
+        let Some(symbol) = self.symbol(root) else {
+            return Some(0);
+        };
+        if locals.contains_key(&symbol) || self.imports.is_import(root) {
+            Some(0)
+        } else {
+            self.values.get(&symbol).copied()
+        }
     }
 
     /// The name a callee or an object goes by, where it is a global rather than a
