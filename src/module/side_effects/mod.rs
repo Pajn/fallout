@@ -497,7 +497,16 @@ fn callee_path<'e, 'a>(
 
 #[cfg(test)]
 mod tests {
+    use oxc_allocator::Allocator;
+    use oxc_parser::Parser;
+    use oxc_semantic::SemanticBuilder;
+    use oxc_span::SourceType;
+
+    use super::SideEffects;
+    use crate::module::decls::collect_imports;
+    use crate::module::parse::{Ctx, collect_sources};
     use crate::module::{FineModule, ModuleAnalysis, Reading, parse::analyse_source};
+    use crate::pure::PureList;
     use std::path::Path;
 
     fn module(source: &str) -> Box<FineModule> {
@@ -858,5 +867,98 @@ mod tests {
             // A name used as a type is erased.
             "export const v: typeof later | undefined = undefined; const later = 1;",
         ]);
+    }
+
+    /// Whether declaring what any statement of `source` declares runs anything,
+    /// asked of [`SideEffects`] directly with `pure` as the project's list. Each
+    /// source is written so that only the statement under test could.
+    fn declaring_runs(source: &str, pure: &PureList) -> bool {
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "{source}: {:?}",
+            parsed.diagnostics
+        );
+        let built = SemanticBuilder::new()
+            .with_build_nodes(true)
+            .build(&parsed.program);
+        let ctx = Ctx {
+            semantic: &built.semantic,
+            statements: Vec::new(),
+        };
+        let sources = collect_sources(&parsed.program);
+        let imports = collect_imports(&parsed.program, &sources).expect("readable imports");
+        let effects = SideEffects::new(&ctx, &parsed.program, &imports, &sources, pure);
+        parsed
+            .program
+            .body
+            .iter()
+            .any(|statement| effects.declaring_runs(statement))
+    }
+
+    #[test]
+    fn a_pure_listed_call_in_a_class_static_initialiser_is_cleared_by_the_list() {
+        for source in [
+            "import { memo } from 'react'; export class W { static View = memo(1); }",
+            "import * as React from 'react'; export class W { static { React.memo(1); } }",
+            "import { memo } from 'react'; export const W = class { static View = memo(1); };",
+        ] {
+            assert!(!declaring_runs(source, &PureList::builtin()), "{source}");
+            assert!(declaring_runs(source, &PureList::default()), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_pure_listed_call_still_runs_what_its_arguments_run() {
+        let list = PureList::builtin();
+        // A local helper's call in the argument is proven on its own.
+        assert!(!declaring_runs(
+            "import { memo } from 'react'; const make = (x) => ({ x });
+            export class W { static View = memo(make(1)); }",
+            &list
+        ));
+        for source in [
+            "import { memo } from 'react'; export class W { static View = memo(register()); }",
+            "import { memo, obj } from 'react'; export const v = memo((obj.n = 1));",
+            // An argument read before its declaration has run throws.
+            "import { memo } from 'react'; export const v = memo(later); const later = 1;",
+            // A helper called with an argument the proof cannot read is not proven.
+            "import { memo, obj } from 'react'; const make = (x) => ({ x });
+            export const v = memo(make(obj.x));",
+        ] {
+            assert!(declaring_runs(source, &list), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_pure_annotation_clears_its_call_and_leaves_its_arguments_to_the_others() {
+        let none = PureList::default();
+        assert!(!declaring_runs(
+            "const make = (x) => ({ x }); export const v = /* @__PURE__ */ register(make(1));",
+            &none
+        ));
+        assert!(!declaring_runs(
+            "import { memo } from 'react'; export const v = /* @__PURE__ */ register(memo(1));",
+            &PureList::builtin()
+        ));
+        for source in [
+            "import { memo } from 'react'; export const v = /* @__PURE__ */ register(memo(1));",
+            "export const v = /* @__PURE__ */ register(other());",
+        ] {
+            assert!(declaring_runs(source, &none), "{source}");
+        }
+    }
+
+    #[test]
+    fn what_a_frozen_literal_or_a_collection_holds_is_judged_by_every_source() {
+        for source in [
+            "import { memo } from 'react'; export const v = Object.freeze({ View: memo(1) });",
+            "import { memo } from 'react'; export const v = new Set([memo(1)]);",
+            "import { memo } from 'react'; export const v = new Map([['a', memo(1)]]);",
+        ] {
+            assert!(!declaring_runs(source, &PureList::builtin()), "{source}");
+            assert!(declaring_runs(source, &PureList::default()), "{source}");
+        }
     }
 }

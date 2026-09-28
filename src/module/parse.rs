@@ -457,7 +457,7 @@ impl<'a> Visit<'a> for Coarsener<'_> {
 ///
 /// This works whether or not the module can be described finely, which is what lets a
 /// coarse module still have outgoing edges.
-fn collect_sources(program: &Program<'_>) -> Vec<String> {
+pub(super) fn collect_sources(program: &Program<'_>) -> Vec<String> {
     let mut extractor = SpecifierExtractor {
         specifiers: Vec::with_capacity(32),
     };
