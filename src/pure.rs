@@ -12,8 +12,6 @@
 //! way, and everything else comes from the project's own file. The claim applies to
 //! the files below the file that wrote it — see [`crate::config`] for why.
 
-use std::fmt;
-
 /// A callee declared free of side effects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PureCall {
@@ -54,38 +52,11 @@ const BUILTIN: &[&str] = &[
     "react#*.lazy",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error {
-    /// The file is there but is not readable as TOML.
-    Unreadable { path: String, detail: String },
-    /// `pure` is present but is not a list of strings.
-    NotAList { path: String },
-    /// An entry does not name both a source and a callee.
-    BadEntry { path: String, entry: String },
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Unreadable { path, detail } => write!(f, "{path}: {detail}"),
-            Error::NotAList { path } => {
-                write!(f, "{path}: `pure` must be a list of strings")
-            }
-            Error::BadEntry { path, entry } => write!(
-                f,
-                "{path}: `{entry}` is not a pure call. Write it as \
-                 <import source>#<callee>, for example \"react#memo\" or \
-                 \"react-native#StyleSheet.create\""
-            ),
-        }
-    }
-}
-
 impl PureList {
     /// The built-in entries alone.
     pub fn builtin() -> Self {
         Self {
-            entries: BUILTIN.iter().filter_map(|e| parse_entry(e)).collect(),
+            entries: BUILTIN.iter().filter_map(|e| PureCall::parse(e)).collect(),
         }
     }
 
@@ -116,60 +87,23 @@ impl PureList {
     }
 }
 
-/// The `pure` list and the `builtin-pure` flag of one already-parsed `fallout.toml`.
-///
-/// `None` for the flag means the file did not say, which is what lets the nearest
-/// file that *did* say decide for a whole subtree.
-pub(crate) fn read(
-    document: &toml::Table,
-    shown: &str,
-) -> Result<(Option<bool>, Vec<PureCall>), Error> {
-    let builtin = match document.get("builtin-pure") {
-        None => None,
-        Some(value) => Some(value.as_bool().ok_or_else(|| Error::NotAList {
-            path: shown.to_string(),
-        })?),
-    };
-
-    let Some(pure) = document.get("pure") else {
-        return Ok((builtin, Vec::new()));
-    };
-    let Some(pure) = pure.as_array() else {
-        return Err(Error::NotAList {
-            path: shown.to_string(),
-        });
-    };
-
-    let mut entries = Vec::new();
-    for value in pure {
-        let entry = value.as_str().ok_or_else(|| Error::NotAList {
-            path: shown.to_string(),
-        })?;
-        let parsed = parse_entry(entry).ok_or_else(|| Error::BadEntry {
-            path: shown.to_string(),
-            entry: entry.to_string(),
-        })?;
-        if !entries.contains(&parsed) {
-            entries.push(parsed);
+impl PureCall {
+    /// `"react-native#StyleSheet.create"` into its two halves, or `None` for an
+    /// entry that does not name both.
+    pub(crate) fn parse(entry: &str) -> Option<Self> {
+        let (source, callee) = entry.split_once('#')?;
+        if source.is_empty() || callee.is_empty() {
+            return None;
         }
+        let path: Vec<String> = callee.split('.').map(str::to_string).collect();
+        if path.iter().any(String::is_empty) {
+            return None;
+        }
+        Some(Self {
+            source: source.to_string(),
+            path,
+        })
     }
-    Ok((builtin, entries))
-}
-
-/// `"react-native#StyleSheet.create"` into its two halves.
-fn parse_entry(entry: &str) -> Option<PureCall> {
-    let (source, callee) = entry.split_once('#')?;
-    if source.is_empty() || callee.is_empty() {
-        return None;
-    }
-    let path: Vec<String> = callee.split('.').map(str::to_string).collect();
-    if path.iter().any(String::is_empty) {
-        return None;
-    }
-    Some(PureCall {
-        source: source.to_string(),
-        path,
-    })
 }
 
 #[cfg(test)]
@@ -179,14 +113,14 @@ mod tests {
     #[test]
     fn an_entry_splits_into_a_source_and_a_path() {
         assert_eq!(
-            parse_entry("react#memo"),
+            PureCall::parse("react#memo"),
             Some(PureCall {
                 source: "react".to_string(),
                 path: vec!["memo".to_string()],
             })
         );
         assert_eq!(
-            parse_entry("react-native#StyleSheet.create"),
+            PureCall::parse("react-native#StyleSheet.create"),
             Some(PureCall {
                 source: "react-native".to_string(),
                 path: vec!["StyleSheet".to_string(), "create".to_string()],
@@ -196,11 +130,11 @@ mod tests {
 
     #[test]
     fn a_half_written_entry_is_rejected() {
-        assert_eq!(parse_entry("react"), None);
-        assert_eq!(parse_entry("#memo"), None);
-        assert_eq!(parse_entry("react#"), None);
-        assert_eq!(parse_entry("react#memo."), None);
-        assert_eq!(parse_entry("react#.memo"), None);
+        assert_eq!(PureCall::parse("react"), None);
+        assert_eq!(PureCall::parse("#memo"), None);
+        assert_eq!(PureCall::parse("react#"), None);
+        assert_eq!(PureCall::parse("react#memo."), None);
+        assert_eq!(PureCall::parse("react#.memo"), None);
     }
 
     #[test]
@@ -211,43 +145,5 @@ mod tests {
         assert!(!list.contains("react", &["useState"]));
         // The source has to match: a local `memo` is not React's.
         assert!(!list.contains("./memo", &["memo"]));
-    }
-
-    fn written(body: &str) -> Result<(Option<bool>, Vec<PureCall>), Error> {
-        read(
-            &body.parse::<toml::Table>().expect("readable toml"),
-            "fallout.toml",
-        )
-    }
-
-    #[test]
-    fn a_project_file_adds_to_the_builtin_list() {
-        let (builtin, entries) = written("pure = [\"react-native#StyleSheet.create\"]\n").unwrap();
-        let list = PureList::of(builtin.unwrap_or(true), entries);
-        assert!(list.contains("react-native", &["StyleSheet", "create"]));
-        assert!(list.contains("react", &["memo"]));
-    }
-
-    #[test]
-    fn a_project_file_can_drop_the_builtin_list() {
-        let (builtin, entries) =
-            written("builtin-pure = false\npure = [\"./local#make\"]\n").unwrap();
-        assert_eq!(builtin, Some(false));
-        let list = PureList::of(builtin.unwrap_or(true), entries);
-        assert!(list.contains("./local", &["make"]));
-        assert!(!list.contains("react", &["memo"]));
-    }
-
-    #[test]
-    fn a_file_that_says_nothing_leaves_the_builtin_list() {
-        let (builtin, entries) = written("").unwrap();
-        assert_eq!(builtin, None, "so a nearer file can decide");
-        assert!(PureList::of(builtin.unwrap_or(true), entries).contains("react", &["memo"]));
-    }
-
-    #[test]
-    fn a_misspelt_entry_is_reported_rather_than_ignored() {
-        let error = written("pure = [\"memo\"]\n").unwrap_err();
-        assert!(matches!(error, Error::BadEntry { .. }), "{error}");
     }
 }

@@ -9,13 +9,12 @@ pub mod compare;
 pub mod decls;
 pub mod exports;
 mod factories;
-mod globals;
 pub mod init;
-mod local_pure;
 mod members;
 pub mod parse;
 pub mod refs;
 mod shared;
+mod side_effects;
 pub mod style;
 pub mod types;
 

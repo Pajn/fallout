@@ -22,7 +22,7 @@ use oxc_ast::ast::*;
 use oxc_semantic::{IsGlobalReference, SymbolId};
 
 use super::globals;
-use super::parse::{Ctx, frozen};
+use crate::module::parse::{Ctx, frozen};
 
 /// A position in the file from which a proof holds. Zero for one that holds
 /// everywhere.
@@ -39,6 +39,17 @@ pub(super) struct LocalPure<'c, 'a> {
     /// Which of those values are primitives a conversion can be applied to, each
     /// with whether it is a BigInt, which a conversion to a number throws on.
     primitives: AHashMap<SymbolId, bool>,
+}
+
+/// How much of a call or a construction a proof covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Proof {
+    /// Everything it runs, its arguments included.
+    Whole,
+    /// The call or construction itself. What its arguments run when they are
+    /// evaluated is still to be judged, but their values are only held, never
+    /// read.
+    Invocation,
 }
 
 /// The locals of the body being proven, each bound once and readable anywhere
@@ -169,27 +180,41 @@ impl<'c, 'a> LocalPure<'c, 'a> {
         result
     }
 
-    /// Whether a top-level call is proven to run nothing where it is written.
-    pub(super) fn call(&self, call: &CallExpression<'_>) -> bool {
-        self.call_ready(call, &Locals::default())
-            .is_some_and(|ready| ready <= call.span.start)
-    }
-
-    /// Whether a call is `Object.freeze` of a literal made on the spot, which
-    /// nobody but the literal's holder can observe. What the literal holds is the
-    /// caller's to judge, as it is for any other call.
-    pub(super) fn freezes(&self, call: &CallExpression<'_>) -> bool {
-        frozen_literal(self.ctx, call).is_some()
-    }
-
-    /// Whether a top-level `new` is proven to run nothing where it is written.
+    /// How much of a top-level call is proven to run nothing where it is written.
     ///
-    /// What a collection is filled with is the caller's to judge, as the literal
-    /// is for `Object.freeze`: iterating an array literal reads its elements and
-    /// runs nothing.
-    pub(super) fn constructs(&self, new: &NewExpression<'_>) -> bool {
-        self.construct_ready(new, &Locals::default(), false)
-            .is_some_and(|ready| ready <= new.span.start)
+    /// A call to a proven helper, or to a global without side effects, is proven
+    /// whole: its arguments are handed to code that may convert or return them, so
+    /// they are held to this proof too. `Object.freeze` of a literal made on the
+    /// spot is proven only as a call, since freezing is invisible to anyone but the
+    /// literal's holder and never reads what the literal holds.
+    pub(super) fn call(&self, call: &CallExpression<'_>) -> Option<Proof> {
+        if self
+            .call_ready(call, &Locals::default())
+            .is_some_and(|ready| ready <= call.span.start)
+        {
+            return Some(Proof::Whole);
+        }
+        frozen_literal(self.ctx, call).map(|_| Proof::Invocation)
+    }
+
+    /// How much of a top-level `new` is proven to run nothing where it is written.
+    ///
+    /// A collection filled from an array literal is proven only as a
+    /// construction where the literal's elements are not themselves proven:
+    /// iterating an array literal reads its elements and runs nothing, as freezing
+    /// a literal does.
+    pub(super) fn construct(&self, new: &NewExpression<'_>) -> Option<Proof> {
+        let proven = |contents| {
+            self.construct_ready(new, &Locals::default(), contents)
+                .is_some_and(|ready| ready <= new.span.start)
+        };
+        if proven(true) {
+            Some(Proof::Whole)
+        } else if proven(false) {
+            Some(Proof::Invocation)
+        } else {
+            None
+        }
     }
 
     fn call_ready(&self, call: &CallExpression<'_>, locals: &Locals) -> Option<Ready> {

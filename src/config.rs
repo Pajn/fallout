@@ -81,8 +81,8 @@ pub enum Error {
     NotAList { path: String, key: String },
     /// A key this file does not read, where it would silently do nothing.
     UnknownKey { path: String, key: String },
-    /// Something wrong with this file's `pure` list.
-    Pure(crate::pure::Error),
+    /// An entry of `pure` does not name both an import source and a callee.
+    BadPureEntry { path: String, entry: String },
 }
 
 impl fmt::Display for Error {
@@ -107,14 +107,13 @@ impl fmt::Display for Error {
             Error::NotAList { path, key } => {
                 write!(f, "{path}: `{key}` must be a list of strings")
             }
-            Error::Pure(error) => write!(f, "{error}"),
+            Error::BadPureEntry { path, entry } => write!(
+                f,
+                "{path}: `{entry}` is not a pure call. Write it as \
+                 <import source>#<callee>, for example \"react#memo\" or \
+                 \"react-native#StyleSheet.create\""
+            ),
         }
-    }
-}
-
-impl From<crate::pure::Error> for Error {
-    fn from(error: crate::pure::Error) -> Self {
-        Error::Pure(error)
     }
 }
 
@@ -124,6 +123,8 @@ struct Declared {
     aliases: Alias,
     style_aliases: Alias,
     pure: Vec<PureCall>,
+    /// `None` when the file did not say, which is what lets the nearest file that
+    /// did say decide for a whole subtree.
     builtin_pure: Option<bool>,
     inline_requires: Option<bool>,
     conditions: Option<Vec<String>>,
@@ -396,7 +397,8 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
         detail: format!("{error}"),
     })?;
 
-    let (builtin_pure, pure) = crate::pure::read(&document, &shown)?;
+    let builtin_pure = flag(&document, "builtin-pure", &shown)?;
+    let pure = pure_calls(&document, &shown)?;
     Ok(Some(Declared {
         aliases: table(document.get("aliases"), dir, &shown, "aliases")?,
         style_aliases: style_aliases(&document, dir, &shown)?,
@@ -406,6 +408,30 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
         conditions: resolve_list(&document, "conditions", &shown)?,
         main_fields: resolve_list(&document, "main-fields", &shown)?,
     }))
+}
+
+/// The `pure` list, each entry split into the import source and the callee it
+/// names. An entry written twice is kept once.
+fn pure_calls(document: &toml::Table, shown: &str) -> Result<Vec<PureCall>, Error> {
+    let Some(pure) = document.get("pure") else {
+        return Ok(Vec::new());
+    };
+    let not_a_list = || Error::NotAList {
+        path: shown.to_string(),
+        key: "pure".to_string(),
+    };
+    let mut entries = Vec::new();
+    for value in pure.as_array().ok_or_else(not_a_list)? {
+        let entry = value.as_str().ok_or_else(not_a_list)?;
+        let parsed = PureCall::parse(entry).ok_or_else(|| Error::BadPureEntry {
+            path: shown.to_string(),
+            entry: entry.to_string(),
+        })?;
+        if !entries.contains(&parsed) {
+            entries.push(parsed);
+        }
+    }
+    Ok(entries)
 }
 
 /// A list under `[resolve]`. The keys are this file's own, `conditions` and
@@ -837,10 +863,78 @@ mod tests {
     }
 
     #[test]
-    fn a_bad_pure_entry_is_a_failure() {
+    fn a_misspelt_pure_entry_is_reported_rather_than_ignored() {
         let (dir, configs) = tree(&[("", "pure = [\"memo\"]\n")]);
         configs.chain(&dir.path().join("a.tsx"));
-        assert!(matches!(configs.failure(), Some(Error::Pure(_))));
+        assert!(matches!(
+            configs.failure(),
+            Some(Error::BadPureEntry { .. })
+        ));
+    }
+
+    #[test]
+    fn a_pure_list_that_is_not_a_list_of_strings_is_a_failure() {
+        for body in ["pure = \"react#memo\"\n", "pure = [1]\n"] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.tsx"));
+            let failure = configs.failure().map(|error| error.to_string());
+            assert!(
+                failure
+                    .as_deref()
+                    .is_some_and(|said| said.ends_with("`pure` must be a list of strings")),
+                "{body}: {failure:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_builtin_pure_that_is_not_a_boolean_says_so() {
+        let (dir, configs) = tree(&[("", "builtin-pure = \"no\"\n")]);
+        configs.chain(&dir.path().join("a.tsx"));
+        let failure = configs.failure().map(|error| error.to_string());
+        assert!(
+            failure
+                .as_deref()
+                .is_some_and(|said| said.ends_with("`builtin-pure` must be true or false")),
+            "{failure:?}"
+        );
+    }
+
+    #[test]
+    fn a_project_file_adds_to_the_builtin_pure_list() {
+        let (dir, configs) = tree(&[("", "pure = [\"react-native#StyleSheet.create\"]\n")]);
+        let chain = configs.chain(&dir.path().join("a.tsx"));
+        assert!(
+            chain
+                .pure()
+                .contains("react-native", &["StyleSheet", "create"])
+        );
+        assert!(chain.pure().contains("react", &["memo"]));
+    }
+
+    #[test]
+    fn a_project_file_can_drop_the_builtin_pure_list() {
+        let (dir, configs) = tree(&[("", "builtin-pure = false\npure = [\"./local#make\"]\n")]);
+        let chain = configs.chain(&dir.path().join("a.tsx"));
+        assert!(chain.pure().contains("./local", &["make"]));
+        assert!(!chain.pure().contains("react", &["memo"]));
+    }
+
+    #[test]
+    fn a_file_that_says_nothing_of_builtin_pure_leaves_it_to_a_farther_one() {
+        let (dir, configs) = tree(&[
+            ("", "builtin-pure = false\n"),
+            ("apps/web", "pure = [\"./local#make\"]\n"),
+        ]);
+        let chain = configs.chain(&dir.path().join("apps/web/page.tsx"));
+        assert!(chain.pure().contains("./local", &["make"]));
+        assert!(!chain.pure().contains("react", &["memo"]));
+        assert!(
+            configs
+                .chain(&dir.path().join("page.tsx"))
+                .pure()
+                .is_empty()
+        );
     }
 
     #[test]
