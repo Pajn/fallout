@@ -11,6 +11,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
+use super::side_effects::SideEffects;
 use super::{
     Decl, FineModule, ModuleAnalysis, Reading, Span, cjs, decls, exports, factories, init, members,
     refs, types,
@@ -274,9 +275,9 @@ fn build_fine(
     factories::attach(
         &ctx, &drafts, &imports, &by_symbol, candidates, &shared, &mut decls,
     );
-    let origins = init::origins(&ctx, &imports, sources);
+    let effects = SideEffects::new(&ctx, program, &imports, sources, pure);
     let (init_decls, conditional_init) =
-        init::collect(&ctx, program, &drafts, &decls, &origins, pure, &conditional);
+        init::collect(&ctx, program, &drafts, &decls, &effects, &conditional);
 
     // A `require` outside every declaration runs on evaluation, exactly like a bare
     // `import "./x"`, so the two share a list.

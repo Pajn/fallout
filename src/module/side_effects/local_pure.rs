@@ -22,7 +22,7 @@ use oxc_ast::ast::*;
 use oxc_semantic::{IsGlobalReference, SymbolId};
 
 use super::globals;
-use super::parse::{Ctx, frozen};
+use crate::module::parse::{Ctx, frozen};
 
 /// A position in the file from which a proof holds. Zero for one that holds
 /// everywhere.
