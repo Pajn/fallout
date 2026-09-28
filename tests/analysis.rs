@@ -11,9 +11,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
+#[cfg(unix)]
+use common::Unreadable;
 use common::{
     changed, fixture, repository, setup_bundler_package, setup_test_project,
-    setup_unresolved_project, tree,
+    setup_tsconfig_project, setup_unresolved_project, tree,
 };
 use fallout::base::Earlier;
 use fallout::{Granularity, Options, analyse, analyse_with, cli};
@@ -1119,6 +1121,283 @@ fn a_config_extended_from_a_package_is_read_as_its_tsconfig() {
         &["node_modules/@acme/tsconfig/tsconfig.json"],
     );
     assert_eq!(code, 0, "{stdout}{stderr}");
+}
+
+/// The answer for `src/page.ts` in `root` when `changed` changed, at
+/// `granularity`, with `earlier` (paths relative to `root`) standing in for the
+/// versions a base revision would hold.
+fn page_answer(
+    root: &Path,
+    changed: &str,
+    granularity: Granularity,
+    earlier: Option<&[(&str, &str)]>,
+) -> Result<fallout::Outcome, fallout::Error> {
+    let options = Options {
+        anchors: vec![PathBuf::from("src/page.ts")],
+        changed: vec![PathBuf::from(changed)],
+        diff: None,
+        base: earlier.map(|_| "HEAD".to_string()),
+        root: root.to_path_buf(),
+        only: None,
+        granularity,
+        include_types: false,
+    };
+    let earlier = earlier.map(|files| -> Box<dyn Earlier> {
+        Box::new(
+            files
+                .iter()
+                .map(|(path, text)| (root.join(path), text.to_string()))
+                .collect::<AHashMap<PathBuf, String>>(),
+        )
+    });
+    analyse_with(&options, earlier)
+}
+
+/// Whether `answer` is no answer, for the tsconfig at `path`.
+fn names_unreadable_tsconfig(
+    answer: &Result<fallout::Outcome, fallout::Error>,
+    path: &Path,
+) -> bool {
+    matches!(answer, Err(fallout::Error::UnreadableTsconfig { path: named, .. }) if named == path)
+}
+
+/// Read, the tsconfig makes the changed config it extends govern the page, and the
+/// import goes where the mapping says.
+#[test]
+fn a_readable_tsconfig_governs_the_file_and_maps_its_imports() {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    setup_tsconfig_project(&root);
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        for changed in ["tsconfig.base.json", "src/ui/button.ts"] {
+            let answer = page_answer(&root, changed, granularity, None).expect("an answer");
+            assert!(answer.verdict.is_affected(), "{changed} {granularity:?}");
+        }
+    }
+}
+
+/// What a tsconfig that cannot be read maps is not known, so there is no answer:
+/// with the mapping unread, a changed config it extends would govern nothing and
+/// `@ui/button` would land on the installed package.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_tsconfig_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    setup_tsconfig_project(&root);
+    let tsconfig = root.join("src/tsconfig.json");
+    let Some(_unreadable) = Unreadable::make(tsconfig.clone()) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    // With a base revision the mapping is known to have moved: `@ui/*` named
+    // `src/legacy` before.
+    let earlier = [(
+        "tsconfig.base.json",
+        r#"{ "compilerOptions": { "baseUrl": ".", "paths": { "@ui/*": ["src/legacy/*"] } } }"#,
+    )];
+    for changed in ["tsconfig.base.json", "src/ui/button.ts"] {
+        for granularity in [Granularity::File, Granularity::Symbol] {
+            let answer = page_answer(&root, changed, granularity, None);
+            assert!(
+                names_unreadable_tsconfig(&answer, &tsconfig),
+                "{changed} {granularity:?}: {answer:?}"
+            );
+        }
+        let answer = page_answer(&root, changed, Granularity::Symbol, Some(&earlier));
+        assert!(
+            names_unreadable_tsconfig(&answer, &tsconfig),
+            "{changed} base: {answer:?}"
+        );
+    }
+
+    // The unresolved report is no answer too, rather than a list with the import
+    // missing from it.
+    for granularity in ["file", "symbol"] {
+        let (code, stdout, stderr) = run_is_affected_with(
+            &root,
+            &["src/page.ts"],
+            &["src/ui/button.ts"],
+            &["--granularity", granularity, "--unresolved"],
+        );
+        assert_eq!(code, 2, "{granularity}: {stdout}{stderr}");
+    }
+}
+
+/// The resolver skips a tsconfig whose `extends` it cannot read along with the
+/// tsconfig itself, so that is no answer too, naming the config it could not read.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_extended_config_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    setup_tsconfig_project(&root);
+    let base = root.join("tsconfig.base.json");
+    let Some(_unreadable) = Unreadable::make(base.clone()) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        let answer = page_answer(&root, "src/ui/button.ts", granularity, None);
+        assert!(
+            names_unreadable_tsconfig(&answer, &base),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
+/// A tsconfig above the file can decide through `references` which config is
+/// found, so a changed config with no earlier text governs the file if one it
+/// references does. One it references that cannot be read is no answer: whether it
+/// reads the changed config is exactly what is not known.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_config_a_tsconfig_above_references_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    setup_tsconfig_project(&root);
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "references": [{ "path": "./tools" }] }"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    let tools = root.join("tools/tsconfig.json");
+    fs::write(&tools, r#"{ "extends": "../tsconfig.shared.json" }"#).unwrap();
+    fs::write(root.join("tsconfig.shared.json"), "{}").unwrap();
+    let Some(_unreadable) = Unreadable::make(tools.clone()) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        let answer = page_answer(&root, "tsconfig.shared.json", granularity, None);
+        assert!(
+            names_unreadable_tsconfig(&answer, &tools),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
+/// The resolver stops at the first tsconfig it can read above a file, even when
+/// what it hands back is a project that tsconfig references from elsewhere. A
+/// tsconfig above that one is never consulted, so one that cannot be read there is
+/// no reason to refuse an answer.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_tsconfig_above_the_one_found_does_not_refuse_an_answer() {
+    let temp = TempDir::new().unwrap();
+    let outer = fallout::canonical_root(temp.path());
+    let root = outer.join("project");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::create_dir_all(root.join("config/app")).unwrap();
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "files": [], "references": [{ "path": "./config/app" }] }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("config/app/tsconfig.json"),
+        r#"{ "compilerOptions": { "composite": true }, "include": ["../../src/**/*"] }"#,
+    )
+    .unwrap();
+    fs::write(root.join("src/theme.ts"), "export const theme = 1;\n").unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { theme } from \"./theme\";\nexport const page = theme;\n",
+    )
+    .unwrap();
+    let above = outer.join("tsconfig.json");
+    fs::write(&above, "{}").unwrap();
+    let Some(_unreadable) = Unreadable::make(above) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        let answer = page_answer(&root, "src/theme.ts", granularity, None);
+        assert!(
+            answer
+                .as_ref()
+                .is_ok_and(|answer| answer.verdict.is_affected()),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
+/// A readable tsconfig that does not claim the file, one with `"files": []` and no
+/// reference that does, is walked past by the resolver on its way to the next one
+/// up. One that cannot be read there would have been the file's, so it is no
+/// answer.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_tsconfig_above_one_that_does_not_claim_the_file_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/tsconfig.json"), r#"{ "files": [] }"#).unwrap();
+    fs::write(root.join("src/theme.ts"), "export const theme = 1;\n").unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        "import { theme } from \"./theme\";\nexport const page = theme;\n",
+    )
+    .unwrap();
+    let above = root.join("tsconfig.json");
+    fs::write(&above, r#"{ "include": ["src/**/*"] }"#).unwrap();
+    let Some(_unreadable) = Unreadable::make(above.clone()) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    for granularity in [Granularity::File, Granularity::Symbol] {
+        let answer = page_answer(&root, "src/theme.ts", granularity, None);
+        assert!(
+            names_unreadable_tsconfig(&answer, &above),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
+/// A config a tsconfig references can sit in a directory this process may not
+/// enter, and then even asking whether it is there fails. That is not a config
+/// that is absent: whether it reads the changed config is not known, so it is no
+/// answer too.
+#[cfg(unix)]
+#[test]
+fn a_referenced_config_in_a_directory_that_cannot_be_entered_is_no_answer() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    setup_tsconfig_project(&root);
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "references": [{ "path": "./tools" }] }"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    let tools = root.join("tools/tsconfig.json");
+    fs::write(&tools, r#"{ "extends": "../tsconfig.shared.json" }"#).unwrap();
+    fs::write(root.join("tsconfig.shared.json"), "{}").unwrap();
+    let directory = root.join("tools");
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o000)).unwrap();
+    let blocked = fs::metadata(&tools).is_err();
+    let answers: Vec<_> = [Granularity::File, Granularity::Symbol]
+        .into_iter()
+        .map(|granularity| {
+            (
+                granularity,
+                page_answer(&root, "tsconfig.shared.json", granularity, None),
+            )
+        })
+        .collect();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+    if !blocked {
+        eprintln!("skipped: permissions do not stop this process entering directories");
+        return;
+    }
+    for (granularity, answer) in answers {
+        assert!(
+            names_unreadable_tsconfig(&answer, &tools),
+            "{granularity:?}: {answer:?}"
+        );
+    }
 }
 
 #[cfg(unix)]

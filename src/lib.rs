@@ -104,6 +104,14 @@ pub enum Error {
     /// rather than ignored: a setting that silently does nothing would show up as a
     /// verdict nobody can explain.
     Config(config::Error),
+    /// A `tsconfig.json` the run looked for an import's mapping in, or a config one
+    /// reads, is there but could not be read. Refused rather than resolved without
+    /// it: what it maps is exactly what is not known, and its imports would go
+    /// somewhere else in silence.
+    UnreadableTsconfig {
+        path: PathBuf,
+        detail: String,
+    },
     /// Git finds no commit by the `--base` revision from the run's root. Refused
     /// rather than read: a revision with no files in it would have every changed
     /// file taken as one the change added.
@@ -121,6 +129,9 @@ impl fmt::Display for Error {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
             }
             Error::Config(error) => write!(f, "{error}"),
+            Error::UnreadableTsconfig { path, detail } => {
+                write!(f, "{}: cannot be read: {detail}", path.display())
+            }
             Error::UnknownBase { revision, root } => write!(
                 f,
                 "Base revision not found: git finds no commit named {revision} from {}",
@@ -416,8 +427,11 @@ impl<'o> Run<'o> {
 
     /// A file that could not be read replaces the answer rather than shaping it.
     fn finish(&self) -> Result<(), Error> {
-        match self.configs.failure() {
-            Some(error) => Err(Error::Config(error)),
+        if let Some(error) = self.configs.failure() {
+            return Err(Error::Config(error));
+        }
+        match self.configs.unreadable_tsconfig() {
+            Some((path, detail)) => Err(Error::UnreadableTsconfig { path, detail }),
             None => Ok(()),
         }
     }

@@ -229,6 +229,11 @@ pub struct Configs {
     /// The run checks this before reporting a verdict, so a file that cannot be read
     /// replaces the answer rather than quietly shaping it.
     failure: RwLock<Option<Error>>,
+    /// The first `tsconfig.json`, or config one reads, that is there and could not
+    /// be read, with why. Not this file's, but held beside its failure for the same
+    /// reason: it is met deep inside the resolver, which every resolver of a run
+    /// reaches through this, and the run checks it before reporting a verdict.
+    unreadable_tsconfig: RwLock<Option<(PathBuf, String)>>,
 }
 
 impl Configs {
@@ -238,6 +243,7 @@ impl Configs {
             declared: RwLock::new(AHashMap::default()),
             chains: RwLock::new(AHashMap::default()),
             failure: RwLock::new(None),
+            unreadable_tsconfig: RwLock::new(None),
         }
     }
 
@@ -315,6 +321,20 @@ impl Configs {
     /// The first file that could not be read, if any.
     pub fn failure(&self) -> Option<Error> {
         self.failure.read().unwrap().clone()
+    }
+
+    /// Records that the tsconfig at `path` is there and could not be read, unless
+    /// one already was.
+    pub fn note_unreadable_tsconfig(&self, path: &Path, detail: String) {
+        let mut unreadable = self.unreadable_tsconfig.write().unwrap();
+        if unreadable.is_none() {
+            *unreadable = Some((path.to_path_buf(), detail));
+        }
+    }
+
+    /// The first tsconfig that could not be read, if any, with why.
+    pub fn unreadable_tsconfig(&self) -> Option<(PathBuf, String)> {
+        self.unreadable_tsconfig.read().unwrap().clone()
     }
 
     /// `start` and each ancestor up to and including `--root`.

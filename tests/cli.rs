@@ -12,6 +12,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+#[cfg(unix)]
+use common::{Unreadable, setup_tsconfig_project};
 use common::{changed, fixture, repository, setup_test_project, setup_unresolved_project};
 use fallout::cli;
 use tempfile::TempDir;
@@ -513,4 +515,46 @@ fn a_base_revision_outside_a_repository_is_no_answer() {
         stderr.contains("HEAD"),
         "the message names the revision: {stderr}"
     );
+}
+
+/// A tsconfig that is there and cannot be read is no answer. What it maps, and
+/// which configs it extends, is exactly what is not known, and resolving as if it
+/// were not there would send its imports somewhere else in silence.
+///
+/// Skipped where taking read permission away does not stop this process reading
+/// the file, as when it runs as root.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_tsconfig_is_no_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = dunce::canonicalize(temp.path()).expect("canonical temp dir");
+    setup_tsconfig_project(&root);
+    let tsconfig = root.join("src/tsconfig.json");
+    let Some(_unreadable) = Unreadable::make(tsconfig.clone()) else {
+        eprintln!("skipped: permissions do not stop this process reading files");
+        return;
+    };
+    let root_arg = root.to_str().expect("a root named in UTF-8");
+    for granularity in ["file", "symbol"] {
+        for extra in [&[][..], &["--json"]] {
+            let run = [
+                "--root",
+                root_arg,
+                "--anchor",
+                "src/page.ts",
+                "--changed",
+                "src/ui/button.ts",
+                "--granularity",
+                granularity,
+            ];
+            let (code, stdout, stderr) = spawn(&[&run[..], extra].concat());
+            let shown = format!("{granularity} {extra:?}: {stdout}{stderr}");
+            assert_eq!(code, 2, "{shown}");
+            assert_eq!(stdout, "", "{shown}");
+            assert!(
+                stderr.starts_with("Error: ") && stderr.contains(&tsconfig.display().to_string()),
+                "the message names the tsconfig: {shown}"
+            );
+        }
+    }
 }

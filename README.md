@@ -55,8 +55,8 @@ as text rather than by shelling out, so the tool needs no git checkout at runtim
 Files the change deletes are dropped: they have no after version to reach.
 
 Exit codes: `0` — affected, run the tests. `1` — not affected. `2` — no answer: the
-arguments were invalid, an anchor is not there, a diff or a `fallout.toml` could not
-be read, or git finds no commit by the `--base` revision from the root. Errors are
+arguments were invalid, an anchor is not there, a diff, a `fallout.toml` or a
+tsconfig could not be read, or git finds no commit by the `--base` revision from the root. Errors are
 written to stderr. With `--json` the answers are in the output,
 so the exit code is `0` for any answer and `2` for none.
 
@@ -782,6 +782,9 @@ Static `import`, `export ... from`, `export * from`, dynamic `import()`, and `re
 Module resolution follows `tsconfig.json` path mappings, discovered automatically from the
 root, and the `exports` and `imports` fields of the nearest `package.json` — so a package
 naming its own internals, as in `"#app/*": "./app/*.js"`, resolves the way Node resolves it.
+A `tsconfig.json` that is there but cannot be read, or one that extends or references
+a config that cannot be, is no answer rather than resolved around: what it maps is not
+known, and resolving as if it were not there would send its imports elsewhere.
 
 A specifier ending in `.js` is tried as `.ts` and `.tsx` before `.js`, and `.jsx`,
 `.cjs` and `.mjs` likewise. TypeScript makes a specifier name the file the compiler
