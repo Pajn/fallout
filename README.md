@@ -162,6 +162,14 @@ member initialisers count too. A bare `import "./theme.css"` is a side effect of
 loading the module and reaches every importer, while `import logo from "./logo.png"`
 reaches only the declarations using `logo`.
 
+Some things an initialiser does are taken to run nothing, although they can. Reading a
+property, destructuring, spreading, iterating, `in` and `instanceof` are assumed not
+to run a getter, an iterator or a proxy. That is a deliberate trade-off: nearly every
+initialiser does one of them, and counting each would put nearly every declaration in
+module initialisation, leaving `symbol` little narrower than `file`. So a getter or a
+proxy with an effect on load can be missed at `--granularity symbol`. It is never
+missed at `file`.
+
 A `require("./x")` is an ordinary dependency of the declaration that contains it. It
 yields the whole export object, but static member reads such as
 `require("./x").name`, destructuring such as `const { name } = require("./x")`, and
@@ -235,7 +243,8 @@ Six things take a call back out of initialisation:
   here means a change other code in the app could read back. So a result read from the
   clock or a random source is fine, since nothing requires the call to return the same
   thing every time, and so is writing to the console, which the app never reads.
-  `toString` and `valueOf` are taken to have none either. What such a call must not do
+  `toString` and `valueOf` are taken to have none either, as getters, iterators and
+  proxies are (see [Granularity](#granularity)). What such a call must not do
   is throw, since it runs in the module body: an argument converted to a number must
   not be a BigInt, functions that throw on some literals — `decodeURI`,
   `String.fromCodePoint`, `new Array(n)` — are not included, and a `console` call given
@@ -926,6 +935,9 @@ app owns.
   `navigator.serviceWorker.register("/sw.js")` — are not detected. Bundlers require the
   `new URL` form, but a service worker registered by public URL has no source path to
   resolve.
+- At `symbol` granularity, a getter, an iterator or a proxy that does something on load
+  can be missed, since reading a property and the like is taken to run nothing — see
+  [Granularity](#granularity).
 - Single-file component formats such as `.vue` and `.svelte` are treated as leaves rather
   than parsed.
 - Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer
