@@ -349,7 +349,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 // `toString` and `valueOf` are taken to have no side effects, so what
                 // a conversion can do beyond reading is throw. A value that converts
                 // without is a primitive, a BigInt only to a string, or an object or
-                // array literal, which has no methods of its own to call. A parameter
+                // array literal that brings no conversion of its own. A parameter
                 // could be a BigInt or a symbol, so it is not one.
                 globals::Conversion::ToString => self.convertible(argument, locals, false)?,
                 globals::Conversion::ToNumber => self.convertible(argument, locals, true)?,
@@ -409,7 +409,34 @@ impl<'c, 'a> LocalPure<'c, 'a> {
     /// A value that converts to a string, or a number, without throwing.
     fn convertible(&self, expr: &Expression<'_>, locals: &Locals, number: bool) -> Option<Ready> {
         match expr.get_inner_expression() {
-            Expression::ObjectExpression(_) | Expression::ArrayExpression(_) => {
+            // Converting an array joins its elements, each converted to a string in
+            // turn, so each is held to this as the array is.
+            Expression::ArrayExpression(array) => {
+                let mut ready = 0;
+                for element in &array.elements {
+                    if matches!(element, ArrayExpressionElement::Elision(_)) {
+                        continue;
+                    }
+                    ready = ready.max(self.convertible(element.as_expression()?, locals, false)?);
+                }
+                Some(ready)
+            }
+            // Converting an object calls its `toString` or `valueOf`, so one that
+            // names either, or sets the prototype they are found on, could run
+            // anything or have neither to call. Any other it finds on
+            // `Object.prototype`.
+            Expression::ObjectExpression(object) => {
+                let names_conversion = object.properties.iter().any(|property| {
+                    let ObjectPropertyKind::ObjectProperty(property) = property else {
+                        return false;
+                    };
+                    property.key.static_name().is_some_and(|name| {
+                        matches!(name.as_ref(), "toString" | "valueOf" | "__proto__")
+                    })
+                });
+                if names_conversion {
+                    return None;
+                }
                 self.expression(expr, locals)
             }
             _ => self.primitive(expr, locals, number),
@@ -893,6 +920,16 @@ mod tests {
         for source in [
             // An object with a method of its own is not a literal the proof reads.
             "export const result = Math.max({ valueOf() { return 1; } });",
+            // Nor is one handed a function to call as its own conversion, or a
+            // prototype to find one on, however deep in an array it is converted.
+            "function effect() { register(); } export const result = String({ toString: effect });",
+            "function effect() { register(); } export const result = Math.max({ valueOf: effect });",
+            "function toString() { register(); } export const result = String({ toString });",
+            "function effect() { register(); } export const result = String([[{ toString: effect }]]);",
+            "export const result = String({ __proto__: null });",
+            // Converting an array converts each element, and a parameter there could
+            // be a symbol.
+            "function make(x) { return String([x]); } export const result = make(1);",
             // A parameter could be a BigInt or a symbol, which throw when converted,
             // and a helper called from the module body throws there.
             "function make(x) { return Math.abs(x); } export const result = make(1);",
