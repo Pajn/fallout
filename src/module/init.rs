@@ -218,18 +218,20 @@ fn statement_has_impure_initialiser(
         _ => return false,
     };
 
-    variable
-        .declarations
-        .iter()
-        .filter_map(|declarator| declarator.init.as_ref())
-        .any(|init| {
-            // `var _default = (exports.default = …)`, a compiler's `export default`.
-            // Filling the table is the export, not an effect on anybody else, so what
-            // decides whether this runs anything is the value alone.
+    variable.declarations.iter().any(|declarator| {
+        // `var _default = (exports.default = …)`, a compiler's `export default`.
+        // Filling the table is the export, not an effect on anybody else, so what
+        // decides whether this runs anything is the value alone.
+        let init = declarator.init.as_ref().is_some_and(|init| {
             cjs::assigned_value(init)
                 .unwrap_or(init)
                 .check_impurity(origins, pure, local)
-        })
+        });
+        // A pattern computes its defaults and its computed keys as it binds, so
+        // those run with the initialiser. Taking the value apart is left to the
+        // value, as reading a property is everywhere else.
+        init || declarator.id.check_impurity(origins, pure, local)
+    })
 }
 
 trait ImpurityCheck<'a> {
@@ -250,6 +252,19 @@ impl<'a> ImpurityCheck<'a> for Expression<'a> {
     ) -> bool {
         let mut detector = ImpureDetector::new(origins, pure, local);
         detector.visit_expression(self);
+        detector.impure
+    }
+}
+
+impl<'a> ImpurityCheck<'a> for BindingPattern<'a> {
+    fn check_impurity(
+        &self,
+        origins: &Origins<'_, '_>,
+        pure: &PureList,
+        local: &LocalPure<'_, '_>,
+    ) -> bool {
+        let mut detector = ImpureDetector::new(origins, pure, local);
+        detector.visit_binding_pattern(self);
         detector.impure
     }
 }
@@ -808,6 +823,47 @@ mod tests {
             "export const f = () => { let n = 0; n++; n = 2; implicitGlobal = 1; };",
             "export function f(o) { delete o.n; }",
             "export class W { run() { W = null; } }",
+        ]);
+    }
+
+    #[test]
+    fn what_a_destructuring_pattern_runs_is_initialisation() {
+        each_reaches(&[
+            (
+                "import { obj, reg } from './obj'; export const { a = reg(1) } = obj;",
+                "a",
+            ),
+            (
+                "import { reg } from './obj'; const src = {}; export const { a = reg(1) } = src;",
+                "a",
+            ),
+            (
+                "import { reg } from './obj'; export const [a = reg(1)] = [];",
+                "a",
+            ),
+            (
+                "import { key } from './obj'; export const { [key()]: a } = {};",
+                "a",
+            ),
+            (
+                "import { reg } from './obj'; export const { a: { b = reg(1) } } = { a: {} };",
+                "b",
+            ),
+            (
+                "import { reg } from './obj'; export const [, ...[c = reg(1)]] = [];",
+                "c",
+            ),
+        ]);
+    }
+
+    #[test]
+    fn a_destructuring_pattern_that_runs_nothing_is_not_initialisation() {
+        each_reaches_nothing(&[
+            "const src = {}; export const { a = 1, b = [src] } = src;",
+            "export const [a = 'x', { b } = {}] = [];",
+            "export const { ['literal']: a } = {};",
+            "import { memo } from 'react'; export const { a = memo(1) } = {};",
+            "export const { a = () => register(1) } = {};",
         ]);
     }
 }

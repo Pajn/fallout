@@ -1608,6 +1608,11 @@ fn an_edited_statement_that_runs_something_on_load_reaches_every_importer() {
             "export class W { static { obj.n++; } }",
             "export class W { static { obj.n++; obj.n++; } }",
         ),
+        // A default in a destructuring pattern.
+        (
+            "export const { a = reg(1) } = obj;",
+            "export const { a = reg(2) } = obj;",
+        ),
     ];
     let head = "import { obj, reg } from \"./obj\";\n";
     let tail = "\nexport const sibling = 1;\n";
