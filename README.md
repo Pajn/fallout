@@ -145,14 +145,30 @@ reassignable alias, destructuring it, and aliases nested more than four deep. A 
 through one of those aliases still counts in the declaration where it is written.
 
 A declaration whose initialiser may run something — a call, a `new`, an `await`, a
-tagged template, an assignment to a member — belongs to module initialisation, so
-importing anything from that file reaches it. It reaches that declaration and what it
-reads, not the rest of the file. For a class, what counts is what runs when the class
-is defined: its `extends` expression, its computed keys, and its static fields and
-blocks, but not instance fields or method bodies. An enum's member initialisers count
-too. A bare `import "./theme.css"` is a side effect of
+tagged template, a write — belongs to module initialisation, so importing anything
+from that file reaches it. It reaches that declaration and what it reads, not the rest
+of the file. A write is an assignment to a member, any `++` or `--`, any `delete`, and
+an assignment to a name that is not a `let`, `var`, function or class declared at the
+top of the same file: a name nothing declares is a property of the global object, and
+assigning an import or a `const` throws. A destructuring pattern's defaults and
+computed keys run with the initialiser, so the call in `const { a = register() } =
+options` counts. So does naming a `let`, a `const` or a class before its declaration
+has run, as `export const v = [limit]` above `const limit = 10` does, since that
+throws. Naming one in a function body does not count, since the body runs only when
+it is called, and a call on load is judged like any other. For a class, what counts
+is what runs when the class is defined: its `extends` expression, its computed keys,
+and its static fields and blocks, but not instance fields or method bodies. An enum's
+member initialisers count too. A bare `import "./theme.css"` is a side effect of
 loading the module and reaches every importer, while `import logo from "./logo.png"`
 reaches only the declarations using `logo`.
+
+Some things an initialiser does are taken to run nothing, although they can. Reading a
+property, destructuring, spreading, iterating, `in` and `instanceof` are assumed not
+to run a getter, an iterator or a proxy. That is a deliberate trade-off: nearly every
+initialiser does one of them, and counting each would put nearly every declaration in
+module initialisation, leaving `symbol` little narrower than `file`. So a getter or a
+proxy with an effect on load can be missed at `--granularity symbol`. It is never
+missed at `file`.
 
 A `require("./x")` is an ordinary dependency of the declaration that contains it. It
 yields the whole export object, but static member reads such as
@@ -227,7 +243,8 @@ Six things take a call back out of initialisation:
   here means a change other code in the app could read back. So a result read from the
   clock or a random source is fine, since nothing requires the call to return the same
   thing every time, and so is writing to the console, which the app never reads.
-  `toString` and `valueOf` are taken to have none either. What such a call must not do
+  `toString` and `valueOf` are taken to have none either, as getters, iterators and
+  proxies are (see [Granularity](#granularity)). What such a call must not do
   is throw, since it runs in the module body: an argument converted to a number must
   not be a BigInt, functions that throw on some literals — `decodeURI`,
   `String.fromCodePoint`, `new Array(n)` — are not included, and a `console` call given
@@ -918,6 +935,9 @@ app owns.
   `navigator.serviceWorker.register("/sw.js")` — are not detected. Bundlers require the
   `new URL` form, but a service worker registered by public URL has no source path to
   resolve.
+- At `symbol` granularity, a getter, an iterator or a proxy that does something on load
+  can be missed, since reading a property and the like is taken to run nothing — see
+  [Granularity](#granularity).
 - Single-file component formats such as `.vue` and `.svelte` are treated as leaves rather
   than parsed.
 - Only pnpm and npm lockfiles are read. A project on yarn or bun gets no answer

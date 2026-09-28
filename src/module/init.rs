@@ -6,7 +6,7 @@
 
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use oxc_semantic::{Scoping, SymbolId};
+use oxc_semantic::{Scoping, SymbolFlags, SymbolId};
 use oxc_span::GetSpan;
 
 use ahash::{AHashMap, AHashSet};
@@ -78,6 +78,12 @@ pub(crate) fn collect(
     conditional: &AHashSet<usize>,
 ) -> (Vec<DeclId>, Vec<DeclId>) {
     let local = LocalPure::infer(ctx, program);
+    let rules = Rules {
+        origins,
+        pure,
+        local: &local,
+        readable: readable_from(ctx),
+    };
     let mut init: Vec<DeclId> = Vec::new();
     let mut maybe: Vec<DeclId> = Vec::new();
 
@@ -96,7 +102,7 @@ pub(crate) fn collect(
         // An initialiser that may have side effects runs at import time whether or
         // not anyone reads the binding. One this module can clear is not asked about
         // again below.
-        if !statement_has_impure_initialiser(statement, origins, pure, &local) {
+        if !statement_has_impure_initialiser(statement, &rules) {
             continue;
         }
 
@@ -108,7 +114,7 @@ pub(crate) fn collect(
             && !call.arguments.iter().any(|argument| {
                 argument
                     .as_expression()
-                    .is_none_or(|argument| argument.check_impurity(origins, pure, &local))
+                    .is_none_or(|argument| argument.check_impurity(&rules))
             })
         {
             for (id, draft) in drafts.iter().enumerate() {
@@ -175,17 +181,13 @@ fn referenced_decls(ctx: &Ctx<'_>, statement: &Statement<'_>, drafts: &[DeclDraf
 }
 
 /// The conservative rule for this step: a call, a construction, an `await`, a tagged
-/// template, or an assignment to a member is impure. Later steps narrow this.
-fn statement_has_impure_initialiser(
-    statement: &Statement<'_>,
-    origins: &Origins<'_, '_>,
-    pure: &PureList,
-    local: &LocalPure<'_, '_>,
-) -> bool {
+/// template, or a write to anything but a binding the module owns is impure. Later
+/// steps narrow this.
+fn statement_has_impure_initialiser(statement: &Statement<'_>, rules: &Rules<'_, '_, '_>) -> bool {
     let declaration = match statement {
         Statement::ExportDeclaration(export) => Some(&export.declaration),
         Statement::ExportDefaultDeclaration(export) => {
-            return export.declaration.check_impurity(origins, pure, local);
+            return export.declaration.check_impurity(rules);
         }
         // Only a statement that declares something reaches here, so an expression
         // statement is a CommonJS export: either the assignment that fills the table,
@@ -193,7 +195,7 @@ fn statement_has_impure_initialiser(
         // stores what it is handed without running any of it.
         Statement::ExpressionStatement(statement) => {
             return cjs::assigned_value(&statement.expression)
-                .is_some_and(|value| value.check_impurity(origins, pure, local));
+                .is_some_and(|value| value.check_impurity(rules));
         }
         statement => statement.as_declaration(),
     };
@@ -201,7 +203,7 @@ fn statement_has_impure_initialiser(
     let variable = match declaration {
         Some(Declaration::VariableDeclaration(variable)) => variable,
         Some(Declaration::ClassDeclaration(class)) => {
-            return class.check_impurity(origins, pure, local);
+            return class.check_impurity(rules);
         }
         // Each member's value is computed when the enum is, and a `const enum` is
         // read the same way because type erasure keeps it.
@@ -211,77 +213,100 @@ fn statement_has_impure_initialiser(
                 .members
                 .iter()
                 .filter_map(|member| member.initializer.as_ref())
-                .any(|init| init.check_impurity(origins, pure, local));
+                .any(|init| init.check_impurity(rules));
         }
         // A function declaration binds without running anything.
         _ => return false,
     };
 
-    variable
-        .declarations
-        .iter()
-        .filter_map(|declarator| declarator.init.as_ref())
-        .any(|init| {
-            // `var _default = (exports.default = …)`, a compiler's `export default`.
-            // Filling the table is the export, not an effect on anybody else, so what
-            // decides whether this runs anything is the value alone.
+    variable.declarations.iter().any(|declarator| {
+        // `var _default = (exports.default = …)`, a compiler's `export default`.
+        // Filling the table is the export, not an effect on anybody else, so what
+        // decides whether this runs anything is the value alone.
+        let init = declarator.init.as_ref().is_some_and(|init| {
             cjs::assigned_value(init)
                 .unwrap_or(init)
-                .check_impurity(origins, pure, local)
+                .check_impurity(rules)
+        });
+        // A pattern computes its defaults and its computed keys as it binds, so
+        // those run with the initialiser. Taking the value apart is left to the
+        // value, as reading a property is everywhere else.
+        init || declarator.id.check_impurity(rules)
+    })
+}
+
+/// What an initialiser is judged against: where each import comes from, what the
+/// project has declared pure, what the local-helper proof has shown, and when each
+/// lexical binding of the file can first be read.
+struct Rules<'c, 'o, 'a> {
+    origins: &'c Origins<'c, 'o>,
+    pure: &'c PureList,
+    local: &'c LocalPure<'c, 'a>,
+    readable: AHashMap<SymbolId, u32>,
+}
+
+/// Each `let`, `const` and declared class of the file, and the offset at which its
+/// declaration has run. Reading or writing one before then throws, and a throw on
+/// load stops the module loading, and every importer with it.
+///
+/// That is the end of the whole declarator, as it is for the local-helper proof,
+/// so a binding a pattern gives is taken as readable only once the pattern is
+/// done; and the end of a class, whose own name its static members may still read
+/// (see [`ImpureDetector::statics`]).
+fn readable_from(ctx: &Ctx<'_>) -> AHashMap<SymbolId, u32> {
+    let scoping = ctx.semantic.scoping();
+    let nodes = ctx.semantic.nodes();
+    scoping
+        .symbol_ids()
+        .filter(|&symbol| {
+            let flags = scoping.symbol_flags(symbol);
+            flags.intersects(SymbolFlags::BlockScopedVariable | SymbolFlags::Class)
+                && !flags.is_ambient()
         })
+        .map(|symbol| {
+            let declaration = nodes.get_node(scoping.symbol_declaration(symbol));
+            (symbol, declaration.kind().span().end)
+        })
+        .collect()
 }
 
 trait ImpurityCheck<'a> {
-    fn check_impurity(
-        &self,
-        origins: &Origins<'_, '_>,
-        pure: &PureList,
-        local: &LocalPure<'_, '_>,
-    ) -> bool;
+    fn check_impurity(&self, rules: &Rules<'_, '_, '_>) -> bool;
 }
 
 impl<'a> ImpurityCheck<'a> for Expression<'a> {
-    fn check_impurity(
-        &self,
-        origins: &Origins<'_, '_>,
-        pure: &PureList,
-        local: &LocalPure<'_, '_>,
-    ) -> bool {
-        let mut detector = ImpureDetector::new(origins, pure, local);
+    fn check_impurity(&self, rules: &Rules<'_, '_, '_>) -> bool {
+        let mut detector = ImpureDetector::new(rules);
         detector.visit_expression(self);
         detector.impure
     }
 }
 
+impl<'a> ImpurityCheck<'a> for BindingPattern<'a> {
+    fn check_impurity(&self, rules: &Rules<'_, '_, '_>) -> bool {
+        let mut detector = ImpureDetector::new(rules);
+        detector.visit_binding_pattern(self);
+        detector.impure
+    }
+}
+
 impl<'a> ImpurityCheck<'a> for Class<'a> {
-    fn check_impurity(
-        &self,
-        origins: &Origins<'_, '_>,
-        pure: &PureList,
-        local: &LocalPure<'_, '_>,
-    ) -> bool {
-        let mut detector = ImpureDetector::new(origins, pure, local);
+    fn check_impurity(&self, rules: &Rules<'_, '_, '_>) -> bool {
+        let mut detector = ImpureDetector::new(rules);
         detector.visit_class(self);
         detector.impure
     }
 }
 
 impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
-    fn check_impurity(
-        &self,
-        origins: &Origins<'_, '_>,
-        pure: &PureList,
-        local: &LocalPure<'_, '_>,
-    ) -> bool {
+    fn check_impurity(&self, rules: &Rules<'_, '_, '_>) -> bool {
         match self {
-            ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                class.check_impurity(origins, pure, local)
-            }
+            ExportDefaultDeclarationKind::ClassDeclaration(class) => class.check_impurity(rules),
             // `export default function f() {}` binds without running anything.
             ExportDefaultDeclarationKind::FunctionDeclaration(_)
             | ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => false,
             expression => {
-                let mut detector = ImpureDetector::new(origins, pure, local);
+                let mut detector = ImpureDetector::new(rules);
                 if let Some(expression) = expression.as_expression() {
                     detector.visit_expression(expression);
                 }
@@ -292,20 +317,78 @@ impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
 }
 
 struct ImpureDetector<'c, 'o, 'a> {
-    local: &'c LocalPure<'c, 'a>,
+    rules: &'c Rules<'c, 'o, 'a>,
     impure: bool,
-    origins: &'c Origins<'c, 'o>,
-    pure: &'c PureList,
+    /// The declared classes whose bodies are being read, innermost last. Inside
+    /// its own body a class's name is a constant.
+    classes: Vec<SymbolId>,
+    /// The classes whose static fields and blocks are being read. Those run once
+    /// the class's own name is bound, so they may read it, while its `extends`
+    /// expression and computed keys run before and may not.
+    statics: Vec<SymbolId>,
 }
 
 impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
-    fn new(origins: &'c Origins<'c, 'o>, pure: &'c PureList, local: &'c LocalPure<'c, 'a>) -> Self {
+    fn new(rules: &'c Rules<'c, 'o, 'a>) -> Self {
         Self {
+            rules,
             impure: false,
-            local,
-            origins,
-            pure,
+            classes: Vec::new(),
+            statics: Vec::new(),
         }
+    }
+
+    /// Does this reference name a binding whose declaration has not run yet?
+    ///
+    /// Only what runs on load is read here, since a function body is skipped, so a
+    /// reference written before its binding's declaration is one evaluated before
+    /// it. The binding is found by symbol, so a local of the same name declared
+    /// later does not count against an earlier binding, nor the other way round.
+    fn too_early(&self, identifier: &IdentifierReference<'_>) -> bool {
+        let scoping = self.rules.origins.scoping;
+        let Some(reference) = identifier
+            .reference_id
+            .get()
+            .map(|id| scoping.get_reference(id))
+        else {
+            return false;
+        };
+        let Some(symbol) = reference.symbol_id() else {
+            return false;
+        };
+        // A type erases, and so never runs.
+        if !reference.is_read() && !reference.is_write() {
+            return false;
+        }
+        self.rules
+            .readable
+            .get(&symbol)
+            .is_some_and(|&readable| identifier.span.start < readable)
+            && !self.statics.contains(&symbol)
+    }
+
+    /// Does assigning `identifier` change nothing but a binding this module owns?
+    ///
+    /// That is a `let`, a `var`, a function or a class declared at the top of this
+    /// file, which only this file can read. A name nothing declares, or one only a
+    /// `declare` names, is a property of the global object, and assigning an import
+    /// or a `const` throws, which stops the module loading. The binding is found by
+    /// symbol, so a local of the same name is not mistaken for it.
+    fn owns(&self, identifier: &IdentifierReference<'_>) -> bool {
+        let scoping = self.rules.origins.scoping;
+        let Some(symbol) = identifier
+            .reference_id
+            .get()
+            .and_then(|reference| scoping.get_reference(reference).symbol_id())
+        else {
+            return false;
+        };
+        let flags = scoping.symbol_flags(symbol);
+        scoping.symbol_scope_id(symbol) == scoping.root_scope_id()
+            && flags.intersects(SymbolFlags::Variable | SymbolFlags::Function | SymbolFlags::Class)
+            && !flags
+                .intersects(SymbolFlags::ConstVariable | SymbolFlags::Import | SymbolFlags::Ambient)
+            && !self.classes.contains(&symbol)
     }
 
     /// Is this callee free of side effects?
@@ -321,22 +404,22 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
         let Some((root, members)) = callee_path(callee) else {
             return false;
         };
-        let Some((source, exported)) = self.origins.of(root) else {
+        let Some((source, exported)) = self.rules.origins.of(root) else {
             return false;
         };
 
         let mut path = Vec::with_capacity(members.len() + 1);
         path.push(exported);
         path.extend(members);
-        self.pure.contains(source, &path)
+        self.rules.pure.contains(source, &path)
     }
 }
 
 impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if !self.callee_is_pure(expr.pure, &expr.callee)
-            && !self.local.call(expr)
-            && !self.local.freezes(expr)
+            && !self.rules.local.call(expr)
+            && !self.rules.local.freezes(expr)
         {
             self.impure = true;
         }
@@ -345,7 +428,7 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.local.constructs(expr) {
+        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.rules.local.constructs(expr) {
             self.impure = true;
         }
         walk::walk_new_expression(self, expr);
@@ -366,10 +449,37 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
-        if !matches!(expr.left, AssignmentTarget::AssignmentTargetIdentifier(_)) {
+        let owned = match &expr.left {
+            AssignmentTarget::AssignmentTargetIdentifier(identifier) => self.owns(identifier),
+            _ => false,
+        };
+        if !owned {
             self.impure = true;
         }
         walk::walk_assignment_expression(self, expr);
+    }
+
+    // An update writes what it reads, and its target is as likely to be someone
+    // else's as an assignment's is, so it counts wherever it points.
+    fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
+        self.impure = true;
+        walk::walk_update_expression(self, expr);
+    }
+
+    // Deleting a property changes an object that anyone holding it can read.
+    fn visit_unary_expression(&mut self, expr: &UnaryExpression<'a>) {
+        if expr.operator == UnaryOperator::Delete {
+            self.impure = true;
+        }
+        walk::walk_unary_expression(self, expr);
+    }
+
+    // A `let`, a `const` or a class read before its declaration has run throws, which
+    // stops the module loading.
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        if self.too_early(identifier) {
+            self.impure = true;
+        }
     }
 
     // A function body does not run until it is called, so what it contains says
@@ -383,13 +493,19 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     // instance field waits for a construction and a method for a call, as a
     // function body does.
     fn visit_class(&mut self, class: &Class<'a>) {
+        let symbol = class.id.as_ref().and_then(|id| id.symbol_id.get());
+        self.classes.extend(symbol);
         if let Some(heritage) = &class.heritage {
             self.visit_expression(&heritage.expression);
         }
         for element in &class.body.body {
             let (key, computed, value, is_static) = match element {
                 ClassElement::StaticBlock(block) => {
+                    self.statics.extend(symbol);
                     self.visit_static_block(block);
+                    if symbol.is_some() {
+                        self.statics.pop();
+                    }
                     continue;
                 }
                 ClassElement::MethodDefinition(method) => {
@@ -413,8 +529,15 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
                 self.visit_property_key(key);
             }
             if is_static && let Some(value) = value {
+                self.statics.extend(symbol);
                 self.visit_expression(value);
+                if symbol.is_some() {
+                    self.statics.pop();
+                }
             }
+        }
+        if symbol.is_some() {
+            self.classes.pop();
         }
     }
 
@@ -638,5 +761,220 @@ mod tests {
         let t = imported.decl_named("t").unwrap();
         assert!(!imported.init_decls.contains(&t));
         assert!(imported.conditional_init.contains(&t));
+    }
+
+    /// Asserts that initialisation reaches `name` in each source.
+    fn each_reaches(cases: &[(&str, &str)]) {
+        for (source, name) in cases {
+            assert!(
+                module(source).decl_named(name).is_some(),
+                "no {name}: {source}"
+            );
+        }
+        let missed: Vec<&str> = cases
+            .iter()
+            .filter(|(source, name)| !init(source).contains(&name.to_string()))
+            .map(|(source, _)| *source)
+            .collect();
+        assert!(
+            missed.is_empty(),
+            "not initialisation:\n{}",
+            missed.join("\n")
+        );
+    }
+
+    /// Asserts that initialisation reaches nothing in each source.
+    fn each_reaches_nothing(sources: &[&str]) {
+        let reached: Vec<String> = sources
+            .iter()
+            .filter_map(|source| {
+                let names = init(source);
+                (!names.is_empty()).then(|| format!("{names:?}: {source}"))
+            })
+            .collect();
+        assert!(
+            reached.is_empty(),
+            "initialisation:\n{}",
+            reached.join("\n")
+        );
+    }
+
+    #[test]
+    fn a_write_that_reaches_past_the_module_is_initialisation() {
+        each_reaches(&[
+            // A write to an object someone else owns.
+            (
+                "import { obj } from './obj'; export const x = (obj.n++, 1);",
+                "x",
+            ),
+            (
+                "import { obj } from './obj'; export const x = (++obj.n, 1);",
+                "x",
+            ),
+            (
+                "import { obj } from './obj'; export const x = (delete obj.n, 1);",
+                "x",
+            ),
+            ("export const x = (delete globalThis.flag, 1);", "x"),
+            // A bare name nothing declares is a property of the global object.
+            ("export const x = (implicitGlobal = 1);", "x"),
+            ("export const x = (implicitGlobal += 1);", "x"),
+            ("export const x = (implicitGlobal ||= 1);", "x"),
+            ("export const x = (implicitGlobal++, 1);", "x"),
+            // So is one only an ambient declaration names.
+            (
+                "declare let ambient: number; export const x = (ambient = 1);",
+                "x",
+            ),
+            // Assigning an import or a `const` throws, which stops the module loading.
+            (
+                "import { reg } from './reg'; export const x = (reg = 1, 1);",
+                "x",
+            ),
+            ("const c = 1; export const x = (c = 2, 1);", "x"),
+            // So does assigning a class's own name inside its body, where it is bound
+            // as a constant.
+            ("export class W { static { W = null; } }", "W"),
+            // A local of the same name is a different binding.
+            (
+                "let n = 0; export class W { static { const n = 1; n = 2; } }",
+                "W",
+            ),
+            // The same writes in the other places module initialisation reads.
+            (
+                "import { obj } from './obj'; export default (obj.n++, 1);",
+                "default",
+            ),
+            (
+                "import { obj } from './obj'; export class W { static { obj.n++; } }",
+                "W",
+            ),
+            (
+                "import { obj } from './obj'; export class W { static v = (obj.n++, 1); }",
+                "W",
+            ),
+            (
+                "import { obj } from './obj'; export class W { static { delete obj.n; } }",
+                "W",
+            ),
+            ("export class W { static { implicitGlobal = 1; } }", "W"),
+            (
+                "const { obj } = require('./obj'); exports.x = (obj.n++, 1);",
+                "exports.x",
+            ),
+            ("exports.x = (implicitGlobal = 1);", "exports.x"),
+        ]);
+    }
+
+    #[test]
+    fn a_write_to_a_binding_the_module_owns_is_not_initialisation() {
+        each_reaches_nothing(&[
+            "let n = 0; export const x = (n = 1);",
+            "let n = 0; export const x = (n += 1);",
+            "var n; export const x = (n ||= 1);",
+            "function f() {} export const x = (f = null);",
+            "class K {} export const x = (K = null);",
+            // A write in a function body waits for a call.
+            "export const f = () => { let n = 0; n++; n = 2; implicitGlobal = 1; };",
+            "export function f(o) { delete o.n; }",
+            "export class W { run() { W = null; } }",
+        ]);
+    }
+
+    #[test]
+    fn what_a_destructuring_pattern_runs_is_initialisation() {
+        each_reaches(&[
+            (
+                "import { obj, reg } from './obj'; export const { a = reg(1) } = obj;",
+                "a",
+            ),
+            (
+                "import { reg } from './obj'; const src = {}; export const { a = reg(1) } = src;",
+                "a",
+            ),
+            (
+                "import { reg } from './obj'; export const [a = reg(1)] = [];",
+                "a",
+            ),
+            (
+                "import { key } from './obj'; export const { [key()]: a } = {};",
+                "a",
+            ),
+            (
+                "import { reg } from './obj'; export const { a: { b = reg(1) } } = { a: {} };",
+                "b",
+            ),
+            (
+                "import { reg } from './obj'; export const [, ...[c = reg(1)]] = [];",
+                "c",
+            ),
+        ]);
+    }
+
+    #[test]
+    fn a_destructuring_pattern_that_runs_nothing_is_not_initialisation() {
+        each_reaches_nothing(&[
+            "const src = {}; export const { a = 1, b = [src] } = src;",
+            "export const [a = 'x', { b } = {}] = [];",
+            "export const { ['literal']: a } = {};",
+            "import { memo } from 'react'; export const { a = memo(1) } = {};",
+            "export const { a = () => register(1) } = {};",
+        ]);
+    }
+
+    #[test]
+    fn a_read_before_the_declaration_is_initialisation() {
+        each_reaches(&[
+            ("export const v = later; const later = 1;", "v"),
+            ("export const v = [Later]; class Later {}", "v"),
+            ("export const v = { later }; let later = 1;", "v"),
+            ("export const v = typeof later; const later = 1;", "v"),
+            // A binding read in its own initialiser has not been declared yet either.
+            ("export const v = [v];", "v"),
+            // Writing one early throws too.
+            ("export const x = (n = 1); let n = 0;", "x"),
+            // A class's `extends` expression and computed keys run before its name is
+            // bound, and a class bound to a `const` is not bound until the class is
+            // done.
+            ("export class W { [W.key] = 1; }", "W"),
+            ("export const W = class { static v = [W]; };", "W"),
+            // A local of the same name declared later is a different binding.
+            (
+                "const later = 1; export class W { static { const v = [later]; const later = 2; } }",
+                "W",
+            ),
+            // The same read in the other places module initialisation reads.
+            ("export default [later]; const later = 1;", "default"),
+            (
+                "export class W { static v = [later]; } const later = 1;",
+                "W",
+            ),
+            (
+                "export class W { static { const v = [later]; } } let later = 1;",
+                "W",
+            ),
+            ("export const { a = later } = {}; const later = 1;", "a"),
+            ("exports.x = [later]; const later = 1;", "exports.x"),
+        ]);
+    }
+
+    #[test]
+    fn a_read_after_the_declaration_or_in_a_body_that_waits_is_not_initialisation() {
+        each_reaches_nothing(&[
+            "const earlier = 1; export const v = [earlier];",
+            "class Earlier {} export const v = [Earlier];",
+            // A `var` and a function are there from the start.
+            "export const v = [later]; var later = 1;",
+            "export const v = [later]; function later() {}",
+            // A body that waits for a call runs after the whole module has.
+            "export const read = () => later; const later = 1;",
+            "export function read() { return later; } const later = 1;",
+            "export class W { run() { return later; } } const later = 1;",
+            "export const W = class { run() { return W; } };",
+            // A static member runs once the class's own name is bound.
+            "export class W { static id = 1; static v = [W.id]; static { const v = [W]; } }",
+            // A name used as a type is erased.
+            "export const v: typeof later | undefined = undefined; const later = 1;",
+        ]);
     }
 }

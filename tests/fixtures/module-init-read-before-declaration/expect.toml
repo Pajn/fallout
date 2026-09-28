@@ -1,0 +1,20 @@
+# The page imports `sibling` alone, and the edit is to a declaration that reads a
+# `const` declared further down. Reading it before its declaration has run throws
+# when the module loads, which stops the page loading whatever it imports.
+[[anchor]]
+path = "src/pages/early.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/early.ts)",
+    "ModuleInit(src/pages/early.ts)",
+    "ModuleInit(src/lib/early.ts)",
+    "Decl(src/lib/early.ts, sizes)",
+]
+
+# The same read after the declaration runs nothing, so an edit to it reaches only
+# the importers of the declaration.
+[[anchor]]
+path = "src/pages/late.ts"
+affected = false

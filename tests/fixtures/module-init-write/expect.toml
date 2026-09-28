@@ -1,0 +1,34 @@
+# The page imports `sibling` alone, and the edit is to a declaration whose
+# initialiser updates a property of an object another module owns. That runs
+# when the module loads, whatever the page imports.
+[[anchor]]
+path = "src/pages/update.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/update.ts)",
+    "ModuleInit(src/pages/update.ts)",
+    "ModuleInit(src/lib/update.ts)",
+    "Decl(src/lib/update.ts, tick)",
+]
+
+# A name nothing declares is a property of the global object, so assigning it on
+# load is a write any other module can read.
+[[anchor]]
+path = "src/pages/global.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/global.ts)",
+    "ModuleInit(src/pages/global.ts)",
+    "ModuleInit(src/lib/global.ts)",
+    "Decl(src/lib/global.ts, installed)",
+]
+
+# A `let` of the module's own changes nothing outside it when it is assigned, so
+# an edit to the assignment reaches only the importers of the declaration.
+[[anchor]]
+path = "src/pages/local.ts"
+affected = false

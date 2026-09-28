@@ -1576,3 +1576,101 @@ fn a_sass_url_naming_only_a_directory_finds_its_index() {
     let (_keep, root) = sass_project("theme", &[("src/styles/theme/_index.scss", "$ink: red;\n")]);
     assert!(sass_reaches(&root, "src/styles/theme/_index.scss"));
 }
+
+/// An object another module owns, and a function that records what it is handed.
+const EFFECT_TARGETS: &str = "export const obj = { n: 0 };
+export const reg = (n) => {
+  globalThis.registered = n;
+  return n;
+};
+";
+
+/// The page imports only `sibling` from `lib.ts`, and reads `obj.n` itself. Every
+/// edited statement runs something on load before and after the edit, so the page
+/// is affected at every level, as it is at `file`.
+#[test]
+fn an_edited_statement_that_runs_something_on_load_reaches_every_importer() {
+    let cases = [
+        // An update, a delete, and an assignment to a name nothing declares.
+        (
+            "export const x = (obj.n++, 1);",
+            "export const x = (obj.n++, 2);",
+        ),
+        (
+            "export const x = (delete obj.n, 1);",
+            "export const x = (delete obj.n, 2);",
+        ),
+        (
+            "export const x = (implicitGlobal = 1);",
+            "export const x = (implicitGlobal = 2);",
+        ),
+        (
+            "export class W { static { obj.n++; } }",
+            "export class W { static { obj.n++; obj.n++; } }",
+        ),
+        // A default in a destructuring pattern.
+        (
+            "export const { a = reg(1) } = obj;",
+            "export const { a = reg(2) } = obj;",
+        ),
+        // A read before the declaration, which throws.
+        (
+            "export const v = [later, 1];\nconst later = 1;",
+            "export const v = [later, 2];\nconst later = 1;",
+        ),
+    ];
+    let head = "import { obj, reg } from \"./obj\";\n";
+    let tail = "\nexport const sibling = 1;\n";
+    let mut missed = Vec::new();
+    for (before, after) in cases {
+        let temp = TempDir::new().unwrap();
+        let root = fallout::canonical_root(temp.path());
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/obj.ts"), EFFECT_TARGETS).unwrap();
+        fs::write(
+            root.join("src/page.ts"),
+            "import { obj } from \"./obj\";\nimport { sibling } from \"./lib\";\n\
+             export const Page = () => [sibling, obj.n];\n",
+        )
+        .unwrap();
+        let (old, new) = (
+            format!("{head}{before}{tail}"),
+            format!("{head}{after}{tail}"),
+        );
+        fs::write(root.join("src/lib.ts"), &new).unwrap();
+        // The diff CI would hand over, so a symbol run attributes the lines it names.
+        let diff = similar::TextDiff::from_lines(&old, &new)
+            .unified_diff()
+            .context_radius(3)
+            .header("a/src/lib.ts", "b/src/lib.ts")
+            .to_string();
+
+        for (level, granularity, base) in [
+            ("file", Granularity::File, false),
+            ("symbol", Granularity::Symbol, false),
+            ("base", Granularity::Symbol, true),
+        ] {
+            let options = Options {
+                anchors: vec![PathBuf::from("src/page.ts")],
+                changed: Vec::new(),
+                diff: Some(diff.clone()),
+                base: base.then(|| "HEAD".to_string()),
+                root: root.clone(),
+                only: None,
+                granularity,
+                include_types: false,
+            };
+            let earlier = base.then(|| -> Box<dyn Earlier> {
+                Box::new(AHashMap::from_iter([(
+                    root.join("src/lib.ts"),
+                    old.clone(),
+                )]))
+            });
+            let answer = analyse_with(&options, earlier).expect("an answer");
+            if !answer.verdict.is_affected() {
+                missed.push(format!("{level}: {after}"));
+            }
+        }
+    }
+    assert!(missed.is_empty(), "not affected:\n{}", missed.join("\n"));
+}

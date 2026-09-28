@@ -1,0 +1,20 @@
+# The page imports `sibling` alone, and the edit is to a call in the default of a
+# destructuring pattern. The default is computed when the module loads, so the
+# call runs whatever the page imports.
+[[anchor]]
+path = "src/pages/settings.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/settings.ts)",
+    "ModuleInit(src/pages/settings.ts)",
+    "ModuleInit(src/lib/settings.ts)",
+    "Decl(src/lib/settings.ts, id)",
+]
+
+# A default that is a literal runs nothing, so an edit to it reaches only the
+# importers of the binding it gives.
+[[anchor]]
+path = "src/pages/labels.ts"
+affected = false
