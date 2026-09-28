@@ -246,8 +246,11 @@ Six things take a call back out of initialisation:
   `toString` and `valueOf` are taken to have none either, as getters, iterators and
   proxies are (see [Granularity](#granularity)). What such a call must not do
   is throw, since it runs in the module body: an argument converted to a number must
-  not be a BigInt, functions that throw on some literals — `decodeURI`,
-  `String.fromCodePoint`, `new Array(n)` — are not included, and a `console` call given
+  not be a BigInt, an object literal converted must not name its own `toString`,
+  `valueOf` or `__proto__`, since converting it would then run whatever those hold,
+  an array literal converted has each of its elements converted in turn, functions
+  that throw on some literals — `decodeURI`, `String.fromCodePoint`, `new Array(n)`
+  — are not included, and a `console` call given
   several arguments must start with a literal holding no `%`, since a format string
   can convert what follows in ways that throw. `Symbol.for`, which adds to the global
   symbol registry, is not included either;
