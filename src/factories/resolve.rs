@@ -4,10 +4,11 @@
 //! declaration of its own, read through properties. Which factory that is can only
 //! be told on the graph, by following declarations that are other names for it and
 //! the exports of the modules it is imported from, until the path lands on a
-//! package the table knows.
+//! package the table knows. There the path must be the factory itself, once the
+//! identity forms that factory's rule declares are taken off its end.
 
 use crate::graph::{FileId, Fine, Graph, Node};
-use crate::module::{Callee, ExportTarget};
+use crate::module::{Callee, ExportTarget, Step};
 use crate::resolve::is_installed;
 
 use super::rules::{Rule, rule};
@@ -42,10 +43,8 @@ pub(super) fn callee_rule(
                 }
             }
             let specifier = module.sources.get(*source as usize)?;
-            if path.is_empty() {
-                return rule(specifier, name);
-            }
-            None
+            let rule = rule(specifier, name)?;
+            rule.strip_identity(path).is_empty().then_some(rule)
         }
     }
 }
@@ -56,15 +55,15 @@ fn export_rule(
     graph: &Graph,
     file: FileId,
     name: &str,
-    path: &[String],
+    path: &[Step],
     depth: usize,
 ) -> Option<&'static Rule> {
     let fine = graph.view(file).fine()?;
     let module = fine.module();
     // `import * as store from "./store"; store.createAsyncThunk(…)`.
     let (name, path) = match (name, path) {
-        ("*", [first, rest @ ..]) => (first.as_str(), rest),
-        ("*", []) => return None,
+        ("*", [Step::Prop(first), rest @ ..]) => (first.as_str(), rest),
+        ("*", _) => return None,
         (name, path) => (name, path),
     };
     let Some(export) = module.export_named(name) else {
@@ -91,7 +90,9 @@ fn export_rule(
             depth + 1,
         ),
         ExportTarget::ReexportAll { source } => {
-            let (first, rest) = path.split_first()?;
+            let [Step::Prop(first), rest @ ..] = path else {
+                return None;
+            };
             callee_rule(
                 graph,
                 &fine,
@@ -107,7 +108,7 @@ fn export_rule(
 }
 
 /// `callee` read further, through `path`.
-fn extended(callee: &Callee, path: &[String]) -> Callee {
+fn extended(callee: &Callee, path: &[Step]) -> Callee {
     match callee {
         Callee::Import {
             source,

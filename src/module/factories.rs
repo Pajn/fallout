@@ -27,7 +27,8 @@ use super::decls::{DeclDraft, ImportBinding};
 use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
 use super::refs::{SharedEdges, narrowed, unwritten_member_read};
-use super::{Callee, Decl, DeclId, Deps, FactoryCall, ImportTarget, Span};
+use super::{Callee, Decl, DeclId, Deps, FactoryCall, ImportTarget, Span, Step};
+use crate::factories::rules::is_identity_method;
 
 /// What [`find`] found, before any reference is linked.
 #[derive(Default)]
@@ -235,8 +236,13 @@ impl<'d> Names<'d> {
 }
 
 /// The import or declaration an expression names, read through properties and
-/// through `withTypes<T>()`, which RTK gives its factories to type them and which
-/// returns the factory itself.
+/// through calls such as `withTypes<T>()`, which RTK gives its factories to type
+/// them and which returns the factory itself.
+///
+/// Whether such a call returns what it was called on is the matched rule's to say,
+/// so it is kept as a step for the graph. Only a call with no arguments to a method
+/// some rule declares an identity form is read at all: any other call's result is
+/// a value no rule speaks for, and calling it is plain initialisation.
 fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<Callee> {
     match expr.get_inner_expression() {
         Expression::Identifier(identifier) => {
@@ -272,7 +278,7 @@ fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<
                 Callee::Import { name, path, .. } if name == "*" && path.is_empty() => {
                     *name = property;
                 }
-                Callee::Import { path, .. } | Callee::Local { path, .. } => path.push(property),
+                callee => callee.path_mut().push(Step::Prop(property)),
             }
             Some(callee)
         }
@@ -281,9 +287,12 @@ fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<
             else {
                 return None;
             };
-            (member.property.name == "withTypes")
-                .then(|| callee_of(ctx, &member.object, names))
-                .flatten()
+            if !is_identity_method(&member.property.name) {
+                return None;
+            }
+            let mut callee = callee_of(ctx, &call.callee, names)?;
+            callee.path_mut().push(Step::Call);
+            Some(callee)
         }
         _ => None,
     }
@@ -466,7 +475,7 @@ fn push_unique<T: PartialEq>(list: &mut Vec<T>, value: T) {
 
 #[cfg(test)]
 mod tests {
-    use crate::module::{FineModule, ModuleAnalysis, Reading, parse::analyse_source};
+    use crate::module::{Callee, FineModule, ModuleAnalysis, Reading, Step, parse::analyse_source};
     use std::path::Path;
 
     fn module(source: &str) -> Box<FineModule> {
@@ -536,6 +545,37 @@ mod tests {
         assert!(call.frame.refs.contains(&create));
         assert!(call.args[1].1.refs.contains(&create));
         assert!(!call.args[0].1.refs.contains(&create));
+    }
+
+    #[test]
+    fn a_call_a_rule_may_read_through_is_kept_for_the_graph() {
+        let module = module(
+            "import { createAsyncThunk } from '@reduxjs/toolkit';
+            import * as rtk from '@reduxjs/toolkit';
+            const create = createAsyncThunk.withTypes<{ state: unknown }>();
+            const typed = rtk.createAsyncThunk.withTypes<{ state: unknown }>().withTypes();
+            const other = createAsyncThunk.other();\n",
+        );
+        let derived = |name: &str| {
+            module.decls[module.decl_named(name).unwrap() as usize]
+                .derived
+                .clone()
+        };
+        let with_types = || [Step::Prop("withTypes".to_string()), Step::Call];
+        let Some(Callee::Import { name, path, .. }) = derived("create") else {
+            panic!("an import");
+        };
+        assert_eq!(
+            (name.as_str(), path.as_slice()),
+            ("createAsyncThunk", &with_types()[..])
+        );
+        let Some(Callee::Import { name, path, .. }) = derived("typed") else {
+            panic!("an import");
+        };
+        assert_eq!(name, "createAsyncThunk");
+        assert_eq!(path, [with_types(), with_types()].concat());
+        // No rule reads through `other()`, so its result is no other name for anything.
+        assert_eq!(derived("other"), None);
     }
 
     #[test]

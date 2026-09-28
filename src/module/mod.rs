@@ -49,7 +49,8 @@ pub struct Decl {
     /// touches no member touches only the separators between them.
     pub interior: Span,
     /// What this declaration's value is another name for: `const f = X` and
-    /// `const f = X.withTypes<T>()`, where `X` is an import or a declaration here.
+    /// `const f = X.withTypes<T>()`, where `X` is an import or a declaration here
+    /// and `withTypes` is a method some rule declares an identity form.
     pub derived: Option<Callee>,
     /// The call this declaration's value is the result of, `const t = f(...)`,
     /// with what each argument depends on. The graph decides whether `f` is a
@@ -58,20 +59,45 @@ pub struct Decl {
 }
 
 /// A value named by an import or a declaration of this file, read through a path of
-/// properties: `rtk.createAsyncThunk` is `Import { name: "*", path: ["createAsyncThunk"] }`
-/// for `import * as rtk`.
+/// steps: `base.withTypes<T>()` is `Import { name: "createAsyncThunk", path:
+/// [Prop("withTypes"), Call] }` for `import { createAsyncThunk as base }`. A property
+/// read straight off a namespace import is the name it imports, so `rtk.createAsyncThunk`
+/// is `Import { name: "createAsyncThunk", path: [] }` for `import * as rtk`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Callee {
     Import {
         source: SourceId,
         /// The name the target exports, `default` or `*`.
         name: String,
-        path: Vec<String>,
+        path: Vec<Step>,
     },
     Local {
         decl: DeclId,
-        path: Vec<String>,
+        path: Vec<Step>,
     },
+}
+
+impl Callee {
+    fn path_mut(&mut self) -> &mut Vec<Step> {
+        match self {
+            Callee::Import { path, .. } | Callee::Local { path, .. } => path,
+        }
+    }
+}
+
+/// One step of reading a [`Callee`] further.
+///
+/// A call is kept as a step of its own rather than read through, because what a
+/// call returns is the callee's to say: `withTypes<T>()` returns RTK's factory
+/// itself, and the same call on anything else returns anything. Which calls hand
+/// back what they were called on is declared by each rule; see
+/// [`crate::factories::rules::Identity`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    /// `.name`
+    Prop(String),
+    /// `()`, with no arguments.
+    Call,
 }
 
 /// What part of a declaration depends on.

@@ -18,7 +18,9 @@
 //! a module of the app's own that exports any of those. The last is the usual
 //! shape — `export const createAsyncThunk = createAsyncThunkOriginal.withTypes<…>()`
 //! in a store module, imported by every slice — and it is why this is decided on the
-//! graph rather than in one module.
+//! graph rather than in one module. A call such as `withTypes<…>()` returns the
+//! factory only because RTK says so of its own factory, so each rule declares its
+//! identity forms, and only the matched rule's are read through.
 //!
 //! Like the built-in pure calls, this is a claim about someone else's function, and
 //! only the library's own documented behaviour is claimed.
@@ -31,7 +33,7 @@
 mod resolve;
 pub mod rules;
 
-pub use rules::{Creation, RULES, Rule, rule};
+pub use rules::{Creation, Identity, RULES, Rule, rule};
 
 use crate::graph::{FileId, Fine, Graph};
 use crate::module::{Decl, DeclId, Deps, FactoryCall, ImportRef};
@@ -183,6 +185,13 @@ mod tests {
                     "import {{ createAsyncThunk as base }} from '@reduxjs/toolkit';\nconst createAsyncThunk = base.withTypes<{{ state: unknown }}>();\n{THUNK}"
                 ),
             )],
+            // Typed twice over, through a namespace.
+            vec![(
+                "slice.ts",
+                "import * as rtk from '@reduxjs/toolkit';\nconst createAsyncThunk = rtk.createAsyncThunk.withTypes<{ state: unknown }>().withTypes();\n"
+                    .to_string()
+                    + THUNK,
+            )],
             // Typed in a store module, and re-exported by a barrel.
             vec![
                 (
@@ -245,6 +254,32 @@ mod tests {
                 "import { createAsyncThunk as base } from '@reduxjs/toolkit';\nconst createAsyncThunk = base('x', async () => 1);\nexport const t = createAsyncThunk('a/b', async () => 1);\n"
                     .to_string(),
             )],
+            // RTK's identity form is RTK's: `withTypes` of another library's
+            // function returns whatever that library says.
+            vec![(
+                "slice.ts",
+                "import { createAsyncThunk as base } from 'another-library';\nconst createAsyncThunk = base.withTypes<{ state: unknown }>();\n"
+                    .to_string()
+                    + THUNK,
+            )],
+            // A file of the app that the package's name resolves to is that file,
+            // and its function of the same name is not the factory.
+            vec![
+                (
+                    "tsconfig.json",
+                    "{ \"compilerOptions\": { \"paths\": { \"@reduxjs/toolkit\": [\"./shims/toolkit.ts\"] } } }\n"
+                        .to_string(),
+                ),
+                (
+                    "shims/toolkit.ts",
+                    "export function createAsyncThunk(type: string, run: () => unknown) { run(); return run; }\n"
+                        .to_string(),
+                ),
+                (
+                    "slice.ts",
+                    format!("import {{ createAsyncThunk }} from '@reduxjs/toolkit';\n{THUNK}"),
+                ),
+            ],
         ] {
             let files: Vec<(&str, &str)> = files
                 .iter()
