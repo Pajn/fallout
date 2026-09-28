@@ -10,6 +10,7 @@ use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 
+use crate::factories::Creation;
 use crate::module::Reading;
 use crate::module::{
     DeclId, ExportTarget, FineModule, ImportRef, ImportTarget, LineTable, Member, ModuleAnalysis,
@@ -433,28 +434,14 @@ impl Graph {
     }
 
     /// What `member` of a factory call's result depends on, where the callee is a
-    /// factory with a rule that lists it: the arguments the rule names, and what
-    /// the declaration depends on outside every argument.
+    /// factory with a rule that lists it. See [`crate::factories`].
     fn factory_member(
         &self,
         fine: &Fine,
         decl: DeclId,
         member: &str,
     ) -> Option<crate::module::Deps> {
-        let call = fine.module().decls.get(decl as usize)?.factory.as_ref()?;
-        let rule = self.made_by(fine.file(), decl)?;
-        let args = rule.member(member)?;
-        let mut deps = call.frame.clone();
-        for &index in args {
-            let Some((_, argument)) = call.args.get(index) else {
-                continue;
-            };
-            deps.refs.extend(argument.refs.iter().copied());
-            deps.member_refs
-                .extend(argument.member_refs.iter().cloned());
-            deps.imports.extend(argument.imports.iter().cloned());
-        }
-        Some(deps)
+        self.made_by(fine.file(), decl)?.member(member)
     }
 
     /// The nodes a read of `member` off the export `export` of `file` should point
@@ -525,20 +512,18 @@ impl Graph {
             // factory that only builds values. Even then it runs the callee, and what
             // makes the callee one is initialisation's to reach: an edit that turns a
             // wrapper with an effect into the factory changes what loading this module
-            // does. The call's arguments are what a factory leaves alone. A name that
-            // is `withTypes` of a factory reads nothing but it, so it is reached whole.
+            // does. The call's arguments are what a factory whose creation reaches only
+            // the frame leaves alone. A name that is `withTypes` of a factory reads
+            // nothing but it, so it is reached whole.
             for &decl in &module.conditional_init {
-                let call = module
-                    .decls
-                    .get(decl as usize)
-                    .and_then(|d| d.factory.as_ref());
-                match call {
-                    Some(call) if self.made_by(file, decl).is_some() => {
+                match self.made_by(file, decl) {
+                    Some(made) if made.creation() == Creation::Frame => {
+                        let frame = made.frame();
                         edges.extend(self.reference_edges(
                             fine,
-                            &call.frame.refs,
-                            &call.frame.member_refs,
-                            &call.frame.imports,
+                            &frame.refs,
+                            &frame.member_refs,
+                            &frame.imports,
                         ));
                     }
                     _ => edges.push(Node::Decl(file, decl)),

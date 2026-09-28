@@ -31,59 +31,133 @@
 mod resolve;
 pub mod rules;
 
-pub use rules::{RULES, Rule, rule};
+pub use rules::{Creation, RULES, Rule, rule};
 
-use crate::graph::{FileId, Graph};
-use crate::module::DeclId;
+use crate::graph::{FileId, Fine, Graph};
+use crate::module::{Decl, DeclId, Deps, FactoryCall, ImportRef};
 
 impl Graph {
-    /// The rule of the factory `decl` of `file` is the result of calling, if the
-    /// callee is one.
+    /// The value `decl` of `file` holds, where it is the result of calling a factory
+    /// with a rule.
     ///
-    /// An opaque file has no declarations to ask about, and so no rule.
-    pub fn made_by(&self, file: FileId, decl: DeclId) -> Option<&'static Rule> {
+    /// An opaque file has no declarations to ask about, and so none is made by one.
+    pub fn made_by(&self, file: FileId, decl: DeclId) -> Option<Made> {
         let fine = self.view(file).fine()?;
         let call = fine.module().decls.get(decl as usize)?.factory.as_ref()?;
-        resolve::callee_rule(self, &fine, &call.callee, 0)
+        let rule = resolve::callee_rule(self, &fine, &call.callee, 0)?;
+        Some(Made { rule, fine, decl })
+    }
+}
+
+/// A declaration whose value a known factory made: `const t = createAsyncThunk(…)`,
+/// however the app reached the factory.
+///
+/// It answers what the graph and the marks ask of such a value in terms of the
+/// call as written, so that neither needs to know how a rule is laid out.
+pub struct Made {
+    rule: &'static Rule,
+    fine: Fine,
+    decl: DeclId,
+}
+
+impl Made {
+    /// What creating the value reaches. See [`Creation`].
+    pub fn creation(&self) -> Creation {
+        self.rule.creation
+    }
+
+    /// What the declaration depends on outside every argument: the callee, and the
+    /// call around the arguments.
+    pub fn frame(&self) -> &Deps {
+        &self.call().frame
+    }
+
+    /// What reading `name` off the value depends on, if the rule lists it: the
+    /// arguments it names and the frame. Any other property depends on the whole
+    /// declaration, which is the caller's to reach.
+    pub fn member(&self, name: &str) -> Option<Deps> {
+        let call = self.call();
+        let args = self.rule.member(name)?;
+        let mut deps = call.frame.clone();
+        for &index in args {
+            let Some((_, argument)) = call.args.get(index) else {
+                continue;
+            };
+            deps.refs.extend(argument.refs.iter().copied());
+            deps.member_refs
+                .extend(argument.member_refs.iter().cloned());
+            deps.imports.extend(argument.imports.iter().cloned());
+        }
+        Some(deps)
+    }
+
+    /// Every property the rule lets a reader reach on its own.
+    pub fn member_names(&self) -> impl Iterator<Item = &'static str> + use<> {
+        self.rule.member_names()
+    }
+
+    /// The properties an edit to the byte range `start..end` of the declaration
+    /// touches.
+    ///
+    /// A property depends on the arguments its rule names and on the call around
+    /// them, and on nothing in the other arguments. An edit anywhere in the
+    /// statement outside the parentheses touches every one. An argument the call
+    /// does not pass is touched by an edit where it would be written, which is
+    /// where removing it leaves its mark.
+    pub fn touched_members(&self, start: u32, end: u32) -> impl Iterator<Item = &'static str> {
+        let (decl, call) = (self.decl(), self.call());
+        let framing = !call.interior.holds_within(decl.span, start, end);
+        self.rule
+            .members
+            .iter()
+            .filter(move |(_, args)| {
+                framing
+                    || args.iter().any(|&index| match call.args.get(index) {
+                        Some((span, _)) => span.intersects(start, end),
+                        None => call.missing.intersects(start, end),
+                    })
+            })
+            .map(|(name, _)| *name)
+    }
+
+    /// Whether the call reads an import `reads` picks out, in any argument or
+    /// around them.
+    pub fn reads(&self, reads: impl Fn(&[ImportRef]) -> bool) -> bool {
+        let call = self.call();
+        reads(&call.frame.imports) || call.args.iter().any(|(_, deps)| reads(&deps.imports))
+    }
+
+    fn decl(&self) -> &Decl {
+        &self.fine.module().decls[self.decl as usize]
+    }
+
+    fn call(&self) -> &FactoryCall {
+        self.decl()
+            .factory
+            .as_ref()
+            .expect("only a factory call is made by a factory")
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use std::sync::Arc;
+    use super::*;
+    use crate::graph::tests::{file, graph_for};
 
-    use crate::config::{Bundler, Configs};
-    use crate::graph::Graph;
-    use crate::module::Reading;
+    /// What made `name` in `slice.ts`, in a tree of the given files.
+    fn made(files: &[(&str, &str)], name: &str) -> Option<Made> {
+        let (dir, graph) = graph_for(files);
+        let slice = file(&graph, &dir, "slice.ts");
+        let analysed = graph.analysis(slice).unwrap();
+        let module = analysed.analysis.as_fine().unwrap();
+        let decl = module.decl_named(name).expect(name);
+        graph.made_by(slice, decl)
+    }
 
     /// Whether `t` in `slice.ts` is made by a factory with a rule, in a tree of the
     /// given files.
     fn made_by_rule(files: &[(&str, &str)]) -> bool {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dunce::canonicalize(dir.path()).unwrap();
-        for (name, body) in files {
-            let path = root.join(name);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, body).unwrap();
-        }
-        let graph = Graph::new(
-            Reading {
-                configs: Arc::new(Configs::new(&root)),
-                ignore_types: true,
-            },
-            Bundler::default(),
-            Arc::default(),
-            root.clone(),
-            Arc::default(),
-            Arc::default(),
-            Default::default(),
-        );
-        let file = graph.file_id(&root.join(Path::new("slice.ts")));
-        let analysed = graph.analysis(file).unwrap();
-        let module = analysed.analysis.as_fine().unwrap();
-        let decl = module.decl_named("t").expect("t");
-        graph.made_by(file, decl).is_some()
+        made(files, "t").is_some()
     }
 
     const THUNK: &str = "export const t = createAsyncThunk('a/b', async () => load());\n";
@@ -178,5 +252,84 @@ mod tests {
                 .collect();
             assert!(!made_by_rule(&files), "{files:?}");
         }
+    }
+
+    const OPTIONS: &str = "import { createAsyncThunk } from '@reduxjs/toolkit';
+import { load } from './api';
+import { serialize } from './errors';
+const TYPE = 'a/b';
+export const t = createAsyncThunk(TYPE, async () => load(), { serializeError: serialize });\n";
+
+    /// The thunk `t` of a slice written as `source`, and the source indices of its
+    /// imports from `./api` and `./errors`.
+    fn thunk(source: &str) -> (Made, u32, u32) {
+        let made = made(&[("slice.ts", source)], "t").expect("made by the factory");
+        let sources = &made.fine.module().sources;
+        let index = |name: &str| sources.iter().position(|s| s == name).unwrap() as u32;
+        let (api, errors) = (index("./api"), index("./errors"));
+        (made, api, errors)
+    }
+
+    #[test]
+    fn a_member_depends_on_the_arguments_its_rule_names_and_the_frame() {
+        let (made, api, errors) = thunk(OPTIONS);
+        let reads = |deps: &Deps, source: u32| deps.imports.iter().any(|i| i.source == source);
+        let type_decl = made.fine.module().decl_named("TYPE").unwrap();
+
+        // The callee is an import, which is the frame's, and every member's.
+        assert_eq!(made.frame().imports.len(), 1);
+        let fulfilled = made.member("fulfilled").expect("a member the rule lists");
+        assert!(fulfilled.refs.contains(&type_decl));
+        assert!(fulfilled.imports.contains(&made.frame().imports[0]));
+        assert!(!reads(&fulfilled, api));
+        assert!(!reads(&fulfilled, errors));
+        let rejected = made.member("rejected").expect("a member the rule lists");
+        assert!(rejected.refs.contains(&type_decl));
+        assert!(!reads(&rejected, api));
+        assert!(reads(&rejected, errors));
+        assert!(made.member("unwrap").is_none());
+
+        assert_eq!(
+            made.member_names().collect::<Vec<_>>(),
+            ["pending", "fulfilled", "rejected", "settled", "typePrefix"]
+        );
+        assert_eq!(made.creation(), Creation::Frame);
+        assert!(made.reads(|imports| imports.iter().any(|i| i.source == api)));
+    }
+
+    #[test]
+    fn an_edit_touches_the_members_of_the_arguments_it_lands_in() {
+        let (made, _, _) = thunk(OPTIONS);
+        let at = |needle: &str| OPTIONS.find(needle).unwrap() as u32;
+        let touched = |start: u32, end: u32| made.touched_members(start, end).collect::<Vec<_>>();
+        let every = ["pending", "fulfilled", "rejected", "settled", "typePrefix"];
+
+        // The payload creator is no member's.
+        let payload = at("async");
+        assert!(touched(payload, payload + 5).is_empty());
+        // The type is every member's, and so is the statement around the call.
+        let type_arg = at("TYPE,");
+        assert_eq!(touched(type_arg, type_arg + 4), every);
+        let binding = at("export const t");
+        assert_eq!(touched(binding, binding + 6), every);
+        // The options are `rejected`'s alone.
+        let options = at("serializeError");
+        assert_eq!(touched(options, options + 5), ["rejected"]);
+
+        // Between the last argument and the closing parenthesis is where the options
+        // would be written, and an edit there adds or removes them.
+        let bare = "import { createAsyncThunk } from '@reduxjs/toolkit';
+import { load } from './api';
+import { serialize } from './errors';
+export const t = createAsyncThunk(
+  'a/b',
+  async () => load(serialize)
+);\n";
+        let (made, _, _) = thunk(bare);
+        let after = (bare.find("load(serialize)").unwrap() + "load(serialize)".len()) as u32;
+        assert_eq!(
+            made.touched_members(after, after + 1).collect::<Vec<_>>(),
+            ["rejected"]
+        );
     }
 }

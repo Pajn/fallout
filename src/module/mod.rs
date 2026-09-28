@@ -142,6 +142,16 @@ impl Span {
         }
         start < self.end && end > self.start
     }
+
+    /// Whether the part of the range `start..end` that falls inside `outer` lies
+    /// wholly inside this span: an edit to a statement that stays between the braces
+    /// of its literal, or the parentheses of its call.
+    pub fn holds_within(&self, outer: Span, start: u32, end: u32) -> bool {
+        if start == end {
+            return self.contains(start);
+        }
+        start.max(outer.start) >= self.start && end.min(outer.end) <= self.end
+    }
 }
 
 /// What an imported binding points at inside the target module.

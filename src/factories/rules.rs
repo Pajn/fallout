@@ -11,6 +11,26 @@ pub struct Rule {
     /// Properties of its result read on their own, each with the arguments, by
     /// position, it depends on.
     pub members: &'static [(&'static str, &'static [usize])],
+    /// What calling it runs when the value is created, which is what module
+    /// initialisation reaches.
+    pub creation: Creation,
+}
+
+/// What creating a factory's value reaches, and so what module initialisation
+/// depends on when a module creates one at the top level.
+///
+/// A factory that calls one of its arguments while creating the value would be a
+/// variant of its own here, naming those arguments, so that initialisation reaches
+/// them along with the frame and still leaves the rest alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Creation {
+    /// Creating the value calls the factory and nothing it is given. Initialisation
+    /// reaches the call's frame, the callee and the call around the arguments, and
+    /// none of the arguments.
+    Frame,
+    /// Creating the value may run anything the call names, so initialisation
+    /// reaches the whole declaration, as it does for a call of no known factory.
+    Whole,
 }
 
 impl Rule {
@@ -49,6 +69,7 @@ pub const RULES: &[Rule] = &[Rule {
         ("settled", &[0]),
         ("typePrefix", &[0]),
     ],
+    creation: Creation::Frame,
 }];
 
 /// The rule for `source#export`, if there is one.
