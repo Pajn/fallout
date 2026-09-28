@@ -234,29 +234,18 @@ fn mark_members(
     end: u32,
     out: &mut AHashSet<Node>,
 ) {
-    let framing = !within(decl.interior, decl.span, start, end);
+    let framing = !decl.interior.holds_within(decl.span, start, end);
     for member in &decl.members {
         if framing || member.span.intersects(start, end) {
             out.insert(Node::Member(file, id, graph.name_id(&member.name)));
         }
     }
 
-    // A factory's members depend on the arguments its rule names and on the call
-    // around them, and on nothing in the other arguments. An argument the call does
-    // not pass is touched by an edit where it would be written, which is where
-    // removing it leaves its mark.
-    if let Some(call) = &decl.factory
-        && let Some(rule) = graph.made_by(file, id)
-    {
-        let framing = !within(call.interior, decl.span, start, end);
-        for (member, args) in rule.members {
-            let named = args.iter().any(|&index| match call.args.get(index) {
-                Some((span, _)) => span.intersects(start, end),
-                None => call.missing.intersects(start, end),
-            });
-            if framing || named {
-                out.insert(Node::Member(file, id, graph.name_id(member)));
-            }
+    // A factory's members depend on some of its arguments and on the call around
+    // them. Which arguments is the rule's to say, so the factories module answers.
+    if let Some(made) = graph.made_by(file, id) {
+        for member in made.touched_members(start, end) {
+            out.insert(Node::Member(file, id, graph.name_id(member)));
         }
     }
 }
@@ -285,21 +274,11 @@ fn mark_forwarded(
     for member in &decl.members {
         out.insert(Node::Member(file, id, graph.name_id(&member.name)));
     }
-    if decl.factory.is_some()
-        && let Some(rule) = graph.made_by(file, id)
-    {
-        for member in rule.member_names() {
+    if let Some(made) = graph.made_by(file, id) {
+        for member in made.member_names() {
             out.insert(Node::Member(file, id, graph.name_id(member)));
         }
     }
-}
-
-/// Whether the part of a range that falls inside `outer` lies wholly inside `inner`.
-fn within(inner: Span, outer: Span, start: u32, end: u32) -> bool {
-    if start == end {
-        return inner.contains(start);
-    }
-    start.max(outer.start) >= inner.start && end.min(outer.end) <= inner.end
 }
 
 fn module_spans(module: &FineModule) -> Vec<(Span, DeclId)> {
@@ -374,13 +353,11 @@ fn mark_sources(graph: &Graph, fine: &Fine, sources: &[SourceId], out: &mut AHas
                 out.insert(Node::Member(file, id, graph.name_id(&member.name)));
             }
         }
-        if let Some(call) = &decl.factory {
-            let read = reads(&call.frame.imports)
-                || call.args.iter().any(|(_, deps)| reads(&deps.imports));
-            if let Some(rule) = graph.made_by(file, id).filter(|_| read) {
-                for member in rule.member_names() {
-                    out.insert(Node::Member(file, id, graph.name_id(member)));
-                }
+        if let Some(made) = graph.made_by(file, id)
+            && made.reads(reads)
+        {
+            for member in made.member_names() {
+                out.insert(Node::Member(file, id, graph.name_id(member)));
             }
         }
     }
