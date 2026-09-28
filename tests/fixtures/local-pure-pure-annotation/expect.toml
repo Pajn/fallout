@@ -1,0 +1,18 @@
+# A local helper whose body makes a `/* @__PURE__ */` call. The annotation clears
+# the call inside `make` as it would one written in the module body, and the helper
+# proof still proves the argument, so `make("…")` runs nothing on load and an edit to
+# it reaches only the page that reads `Panel`.
+[[anchor]]
+path = "src/pages/VersionPage.tsx"
+affected = false
+
+[[anchor]]
+path = "src/pages/PanelPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/PanelPage.tsx)",
+    "Decl(src/pages/PanelPage.tsx, PanelPage)",
+    "Export(src/components/widgets.ts, Panel)",
+]
