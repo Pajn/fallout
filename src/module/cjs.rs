@@ -425,9 +425,11 @@ pub(crate) fn assigned_value<'a>(expression: &'a Expression<'a>) -> Option<&'a E
     // not entitled to overlook.
     chain(assignment)?;
 
+    // Stepped through exactly as `chain` steps, so no assignment it did not check is
+    // passed over: `exports.x = (y = 1)` writes `y`, which `chain` never saw.
     let mut current = assignment.as_ref();
     loop {
-        match current.right.get_inner_expression() {
+        match &current.right {
             Expression::AssignmentExpression(next) => current = next.as_ref(),
             value => return Some(value),
         }

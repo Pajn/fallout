@@ -6,7 +6,7 @@
 
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use oxc_semantic::{Scoping, SymbolId};
+use oxc_semantic::{Scoping, SymbolFlags, SymbolId};
 use oxc_span::GetSpan;
 
 use ahash::{AHashMap, AHashSet};
@@ -175,7 +175,8 @@ fn referenced_decls(ctx: &Ctx<'_>, statement: &Statement<'_>, drafts: &[DeclDraf
 }
 
 /// The conservative rule for this step: a call, a construction, an `await`, a tagged
-/// template, or an assignment to a member is impure. Later steps narrow this.
+/// template, or a write to anything but a binding the module owns is impure. Later
+/// steps narrow this.
 fn statement_has_impure_initialiser(
     statement: &Statement<'_>,
     origins: &Origins<'_, '_>,
@@ -296,6 +297,9 @@ struct ImpureDetector<'c, 'o, 'a> {
     impure: bool,
     origins: &'c Origins<'c, 'o>,
     pure: &'c PureList,
+    /// The declared classes whose bodies are being read, innermost last. Inside
+    /// its own body a class's name is a constant.
+    classes: Vec<SymbolId>,
 }
 
 impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
@@ -305,7 +309,32 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
             local,
             origins,
             pure,
+            classes: Vec::new(),
         }
+    }
+
+    /// Does assigning `identifier` change nothing but a binding this module owns?
+    ///
+    /// That is a `let`, a `var`, a function or a class declared at the top of this
+    /// file, which only this file can read. A name nothing declares, or one only a
+    /// `declare` names, is a property of the global object, and assigning an import
+    /// or a `const` throws, which stops the module loading. The binding is found by
+    /// symbol, so a local of the same name is not mistaken for it.
+    fn owns(&self, identifier: &IdentifierReference<'_>) -> bool {
+        let scoping = self.origins.scoping;
+        let Some(symbol) = identifier
+            .reference_id
+            .get()
+            .and_then(|reference| scoping.get_reference(reference).symbol_id())
+        else {
+            return false;
+        };
+        let flags = scoping.symbol_flags(symbol);
+        scoping.symbol_scope_id(symbol) == scoping.root_scope_id()
+            && flags.intersects(SymbolFlags::Variable | SymbolFlags::Function | SymbolFlags::Class)
+            && !flags
+                .intersects(SymbolFlags::ConstVariable | SymbolFlags::Import | SymbolFlags::Ambient)
+            && !self.classes.contains(&symbol)
     }
 
     /// Is this callee free of side effects?
@@ -366,10 +395,29 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
-        if !matches!(expr.left, AssignmentTarget::AssignmentTargetIdentifier(_)) {
+        let owned = match &expr.left {
+            AssignmentTarget::AssignmentTargetIdentifier(identifier) => self.owns(identifier),
+            _ => false,
+        };
+        if !owned {
             self.impure = true;
         }
         walk::walk_assignment_expression(self, expr);
+    }
+
+    // An update writes what it reads, and its target is as likely to be someone
+    // else's as an assignment's is, so it counts wherever it points.
+    fn visit_update_expression(&mut self, expr: &UpdateExpression<'a>) {
+        self.impure = true;
+        walk::walk_update_expression(self, expr);
+    }
+
+    // Deleting a property changes an object that anyone holding it can read.
+    fn visit_unary_expression(&mut self, expr: &UnaryExpression<'a>) {
+        if expr.operator == UnaryOperator::Delete {
+            self.impure = true;
+        }
+        walk::walk_unary_expression(self, expr);
     }
 
     // A function body does not run until it is called, so what it contains says
@@ -383,6 +431,8 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     // instance field waits for a construction and a method for a call, as a
     // function body does.
     fn visit_class(&mut self, class: &Class<'a>) {
+        let symbol = class.id.as_ref().and_then(|id| id.symbol_id.get());
+        self.classes.extend(symbol);
         if let Some(heritage) = &class.heritage {
             self.visit_expression(&heritage.expression);
         }
@@ -415,6 +465,9 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
             if is_static && let Some(value) = value {
                 self.visit_expression(value);
             }
+        }
+        if symbol.is_some() {
+            self.classes.pop();
         }
     }
 
@@ -638,5 +691,123 @@ mod tests {
         let t = imported.decl_named("t").unwrap();
         assert!(!imported.init_decls.contains(&t));
         assert!(imported.conditional_init.contains(&t));
+    }
+
+    /// Asserts that initialisation reaches `name` in each source.
+    fn each_reaches(cases: &[(&str, &str)]) {
+        for (source, name) in cases {
+            assert!(
+                module(source).decl_named(name).is_some(),
+                "no {name}: {source}"
+            );
+        }
+        let missed: Vec<&str> = cases
+            .iter()
+            .filter(|(source, name)| !init(source).contains(&name.to_string()))
+            .map(|(source, _)| *source)
+            .collect();
+        assert!(
+            missed.is_empty(),
+            "not initialisation:\n{}",
+            missed.join("\n")
+        );
+    }
+
+    /// Asserts that initialisation reaches nothing in each source.
+    fn each_reaches_nothing(sources: &[&str]) {
+        let reached: Vec<String> = sources
+            .iter()
+            .filter_map(|source| {
+                let names = init(source);
+                (!names.is_empty()).then(|| format!("{names:?}: {source}"))
+            })
+            .collect();
+        assert!(
+            reached.is_empty(),
+            "initialisation:\n{}",
+            reached.join("\n")
+        );
+    }
+
+    #[test]
+    fn a_write_that_reaches_past_the_module_is_initialisation() {
+        each_reaches(&[
+            // A write to an object someone else owns.
+            (
+                "import { obj } from './obj'; export const x = (obj.n++, 1);",
+                "x",
+            ),
+            (
+                "import { obj } from './obj'; export const x = (++obj.n, 1);",
+                "x",
+            ),
+            (
+                "import { obj } from './obj'; export const x = (delete obj.n, 1);",
+                "x",
+            ),
+            ("export const x = (delete globalThis.flag, 1);", "x"),
+            // A bare name nothing declares is a property of the global object.
+            ("export const x = (implicitGlobal = 1);", "x"),
+            ("export const x = (implicitGlobal += 1);", "x"),
+            ("export const x = (implicitGlobal ||= 1);", "x"),
+            ("export const x = (implicitGlobal++, 1);", "x"),
+            // So is one only an ambient declaration names.
+            (
+                "declare let ambient: number; export const x = (ambient = 1);",
+                "x",
+            ),
+            // Assigning an import or a `const` throws, which stops the module loading.
+            (
+                "import { reg } from './reg'; export const x = (reg = 1, 1);",
+                "x",
+            ),
+            ("const c = 1; export const x = (c = 2, 1);", "x"),
+            // So does assigning a class's own name inside its body, where it is bound
+            // as a constant.
+            ("export class W { static { W = null; } }", "W"),
+            // A local of the same name is a different binding.
+            (
+                "let n = 0; export class W { static { const n = 1; n = 2; } }",
+                "W",
+            ),
+            // The same writes in the other places module initialisation reads.
+            (
+                "import { obj } from './obj'; export default (obj.n++, 1);",
+                "default",
+            ),
+            (
+                "import { obj } from './obj'; export class W { static { obj.n++; } }",
+                "W",
+            ),
+            (
+                "import { obj } from './obj'; export class W { static v = (obj.n++, 1); }",
+                "W",
+            ),
+            (
+                "import { obj } from './obj'; export class W { static { delete obj.n; } }",
+                "W",
+            ),
+            ("export class W { static { implicitGlobal = 1; } }", "W"),
+            (
+                "const { obj } = require('./obj'); exports.x = (obj.n++, 1);",
+                "exports.x",
+            ),
+            ("exports.x = (implicitGlobal = 1);", "exports.x"),
+        ]);
+    }
+
+    #[test]
+    fn a_write_to_a_binding_the_module_owns_is_not_initialisation() {
+        each_reaches_nothing(&[
+            "let n = 0; export const x = (n = 1);",
+            "let n = 0; export const x = (n += 1);",
+            "var n; export const x = (n ||= 1);",
+            "function f() {} export const x = (f = null);",
+            "class K {} export const x = (K = null);",
+            // A write in a function body waits for a call.
+            "export const f = () => { let n = 0; n++; n = 2; implicitGlobal = 1; };",
+            "export function f(o) { delete o.n; }",
+            "export class W { run() { W = null; } }",
+        ]);
     }
 }

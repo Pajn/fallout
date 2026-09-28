@@ -145,12 +145,15 @@ reassignable alias, destructuring it, and aliases nested more than four deep. A 
 through one of those aliases still counts in the declaration where it is written.
 
 A declaration whose initialiser may run something — a call, a `new`, an `await`, a
-tagged template, an assignment to a member — belongs to module initialisation, so
-importing anything from that file reaches it. It reaches that declaration and what it
-reads, not the rest of the file. For a class, what counts is what runs when the class
-is defined: its `extends` expression, its computed keys, and its static fields and
-blocks, but not instance fields or method bodies. An enum's member initialisers count
-too. A bare `import "./theme.css"` is a side effect of
+tagged template, a write — belongs to module initialisation, so importing anything
+from that file reaches it. It reaches that declaration and what it reads, not the rest
+of the file. A write is an assignment to a member, any `++` or `--`, any `delete`, and
+an assignment to a name that is not a `let`, `var`, function or class declared at the
+top of the same file: a name nothing declares is a property of the global object, and
+assigning an import or a `const` throws. For a class, what counts is what runs when
+the class is defined: its `extends` expression, its computed keys, and its static
+fields and blocks, but not instance fields or method bodies. An enum's member
+initialisers count too. A bare `import "./theme.css"` is a side effect of
 loading the module and reaches every importer, while `import logo from "./logo.png"`
 reaches only the declarations using `logo`.
 
