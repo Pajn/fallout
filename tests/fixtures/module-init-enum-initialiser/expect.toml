@@ -1,0 +1,20 @@
+# The page imports `sibling` alone, and the edit is to an enum member's
+# initialiser. An enum's members are computed when the module loads, so a call in
+# one runs whatever the page imports.
+[[anchor]]
+path = "src/pages/sizes.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/sizes.ts)",
+    "ModuleInit(src/pages/sizes.ts)",
+    "ModuleInit(src/lib/sizes.ts)",
+    "Decl(src/lib/sizes.ts, Size)",
+]
+
+# An enum computed from literals and its own members runs nothing, so an edit to
+# one reaches only the importers of the enum.
+[[anchor]]
+path = "src/pages/labels.ts"
+affected = false

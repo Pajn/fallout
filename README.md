@@ -147,7 +147,10 @@ through one of those aliases still counts in the declaration where it is written
 A declaration whose initialiser may run something — a call, a `new`, an `await`, a
 tagged template, an assignment to a member — belongs to module initialisation, so
 importing anything from that file reaches it. It reaches that declaration and what it
-reads, not the rest of the file. A bare `import "./theme.css"` is a side effect of
+reads, not the rest of the file. For a class, what counts is what runs when the class
+is defined: its `extends` expression, its computed keys, and its static fields and
+blocks, but not instance fields or method bodies. An enum's member initialisers count
+too. A bare `import "./theme.css"` is a side effect of
 loading the module and reaches every importer, while `import logo from "./logo.png"`
 reaches only the declarations using `logo`.
 
@@ -276,7 +279,7 @@ pure = [
 ]
 
 # Drop the built-in React entries.
-builtin-pure = true
+builtin-pure = false
 ```
 
 The same file carries `inline-requires`, under [Inline requires](#inline-requires),
@@ -288,7 +291,10 @@ An entry is written as the import source, `#`, and the path taken from the bindi
 that import introduces. The first segment is the name the target exports, with
 `default` and `*` for the two unnamed forms, so `React.memo` is `react#default.memo`.
 An entry is honoured only where the callee is reached from the import it names: a
-local function called `memo` is not covered by React's entry.
+local function called `memo` is not covered by React's entry. That includes a local
+declared inside a function or a class body with the same name as the import: the
+entry applies where the callee is the import binding itself, not a local that shadows
+it.
 
 An entry is a claim about someone else's function. It says nothing about the
 arguments, which still run, and nothing about the exports of the file it sits in,

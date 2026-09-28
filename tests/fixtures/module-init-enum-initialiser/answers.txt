@@ -1,0 +1,107 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/sizes.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/sizes.ts"
+Path (downstream, file granularity):
+  File(src/pages/sizes.ts)
+  File(src/lib/sizes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/sizes.ts","affected":true,"direction":"downstream","changed":"src/lib/sizes.ts","path":["File(src/pages/sizes.ts)","File(src/lib/sizes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/sizes.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/sizes.ts"
+Path (downstream, file granularity):
+  File(src/pages/sizes.ts)
+  File(src/lib/sizes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/sizes.ts","affected":true,"direction":"downstream","changed":"src/lib/sizes.ts","path":["File(src/pages/sizes.ts)","File(src/lib/sizes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/sizes.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/sizes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/sizes.ts)
+  ModuleInit(src/pages/sizes.ts)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, Size)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/sizes.ts","affected":true,"direction":"downstream","changed":"src/lib/sizes.ts","path":["File(src/pages/sizes.ts)","ModuleInit(src/pages/sizes.ts)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, Size)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/sizes.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/sizes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/sizes.ts)
+  ModuleInit(src/pages/sizes.ts)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, Size)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/sizes.ts","affected":true,"direction":"downstream","changed":"src/lib/sizes.ts","path":["File(src/pages/sizes.ts)","ModuleInit(src/pages/sizes.ts)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, Size)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/sizes.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/sizes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/sizes.ts)
+  ModuleInit(src/pages/sizes.ts)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, Size)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/sizes.ts","affected":true,"direction":"downstream","changed":"src/lib/sizes.ts","path":["File(src/pages/sizes.ts)","ModuleInit(src/pages/sizes.ts)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, Size)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/sizes.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/sizes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/sizes.ts)
+  ModuleInit(src/pages/sizes.ts)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, Size)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/sizes.ts","affected":true,"direction":"downstream","changed":"src/lib/sizes.ts","path":["File(src/pages/sizes.ts)","ModuleInit(src/pages/sizes.ts)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, Size)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/labels.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/labels.ts"
+Path (downstream, file granularity):
+  File(src/pages/labels.ts)
+  File(src/lib/labels.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/labels.ts","affected":true,"direction":"downstream","changed":"src/lib/labels.ts","path":["File(src/pages/labels.ts)","File(src/lib/labels.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/labels.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/labels.ts"
+Path (downstream, file granularity):
+  File(src/pages/labels.ts)
+  File(src/lib/labels.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/labels.ts","affected":true,"direction":"downstream","changed":"src/lib/labels.ts","path":["File(src/pages/labels.ts)","File(src/lib/labels.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/labels.ts [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/labels.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/labels.ts [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/labels.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/labels.ts [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/labels.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/labels.ts [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/labels.ts","affected":false,"granularity":"symbol","unresolved":[]}]}

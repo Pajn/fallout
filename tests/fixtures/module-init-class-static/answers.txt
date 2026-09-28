@@ -1,0 +1,501 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/static-field.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-field.ts"
+Path (downstream, file granularity):
+  File(src/pages/static-field.ts)
+  File(src/lib/static-field.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-field.ts","affected":true,"direction":"downstream","changed":"src/lib/static-field.ts","path":["File(src/pages/static-field.ts)","File(src/lib/static-field.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/static-field.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-field.ts"
+Path (downstream, file granularity):
+  File(src/pages/static-field.ts)
+  File(src/lib/static-field.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-field.ts","affected":true,"direction":"downstream","changed":"src/lib/static-field.ts","path":["File(src/pages/static-field.ts)","File(src/lib/static-field.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/static-field.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-field.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-field.ts)
+  ModuleInit(src/pages/static-field.ts)
+  ModuleInit(src/lib/static-field.ts)
+  Decl(src/lib/static-field.ts, Widget)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-field.ts","affected":true,"direction":"downstream","changed":"src/lib/static-field.ts","path":["File(src/pages/static-field.ts)","ModuleInit(src/pages/static-field.ts)","ModuleInit(src/lib/static-field.ts)","Decl(src/lib/static-field.ts, Widget)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-field.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-field.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-field.ts)
+  ModuleInit(src/pages/static-field.ts)
+  ModuleInit(src/lib/static-field.ts)
+  Decl(src/lib/static-field.ts, Widget)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-field.ts","affected":true,"direction":"downstream","changed":"src/lib/static-field.ts","path":["File(src/pages/static-field.ts)","ModuleInit(src/pages/static-field.ts)","ModuleInit(src/lib/static-field.ts)","Decl(src/lib/static-field.ts, Widget)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-field.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-field.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-field.ts)
+  ModuleInit(src/pages/static-field.ts)
+  ModuleInit(src/lib/static-field.ts)
+  Decl(src/lib/static-field.ts, Widget)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-field.ts","affected":true,"direction":"downstream","changed":"src/lib/static-field.ts","path":["File(src/pages/static-field.ts)","ModuleInit(src/pages/static-field.ts)","ModuleInit(src/lib/static-field.ts)","Decl(src/lib/static-field.ts, Widget)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-field.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-field.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-field.ts)
+  ModuleInit(src/pages/static-field.ts)
+  ModuleInit(src/lib/static-field.ts)
+  Decl(src/lib/static-field.ts, Widget)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-field.ts","affected":true,"direction":"downstream","changed":"src/lib/static-field.ts","path":["File(src/pages/static-field.ts)","ModuleInit(src/pages/static-field.ts)","ModuleInit(src/lib/static-field.ts)","Decl(src/lib/static-field.ts, Widget)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-block.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-block.ts"
+Path (downstream, file granularity):
+  File(src/pages/static-block.ts)
+  File(src/lib/static-block.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-block.ts","affected":true,"direction":"downstream","changed":"src/lib/static-block.ts","path":["File(src/pages/static-block.ts)","File(src/lib/static-block.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/static-block.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-block.ts"
+Path (downstream, file granularity):
+  File(src/pages/static-block.ts)
+  File(src/lib/static-block.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-block.ts","affected":true,"direction":"downstream","changed":"src/lib/static-block.ts","path":["File(src/pages/static-block.ts)","File(src/lib/static-block.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/static-block.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-block.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-block.ts)
+  ModuleInit(src/pages/static-block.ts)
+  ModuleInit(src/lib/static-block.ts)
+  Decl(src/lib/static-block.ts, Store)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-block.ts","affected":true,"direction":"downstream","changed":"src/lib/static-block.ts","path":["File(src/pages/static-block.ts)","ModuleInit(src/pages/static-block.ts)","ModuleInit(src/lib/static-block.ts)","Decl(src/lib/static-block.ts, Store)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-block.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-block.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-block.ts)
+  ModuleInit(src/pages/static-block.ts)
+  ModuleInit(src/lib/static-block.ts)
+  Decl(src/lib/static-block.ts, Store)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-block.ts","affected":true,"direction":"downstream","changed":"src/lib/static-block.ts","path":["File(src/pages/static-block.ts)","ModuleInit(src/pages/static-block.ts)","ModuleInit(src/lib/static-block.ts)","Decl(src/lib/static-block.ts, Store)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-block.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-block.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-block.ts)
+  ModuleInit(src/pages/static-block.ts)
+  ModuleInit(src/lib/static-block.ts)
+  Decl(src/lib/static-block.ts, Store)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-block.ts","affected":true,"direction":"downstream","changed":"src/lib/static-block.ts","path":["File(src/pages/static-block.ts)","ModuleInit(src/pages/static-block.ts)","ModuleInit(src/lib/static-block.ts)","Decl(src/lib/static-block.ts, Store)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/static-block.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/static-block.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/static-block.ts)
+  ModuleInit(src/pages/static-block.ts)
+  ModuleInit(src/lib/static-block.ts)
+  Decl(src/lib/static-block.ts, Store)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/static-block.ts","affected":true,"direction":"downstream","changed":"src/lib/static-block.ts","path":["File(src/pages/static-block.ts)","ModuleInit(src/pages/static-block.ts)","ModuleInit(src/lib/static-block.ts)","Decl(src/lib/static-block.ts, Store)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/heritage.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/heritage.ts"
+Path (downstream, file granularity):
+  File(src/pages/heritage.ts)
+  File(src/lib/heritage.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/heritage.ts","affected":true,"direction":"downstream","changed":"src/lib/heritage.ts","path":["File(src/pages/heritage.ts)","File(src/lib/heritage.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/heritage.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/heritage.ts"
+Path (downstream, file granularity):
+  File(src/pages/heritage.ts)
+  File(src/lib/heritage.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/heritage.ts","affected":true,"direction":"downstream","changed":"src/lib/heritage.ts","path":["File(src/pages/heritage.ts)","File(src/lib/heritage.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/heritage.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/heritage.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/heritage.ts)
+  ModuleInit(src/pages/heritage.ts)
+  ModuleInit(src/lib/heritage.ts)
+  Decl(src/lib/heritage.ts, Panel)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/heritage.ts","affected":true,"direction":"downstream","changed":"src/lib/heritage.ts","path":["File(src/pages/heritage.ts)","ModuleInit(src/pages/heritage.ts)","ModuleInit(src/lib/heritage.ts)","Decl(src/lib/heritage.ts, Panel)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/heritage.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/heritage.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/heritage.ts)
+  ModuleInit(src/pages/heritage.ts)
+  ModuleInit(src/lib/heritage.ts)
+  Decl(src/lib/heritage.ts, Panel)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/heritage.ts","affected":true,"direction":"downstream","changed":"src/lib/heritage.ts","path":["File(src/pages/heritage.ts)","ModuleInit(src/pages/heritage.ts)","ModuleInit(src/lib/heritage.ts)","Decl(src/lib/heritage.ts, Panel)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/heritage.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/heritage.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/heritage.ts)
+  ModuleInit(src/pages/heritage.ts)
+  ModuleInit(src/lib/heritage.ts)
+  Decl(src/lib/heritage.ts, Panel)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/heritage.ts","affected":true,"direction":"downstream","changed":"src/lib/heritage.ts","path":["File(src/pages/heritage.ts)","ModuleInit(src/pages/heritage.ts)","ModuleInit(src/lib/heritage.ts)","Decl(src/lib/heritage.ts, Panel)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/heritage.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/heritage.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/heritage.ts)
+  ModuleInit(src/pages/heritage.ts)
+  ModuleInit(src/lib/heritage.ts)
+  Decl(src/lib/heritage.ts, Panel)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/heritage.ts","affected":true,"direction":"downstream","changed":"src/lib/heritage.ts","path":["File(src/pages/heritage.ts)","ModuleInit(src/pages/heritage.ts)","ModuleInit(src/lib/heritage.ts)","Decl(src/lib/heritage.ts, Panel)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/computed-key.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/computed-key.ts"
+Path (downstream, file granularity):
+  File(src/pages/computed-key.ts)
+  File(src/lib/computed-key.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/computed-key.ts","affected":true,"direction":"downstream","changed":"src/lib/computed-key.ts","path":["File(src/pages/computed-key.ts)","File(src/lib/computed-key.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/computed-key.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/computed-key.ts"
+Path (downstream, file granularity):
+  File(src/pages/computed-key.ts)
+  File(src/lib/computed-key.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/computed-key.ts","affected":true,"direction":"downstream","changed":"src/lib/computed-key.ts","path":["File(src/pages/computed-key.ts)","File(src/lib/computed-key.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/computed-key.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/computed-key.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/computed-key.ts)
+  ModuleInit(src/pages/computed-key.ts)
+  ModuleInit(src/lib/computed-key.ts)
+  Decl(src/lib/computed-key.ts, Keyed)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/computed-key.ts","affected":true,"direction":"downstream","changed":"src/lib/computed-key.ts","path":["File(src/pages/computed-key.ts)","ModuleInit(src/pages/computed-key.ts)","ModuleInit(src/lib/computed-key.ts)","Decl(src/lib/computed-key.ts, Keyed)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/computed-key.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/computed-key.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/computed-key.ts)
+  ModuleInit(src/pages/computed-key.ts)
+  ModuleInit(src/lib/computed-key.ts)
+  Decl(src/lib/computed-key.ts, Keyed)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/computed-key.ts","affected":true,"direction":"downstream","changed":"src/lib/computed-key.ts","path":["File(src/pages/computed-key.ts)","ModuleInit(src/pages/computed-key.ts)","ModuleInit(src/lib/computed-key.ts)","Decl(src/lib/computed-key.ts, Keyed)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/computed-key.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/computed-key.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/computed-key.ts)
+  ModuleInit(src/pages/computed-key.ts)
+  ModuleInit(src/lib/computed-key.ts)
+  Decl(src/lib/computed-key.ts, Keyed)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/computed-key.ts","affected":true,"direction":"downstream","changed":"src/lib/computed-key.ts","path":["File(src/pages/computed-key.ts)","ModuleInit(src/pages/computed-key.ts)","ModuleInit(src/lib/computed-key.ts)","Decl(src/lib/computed-key.ts, Keyed)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/computed-key.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/computed-key.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/computed-key.ts)
+  ModuleInit(src/pages/computed-key.ts)
+  ModuleInit(src/lib/computed-key.ts)
+  Decl(src/lib/computed-key.ts, Keyed)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/computed-key.ts","affected":true,"direction":"downstream","changed":"src/lib/computed-key.ts","path":["File(src/pages/computed-key.ts)","ModuleInit(src/pages/computed-key.ts)","ModuleInit(src/lib/computed-key.ts)","Decl(src/lib/computed-key.ts, Keyed)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/default-class.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/default-class.ts"
+Path (downstream, file granularity):
+  File(src/pages/default-class.ts)
+  File(src/lib/default-class.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/default-class.ts","affected":true,"direction":"downstream","changed":"src/lib/default-class.ts","path":["File(src/pages/default-class.ts)","File(src/lib/default-class.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/default-class.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/default-class.ts"
+Path (downstream, file granularity):
+  File(src/pages/default-class.ts)
+  File(src/lib/default-class.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/default-class.ts","affected":true,"direction":"downstream","changed":"src/lib/default-class.ts","path":["File(src/pages/default-class.ts)","File(src/lib/default-class.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/default-class.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/default-class.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/default-class.ts)
+  ModuleInit(src/pages/default-class.ts)
+  ModuleInit(src/lib/default-class.ts)
+  Decl(src/lib/default-class.ts, default)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/default-class.ts","affected":true,"direction":"downstream","changed":"src/lib/default-class.ts","path":["File(src/pages/default-class.ts)","ModuleInit(src/pages/default-class.ts)","ModuleInit(src/lib/default-class.ts)","Decl(src/lib/default-class.ts, default)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/default-class.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/default-class.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/default-class.ts)
+  ModuleInit(src/pages/default-class.ts)
+  ModuleInit(src/lib/default-class.ts)
+  Decl(src/lib/default-class.ts, default)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/default-class.ts","affected":true,"direction":"downstream","changed":"src/lib/default-class.ts","path":["File(src/pages/default-class.ts)","ModuleInit(src/pages/default-class.ts)","ModuleInit(src/lib/default-class.ts)","Decl(src/lib/default-class.ts, default)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/default-class.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/default-class.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/default-class.ts)
+  ModuleInit(src/pages/default-class.ts)
+  ModuleInit(src/lib/default-class.ts)
+  Decl(src/lib/default-class.ts, default)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/default-class.ts","affected":true,"direction":"downstream","changed":"src/lib/default-class.ts","path":["File(src/pages/default-class.ts)","ModuleInit(src/pages/default-class.ts)","ModuleInit(src/lib/default-class.ts)","Decl(src/lib/default-class.ts, default)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/default-class.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/default-class.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/default-class.ts)
+  ModuleInit(src/pages/default-class.ts)
+  ModuleInit(src/lib/default-class.ts)
+  Decl(src/lib/default-class.ts, default)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/default-class.ts","affected":true,"direction":"downstream","changed":"src/lib/default-class.ts","path":["File(src/pages/default-class.ts)","ModuleInit(src/pages/default-class.ts)","ModuleInit(src/lib/default-class.ts)","Decl(src/lib/default-class.ts, default)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/class-expression.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/class-expression.ts"
+Path (downstream, file granularity):
+  File(src/pages/class-expression.ts)
+  File(src/lib/class-expression.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/class-expression.ts","affected":true,"direction":"downstream","changed":"src/lib/class-expression.ts","path":["File(src/pages/class-expression.ts)","File(src/lib/class-expression.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/class-expression.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/class-expression.ts"
+Path (downstream, file granularity):
+  File(src/pages/class-expression.ts)
+  File(src/lib/class-expression.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/class-expression.ts","affected":true,"direction":"downstream","changed":"src/lib/class-expression.ts","path":["File(src/pages/class-expression.ts)","File(src/lib/class-expression.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/class-expression.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/class-expression.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/class-expression.ts)
+  ModuleInit(src/pages/class-expression.ts)
+  ModuleInit(src/lib/class-expression.ts)
+  Decl(src/lib/class-expression.ts, Toast)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/class-expression.ts","affected":true,"direction":"downstream","changed":"src/lib/class-expression.ts","path":["File(src/pages/class-expression.ts)","ModuleInit(src/pages/class-expression.ts)","ModuleInit(src/lib/class-expression.ts)","Decl(src/lib/class-expression.ts, Toast)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/class-expression.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/class-expression.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/class-expression.ts)
+  ModuleInit(src/pages/class-expression.ts)
+  ModuleInit(src/lib/class-expression.ts)
+  Decl(src/lib/class-expression.ts, Toast)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/class-expression.ts","affected":true,"direction":"downstream","changed":"src/lib/class-expression.ts","path":["File(src/pages/class-expression.ts)","ModuleInit(src/pages/class-expression.ts)","ModuleInit(src/lib/class-expression.ts)","Decl(src/lib/class-expression.ts, Toast)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/class-expression.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/class-expression.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/class-expression.ts)
+  ModuleInit(src/pages/class-expression.ts)
+  ModuleInit(src/lib/class-expression.ts)
+  Decl(src/lib/class-expression.ts, Toast)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/class-expression.ts","affected":true,"direction":"downstream","changed":"src/lib/class-expression.ts","path":["File(src/pages/class-expression.ts)","ModuleInit(src/pages/class-expression.ts)","ModuleInit(src/lib/class-expression.ts)","Decl(src/lib/class-expression.ts, Toast)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/class-expression.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/class-expression.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/class-expression.ts)
+  ModuleInit(src/pages/class-expression.ts)
+  ModuleInit(src/lib/class-expression.ts)
+  Decl(src/lib/class-expression.ts, Toast)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/class-expression.ts","affected":true,"direction":"downstream","changed":"src/lib/class-expression.ts","path":["File(src/pages/class-expression.ts)","ModuleInit(src/pages/class-expression.ts)","ModuleInit(src/lib/class-expression.ts)","Decl(src/lib/class-expression.ts, Toast)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/instance-field.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/instance-field.ts"
+Path (downstream, file granularity):
+  File(src/pages/instance-field.ts)
+  File(src/lib/instance-field.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/instance-field.ts","affected":true,"direction":"downstream","changed":"src/lib/instance-field.ts","path":["File(src/pages/instance-field.ts)","File(src/lib/instance-field.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/instance-field.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/instance-field.ts"
+Path (downstream, file granularity):
+  File(src/pages/instance-field.ts)
+  File(src/lib/instance-field.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/instance-field.ts","affected":true,"direction":"downstream","changed":"src/lib/instance-field.ts","path":["File(src/pages/instance-field.ts)","File(src/lib/instance-field.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/instance-field.ts [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/instance-field.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/instance-field.ts [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/instance-field.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/instance-field.ts [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/instance-field.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/instance-field.ts [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/instance-field.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/method-body.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/method-body.ts"
+Path (downstream, file granularity):
+  File(src/pages/method-body.ts)
+  File(src/lib/method-body.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/method-body.ts","affected":true,"direction":"downstream","changed":"src/lib/method-body.ts","path":["File(src/pages/method-body.ts)","File(src/lib/method-body.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/method-body.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/method-body.ts"
+Path (downstream, file granularity):
+  File(src/pages/method-body.ts)
+  File(src/lib/method-body.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/method-body.ts","affected":true,"direction":"downstream","changed":"src/lib/method-body.ts","path":["File(src/pages/method-body.ts)","File(src/lib/method-body.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/method-body.ts [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/method-body.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/method-body.ts [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/method-body.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/method-body.ts [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/method-body.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/method-body.ts [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/method-body.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/pure-static.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/pure-static.ts"
+Path (downstream, file granularity):
+  File(src/pages/pure-static.ts)
+  File(src/lib/pure-static.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/pure-static.ts","affected":true,"direction":"downstream","changed":"src/lib/pure-static.ts","path":["File(src/pages/pure-static.ts)","File(src/lib/pure-static.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/pure-static.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/pure-static.ts"
+Path (downstream, file granularity):
+  File(src/pages/pure-static.ts)
+  File(src/lib/pure-static.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/pure-static.ts","affected":true,"direction":"downstream","changed":"src/lib/pure-static.ts","path":["File(src/pages/pure-static.ts)","File(src/lib/pure-static.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/pure-static.ts [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/pure-static.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/pure-static.ts [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/pure-static.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/pure-static.ts [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/pure-static.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/pure-static.ts [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/pure-static.ts","affected":false,"granularity":"symbol","unresolved":[]}]}

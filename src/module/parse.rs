@@ -274,7 +274,7 @@ fn build_fine(
     factories::attach(
         &ctx, &drafts, &imports, &by_symbol, candidates, &shared, &mut decls,
     );
-    let origins = init::origins(&imports, sources);
+    let origins = init::origins(&ctx, &imports, sources);
     let (init_decls, conditional_init) =
         init::collect(&ctx, program, &drafts, &decls, &origins, pure, &conditional);
 

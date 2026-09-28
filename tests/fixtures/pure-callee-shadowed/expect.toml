@@ -1,0 +1,22 @@
+# The project calls `memo` from `./memo` pure, and the page imports `sibling`
+# alone. The class's static block declares a `memo` of its own, which assigns to a
+# global, and calls that. The entry speaks for the import, not for a local of the
+# same name, so the block runs something when the module loads and the edit to it
+# reaches the page.
+[[anchor]]
+path = "src/pages/shadowed.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/shadowed.ts)",
+    "ModuleInit(src/pages/shadowed.ts)",
+    "ModuleInit(src/lib/shadowed.ts)",
+    "Decl(src/lib/shadowed.ts, X)",
+]
+
+# The same block calling the imported `memo` itself runs nothing the entry does not
+# clear, so an edit to its argument reaches only the importers of the class.
+[[anchor]]
+path = "src/pages/imported.ts"
+affected = false
