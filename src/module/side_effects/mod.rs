@@ -21,6 +21,7 @@
 //! callee's own file, so [`super::init`] defers it and the graph resolves it.
 
 mod globals;
+mod imports;
 mod local_pure;
 
 use ahash::AHashMap;
@@ -29,11 +30,11 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::{Scoping, SymbolFlags, SymbolId};
 use oxc_span::GetSpan;
 
-use super::ImportTarget;
 use super::cjs;
 use super::decls::ImportBinding;
 use super::parse::Ctx;
 use crate::pure::PureList;
+use imports::Imports;
 use local_pure::{LocalPure, Proof};
 
 /// What code run at module load in one file is judged against: where each import
@@ -44,13 +45,8 @@ use local_pure::{LocalPure, Proof};
 /// it.
 pub(super) struct SideEffects<'c, 'a> {
     scoping: &'c Scoping,
-    /// Each imported binding as `symbol -> (module specifier, exported name)`, with
-    /// `default` and `*` standing for the two unnamed import forms.
-    ///
-    /// Keyed by the binding itself rather than by its name, since a local of the
-    /// same name inside a function or a class body is somebody else's value.
-    imports: AHashMap<SymbolId, (&'c str, &'c str)>,
-    pure: &'c PureList,
+    /// The local-helper proof. It holds where each import comes from and what the
+    /// project has declared pure, since it reads them too.
     local: LocalPure<'c, 'a>,
     readable: AHashMap<SymbolId, u32>,
 }
@@ -64,32 +60,10 @@ impl<'c, 'a> SideEffects<'c, 'a> {
         pure: &'c PureList,
     ) -> Self {
         let scoping = ctx.semantic.scoping();
-        let mut by_symbol = AHashMap::default();
-        for binding in imports {
-            let Some(source) = sources.get(binding.reference.source as usize) else {
-                continue;
-            };
-            // The binding the import statement made, which is what a callee must
-            // resolve to for an entry to speak for it.
-            let Some(symbol) = scoping
-                .get_root_binding(binding.local.as_str().into())
-                .filter(|&symbol| scoping.symbol_flags(symbol).is_import())
-            else {
-                continue;
-            };
-            let exported = match &binding.reference.target {
-                ImportTarget::Named(name) | ImportTarget::Member { export: name, .. } => {
-                    name.as_str()
-                }
-                ImportTarget::Namespace => "*",
-            };
-            by_symbol.insert(symbol, (source.as_str(), exported));
-        }
+        let imports = Imports::new(scoping, imports, sources, pure);
         Self {
             scoping,
-            imports: by_symbol,
-            pure,
-            local: LocalPure::infer(ctx, program),
+            local: LocalPure::infer(ctx, program, imports),
             readable: readable_from(ctx),
         }
     }
@@ -179,13 +153,6 @@ impl<'c, 'a> SideEffects<'c, 'a> {
         let mut detector = Detector::new(self);
         visit(&mut detector);
         detector.impure
-    }
-
-    /// The import `identifier` reads, as `(module specifier, exported name)`, or
-    /// `None` when it reads anything else.
-    fn import_of(&self, identifier: &IdentifierReference<'_>) -> Option<(&'c str, &'c str)> {
-        let reference = self.scoping.get_reference(identifier.reference_id.get()?);
-        self.imports.get(&reference.symbol_id()?).copied()
     }
 }
 
@@ -305,20 +272,7 @@ impl<'s, 'c, 'a> Detector<'s, 'c, 'a> {
     /// function, and is honoured only where the callee is reached from the import
     /// the entry names, so a local binding of the same name is not covered.
     fn callee_is_pure(&self, annotated: bool, callee: &Expression<'_>) -> bool {
-        if annotated {
-            return true;
-        }
-        let Some((root, members)) = callee_path(callee) else {
-            return false;
-        };
-        let Some((source, exported)) = self.effects.import_of(root) else {
-            return false;
-        };
-
-        let mut path = Vec::with_capacity(members.len() + 1);
-        path.push(exported);
-        path.extend(members);
-        self.effects.pure.contains(source, &path)
+        annotated || self.effects.local.imports().listed(callee)
     }
 }
 
@@ -476,22 +430,6 @@ impl<'a> Visit<'a> for Detector<'_, '_, '_> {
             }
             self.visit_statement(statement);
         }
-    }
-}
-
-/// Splits `A.b.c` into its root identifier and the members read from it. `None` when
-/// the callee is anything else, such as a call on a call or a computed member.
-fn callee_path<'e, 'a>(
-    callee: &'e Expression<'a>,
-) -> Option<(&'e IdentifierReference<'a>, Vec<&'e str>)> {
-    match callee {
-        Expression::Identifier(ident) => Some((ident, Vec::new())),
-        Expression::StaticMemberExpression(member) => {
-            let (root, mut path) = callee_path(&member.object)?;
-            path.push(member.property.name.as_str());
-            Some((root, path))
-        }
-        _ => None,
     }
 }
 

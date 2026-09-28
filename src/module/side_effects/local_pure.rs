@@ -22,6 +22,7 @@ use oxc_ast::ast::*;
 use oxc_semantic::{IsGlobalReference, SymbolId};
 
 use super::globals;
+use super::imports::Imports;
 use crate::module::parse::{Ctx, frozen};
 
 /// A position in the file from which a proof holds. Zero for one that holds
@@ -30,6 +31,9 @@ type Ready = u32;
 
 pub(super) struct LocalPure<'c, 'a> {
     ctx: &'c Ctx<'a>,
+    /// Where each import of the file comes from, and what the project's list says
+    /// of it.
+    imports: Imports<'c>,
     /// Proven helpers, and where each becomes callable.
     proven: AHashMap<SymbolId, Ready>,
     /// Top-level bindings reading which runs nothing — a `const` holding a
@@ -70,9 +74,10 @@ enum Body<'s, 'a> {
 }
 
 impl<'c, 'a> LocalPure<'c, 'a> {
-    pub(super) fn infer(ctx: &'c Ctx<'a>, program: &Program<'a>) -> Self {
+    pub(super) fn infer(ctx: &'c Ctx<'a>, program: &Program<'a>, imports: Imports<'c>) -> Self {
         let mut result = Self {
             ctx,
+            imports,
             proven: AHashMap::default(),
             values: AHashMap::default(),
             primitives: AHashMap::default(),
@@ -178,6 +183,10 @@ impl<'c, 'a> LocalPure<'c, 'a> {
             }
         }
         result
+    }
+
+    pub(super) fn imports(&self) -> &Imports<'c> {
+        &self.imports
     }
 
     /// How much of a top-level call is proven to run nothing where it is written.
