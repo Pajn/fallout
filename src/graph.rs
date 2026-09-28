@@ -294,7 +294,7 @@ impl Graph {
         self.view(file).fine()
     }
 
-    fn target_of(&self, analysed: &Analysed, source: SourceId) -> Option<FileId> {
+    pub(crate) fn target_of(&self, analysed: &Analysed, source: SourceId) -> Option<FileId> {
         analysed.resolved.get(source as usize)?.first().copied()
     }
 
@@ -455,112 +455,6 @@ impl Graph {
             deps.imports.extend(argument.imports.iter().cloned());
         }
         Some(deps)
-    }
-
-    /// The rule of the factory `decl` of `file` is the result of calling, if the
-    /// callee is one.
-    ///
-    /// An opaque file has no declarations to ask about, and so no rule.
-    pub fn made_by(&self, file: FileId, decl: DeclId) -> Option<&'static crate::factories::Rule> {
-        let fine = self.view(file).fine()?;
-        let call = fine.module().decls.get(decl as usize)?.factory.as_ref()?;
-        self.callee_rule(&fine, &call.callee, 0)
-    }
-
-    /// The rule of the factory a callee written in a fine file names, followed
-    /// through declarations that are other names for it and through the exports of
-    /// the modules it is imported from.
-    fn callee_rule(
-        &self,
-        fine: &Fine,
-        callee: &crate::module::Callee,
-        depth: usize,
-    ) -> Option<&'static crate::factories::Rule> {
-        use crate::module::Callee;
-
-        // A cycle of re-exports names nothing.
-        if depth > 32 {
-            return None;
-        }
-        let module = fine.module();
-        match callee {
-            Callee::Local { decl, path } => {
-                let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
-                self.callee_rule(fine, &extended(derived, path), depth + 1)
-            }
-            Callee::Import { source, name, path } => {
-                // Where the specifier lands in the project's own source, that is the
-                // module it names, whatever it is spelled as: a `paths` entry can
-                // map a package's name onto a shim.
-                if let Some(target) = self.target_of(fine.analysed(), *source) {
-                    let target_path = self.path(target);
-                    if is_source_file(&target_path) && !crate::resolve::is_installed(&target_path) {
-                        return self.export_rule(target, name, path, depth + 1);
-                    }
-                }
-                let specifier = module.sources.get(*source as usize)?;
-                if path.is_empty() {
-                    return crate::factories::rule(specifier, name);
-                }
-                None
-            }
-        }
-    }
-
-    /// The rule of the factory `file` exports as `name`, read through `path`. An
-    /// opaque file exports nothing that can be named, and so no rule.
-    fn export_rule(
-        &self,
-        file: FileId,
-        name: &str,
-        path: &[String],
-        depth: usize,
-    ) -> Option<&'static crate::factories::Rule> {
-        use crate::module::Callee;
-
-        let fine = self.view(file).fine()?;
-        let module = fine.module();
-        // `import * as store from "./store"; store.createAsyncThunk(…)`.
-        let (name, path) = match (name, path) {
-            ("*", [first, rest @ ..]) => (first.as_str(), rest),
-            ("*", []) => return None,
-            (name, path) => (name, path),
-        };
-        let Some(export) = module.export_named(name) else {
-            // Through `export *`, one module at a time, and only where one star
-            // could provide the name: a factory is known by where it comes from.
-            return match self.star_providers(&fine, name).as_slice() {
-                [Node::Export(next, _)] => self.export_rule(*next, name, path, depth + 1),
-                _ => None,
-            };
-        };
-        match &export.target {
-            ExportTarget::Local(decl) => {
-                let derived = module.decls.get(*decl as usize)?.derived.as_ref()?;
-                self.callee_rule(&fine, &extended(derived, path), depth + 1)
-            }
-            ExportTarget::Reexport { source, name } => self.callee_rule(
-                &fine,
-                &Callee::Import {
-                    source: *source,
-                    name: name.clone(),
-                    path: path.to_vec(),
-                },
-                depth + 1,
-            ),
-            ExportTarget::ReexportAll { source } => {
-                let (first, rest) = path.split_first()?;
-                self.callee_rule(
-                    &fine,
-                    &Callee::Import {
-                        source: *source,
-                        name: first.clone(),
-                        path: rest.to_vec(),
-                    },
-                    depth + 1,
-                )
-            }
-        }
     }
 
     /// The nodes a read of `member` off the export `export` of `file` should point
@@ -749,7 +643,7 @@ impl Graph {
     /// A star whose path names no file has no node to go on to. It still makes the
     /// barrel one that could provide the name, so the barrel's own export node is on
     /// the path, and that node is marked when the barrel is.
-    fn star_providers(&self, fine: &Fine, name: &str) -> Vec<Node> {
+    pub(crate) fn star_providers(&self, fine: &Fine, name: &str) -> Vec<Node> {
         let id = self.name_id(name);
         let mut providers = Vec::new();
         for &source in &fine.module().export_stars {
@@ -916,26 +810,6 @@ fn member_of<'m>(module: &'m FineModule, decl: DeclId, member: &str) -> Option<&
         .members
         .iter()
         .find(|entry| entry.name == member)
-}
-
-/// `callee` read further, through `path`.
-fn extended(callee: &crate::module::Callee, path: &[String]) -> crate::module::Callee {
-    use crate::module::Callee;
-    match callee {
-        Callee::Import {
-            source,
-            name,
-            path: base,
-        } => Callee::Import {
-            source: *source,
-            name: name.clone(),
-            path: base.iter().chain(path).cloned().collect(),
-        },
-        Callee::Local { decl, path: base } => Callee::Local {
-            decl: *decl,
-            path: base.iter().chain(path).cloned().collect(),
-        },
-    }
 }
 
 #[cfg(test)]
