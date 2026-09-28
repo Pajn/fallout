@@ -1,0 +1,107 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/early.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/early.ts"
+Path (downstream, file granularity):
+  File(src/pages/early.ts)
+  File(src/lib/early.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/early.ts","affected":true,"direction":"downstream","changed":"src/lib/early.ts","path":["File(src/pages/early.ts)","File(src/lib/early.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/early.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/early.ts"
+Path (downstream, file granularity):
+  File(src/pages/early.ts)
+  File(src/lib/early.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/early.ts","affected":true,"direction":"downstream","changed":"src/lib/early.ts","path":["File(src/pages/early.ts)","File(src/lib/early.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/early.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/early.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/early.ts)
+  ModuleInit(src/pages/early.ts)
+  ModuleInit(src/lib/early.ts)
+  Decl(src/lib/early.ts, sizes)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/early.ts","affected":true,"direction":"downstream","changed":"src/lib/early.ts","path":["File(src/pages/early.ts)","ModuleInit(src/pages/early.ts)","ModuleInit(src/lib/early.ts)","Decl(src/lib/early.ts, sizes)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/early.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/early.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/early.ts)
+  ModuleInit(src/pages/early.ts)
+  ModuleInit(src/lib/early.ts)
+  Decl(src/lib/early.ts, sizes)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/early.ts","affected":true,"direction":"downstream","changed":"src/lib/early.ts","path":["File(src/pages/early.ts)","ModuleInit(src/pages/early.ts)","ModuleInit(src/lib/early.ts)","Decl(src/lib/early.ts, sizes)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/early.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/early.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/early.ts)
+  ModuleInit(src/pages/early.ts)
+  ModuleInit(src/lib/early.ts)
+  Decl(src/lib/early.ts, sizes)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/early.ts","affected":true,"direction":"downstream","changed":"src/lib/early.ts","path":["File(src/pages/early.ts)","ModuleInit(src/pages/early.ts)","ModuleInit(src/lib/early.ts)","Decl(src/lib/early.ts, sizes)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/early.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/early.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/early.ts)
+  ModuleInit(src/pages/early.ts)
+  ModuleInit(src/lib/early.ts)
+  Decl(src/lib/early.ts, sizes)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/early.ts","affected":true,"direction":"downstream","changed":"src/lib/early.ts","path":["File(src/pages/early.ts)","ModuleInit(src/pages/early.ts)","ModuleInit(src/lib/early.ts)","Decl(src/lib/early.ts, sizes)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/late.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/late.ts"
+Path (downstream, file granularity):
+  File(src/pages/late.ts)
+  File(src/lib/late.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/late.ts","affected":true,"direction":"downstream","changed":"src/lib/late.ts","path":["File(src/pages/late.ts)","File(src/lib/late.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/late.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/late.ts"
+Path (downstream, file granularity):
+  File(src/pages/late.ts)
+  File(src/lib/late.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/late.ts","affected":true,"direction":"downstream","changed":"src/lib/late.ts","path":["File(src/pages/late.ts)","File(src/lib/late.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/late.ts [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/late.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/late.ts [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/late.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/late.ts [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/late.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/late.ts [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/late.ts","affected":false,"granularity":"symbol","unresolved":[]}]}

@@ -152,11 +152,14 @@ an assignment to a name that is not a `let`, `var`, function or class declared a
 top of the same file: a name nothing declares is a property of the global object, and
 assigning an import or a `const` throws. A destructuring pattern's defaults and
 computed keys run with the initialiser, so the call in `const { a = register() } =
-options` counts. For a class, what counts is what runs when the class is defined: its
-`extends` expression, its computed keys, and its static fields and blocks, but not
-instance fields or method bodies. An enum's member initialisers count too. A bare
-`import "./theme.css"` is a side effect of loading the module and reaches every
-importer, while `import logo from "./logo.png"`
+options` counts. So does naming a `let`, a `const` or a class before its declaration
+has run, as `export const v = [limit]` above `const limit = 10` does, since that
+throws. Naming one in a function body does not count, since the body runs only when
+it is called, and a call on load is judged like any other. For a class, what counts
+is what runs when the class is defined: its `extends` expression, its computed keys,
+and its static fields and blocks, but not instance fields or method bodies. An enum's
+member initialisers count too. A bare `import "./theme.css"` is a side effect of
+loading the module and reaches every importer, while `import logo from "./logo.png"`
 reaches only the declarations using `logo`.
 
 A `require("./x")` is an ordinary dependency of the declaration that contains it. It

@@ -1613,6 +1613,11 @@ fn an_edited_statement_that_runs_something_on_load_reaches_every_importer() {
             "export const { a = reg(1) } = obj;",
             "export const { a = reg(2) } = obj;",
         ),
+        // A read before the declaration, which throws.
+        (
+            "export const v = [later, 1];\nconst later = 1;",
+            "export const v = [later, 2];\nconst later = 1;",
+        ),
     ];
     let head = "import { obj, reg } from \"./obj\";\n";
     let tail = "\nexport const sibling = 1;\n";
