@@ -331,16 +331,18 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
             next += 1;
             let text = match self.now.fs().read_to_string(&config) {
                 Ok(text) => text,
-                // One that is there and cannot be read is no answer, since whether
-                // it reads a changed config is exactly what is not known. One that
-                // is not there reads nothing.
+                // One that is not there reads nothing, and neither does a path that
+                // cannot be a file, such as `extends` taken as a directory under a
+                // file of that name. One that cannot be read for any other reason is
+                // no answer, since whether it reads a changed config is exactly what
+                // is not known. That includes one in a directory this process may
+                // not enter, where even asking whether it is there fails.
                 Err(error) => {
-                    let there = self
-                        .now
-                        .fs()
-                        .metadata(&config)
-                        .is_ok_and(|found| found.is_file());
-                    if there {
+                    use std::io::ErrorKind;
+                    if !matches!(
+                        error.kind(),
+                        ErrorKind::NotFound | ErrorKind::NotADirectory | ErrorKind::IsADirectory
+                    ) {
                         self.now.note_unreadable_config(&config, &error);
                     }
                     continue;

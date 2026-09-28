@@ -1322,6 +1322,51 @@ fn an_unreadable_tsconfig_above_one_that_does_not_claim_the_file_is_no_answer() 
     }
 }
 
+/// A config a tsconfig references can sit in a directory this process may not
+/// enter, and then even asking whether it is there fails. That is not a config
+/// that is absent: whether it reads the changed config is not known, so it is no
+/// answer too.
+#[cfg(unix)]
+#[test]
+fn a_referenced_config_in_a_directory_that_cannot_be_entered_is_no_answer() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = TempDir::new().unwrap();
+    let root = fallout::canonical_root(temp.path());
+    setup_tsconfig_project(&root);
+    fs::write(
+        root.join("tsconfig.json"),
+        r#"{ "references": [{ "path": "./tools" }] }"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("tools")).unwrap();
+    let tools = root.join("tools/tsconfig.json");
+    fs::write(&tools, r#"{ "extends": "../tsconfig.shared.json" }"#).unwrap();
+    fs::write(root.join("tsconfig.shared.json"), "{}").unwrap();
+    let directory = root.join("tools");
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o000)).unwrap();
+    let blocked = fs::metadata(&tools).is_err();
+    let answers: Vec<_> = [Granularity::File, Granularity::Symbol]
+        .into_iter()
+        .map(|granularity| {
+            (
+                granularity,
+                page_answer(&root, "tsconfig.shared.json", granularity, None),
+            )
+        })
+        .collect();
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+    if !blocked {
+        eprintln!("skipped: permissions do not stop this process entering directories");
+        return;
+    }
+    for (granularity, answer) in answers {
+        assert!(
+            names_unreadable_tsconfig(&answer, &tools),
+            "{granularity:?}: {answer:?}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_deleted_file_of_a_workspace_package_moves_its_deep_imports() {
