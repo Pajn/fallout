@@ -147,7 +147,10 @@ through one of those aliases still counts in the declaration where it is written
 A declaration whose initialiser may run something — a call, a `new`, an `await`, a
 tagged template, an assignment to a member — belongs to module initialisation, so
 importing anything from that file reaches it. It reaches that declaration and what it
-reads, not the rest of the file. A bare `import "./theme.css"` is a side effect of
+reads, not the rest of the file. For a class, what counts is what runs when the class
+is defined: its `extends` expression, its computed keys, and its static fields and
+blocks, but not instance fields or method bodies. An enum's member initialisers count
+too. A bare `import "./theme.css"` is a side effect of
 loading the module and reaches every importer, while `import logo from "./logo.png"`
 reaches only the declarations using `logo`.
 

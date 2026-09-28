@@ -1,0 +1,53 @@
+# Each page imports `sibling` and nothing else from a module that also declares a
+# class, and the edit is inside the class. Defining a class runs its heritage, its
+# computed keys, and its static fields and blocks, so an edit to a call in any of
+# those changes what loading the module does, and reaches every importer. This
+# holds for a class declaration, a default-exported class and a class expression
+# bound to a `const`.
+[[anchor]]
+path = "src/pages/static-field.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/static-field.ts)",
+    "ModuleInit(src/pages/static-field.ts)",
+    "ModuleInit(src/lib/static-field.ts)",
+    "Decl(src/lib/static-field.ts, Widget)",
+]
+
+[[anchor]]
+path = "src/pages/static-block.ts"
+affected = true
+
+[[anchor]]
+path = "src/pages/heritage.ts"
+affected = true
+
+[[anchor]]
+path = "src/pages/computed-key.ts"
+affected = true
+
+[[anchor]]
+path = "src/pages/default-class.ts"
+affected = true
+
+[[anchor]]
+path = "src/pages/class-expression.ts"
+affected = true
+
+# An instance field waits for a construction and a method body for a call, and
+# nothing in these modules constructs or calls, so the edit is not reached.
+[[anchor]]
+path = "src/pages/instance-field.ts"
+affected = false
+
+[[anchor]]
+path = "src/pages/method-body.ts"
+affected = false
+
+# A static field built by a proven local helper runs nothing when the class is
+# defined.
+[[anchor]]
+path = "src/pages/pure-static.ts"
+affected = false
