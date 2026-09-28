@@ -34,7 +34,7 @@ use super::cjs;
 use super::decls::ImportBinding;
 use super::parse::Ctx;
 use crate::pure::PureList;
-use local_pure::LocalPure;
+use local_pure::{LocalPure, Proof};
 
 /// What code run at module load in one file is judged against: where each import
 /// comes from, what the project has declared pure, what the local-helper proof has
@@ -214,6 +214,15 @@ fn readable_from(ctx: &Ctx<'_>) -> AHashMap<SymbolId, u32> {
         .collect()
 }
 
+/// Walks what runs on load, and records whether any of it runs something.
+///
+/// A call or a construction the local-helper proof covers whole is not walked
+/// again. Everything that proof accepts is an expression this walk finds nothing
+/// in: it takes no write, `delete`, update, `await` or tagged template, no call or
+/// construction it has not proven itself, no function or class, and no binding
+/// read before its declaration has run, since each proof holds only from the end
+/// of the latest declaration it depends on and a call written earlier is not
+/// proven.
 struct Detector<'s, 'c, 'a> {
     effects: &'s SideEffects<'c, 'a>,
     impure: bool,
@@ -315,21 +324,25 @@ impl<'s, 'c, 'a> Detector<'s, 'c, 'a> {
 
 impl<'a> Visit<'a> for Detector<'_, '_, '_> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee)
-            && !self.effects.local.call(expr)
-            && !self.effects.local.freezes(expr)
-        {
+        let proof = self.effects.local.call(expr);
+        if proof.is_none() && !self.callee_is_pure(expr.pure, &expr.callee) {
             self.impure = true;
         }
-        // A pure callee says nothing about its arguments, which still run.
-        walk::walk_call_expression(self, expr);
+        // A pure callee says nothing about its arguments, which still run, unless
+        // the local proof has already covered them.
+        if proof != Some(Proof::Whole) {
+            walk::walk_call_expression(self, expr);
+        }
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        if !self.callee_is_pure(expr.pure, &expr.callee) && !self.effects.local.constructs(expr) {
+        let proof = self.effects.local.construct(expr);
+        if proof.is_none() && !self.callee_is_pure(expr.pure, &expr.callee) {
             self.impure = true;
         }
-        walk::walk_new_expression(self, expr);
+        if proof != Some(Proof::Whole) {
+            walk::walk_new_expression(self, expr);
+        }
     }
 
     fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
