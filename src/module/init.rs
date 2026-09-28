@@ -6,6 +6,7 @@
 
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
+use oxc_semantic::{Scoping, SymbolId};
 use oxc_span::GetSpan;
 
 use ahash::{AHashMap, AHashSet};
@@ -17,25 +18,53 @@ use super::parse::{Ctx, span_of};
 use super::{Decl, DeclId, ImportTarget};
 use crate::pure::PureList;
 
-/// Where a name in this file comes from, for deciding whether a call on it is one
-/// the project has declared pure.
-pub(crate) type Origins<'a> = AHashMap<&'a str, (&'a str, &'a str)>;
+/// Where an imported binding in this file comes from, for deciding whether a call on
+/// it is one the project has declared pure.
+///
+/// Keyed by the binding itself rather than by its name, since a local of the same
+/// name inside a function or a class body is somebody else's value.
+pub(crate) struct Origins<'s, 'a> {
+    scoping: &'s Scoping,
+    by_symbol: AHashMap<SymbolId, (&'a str, &'a str)>,
+}
 
-/// Each imported binding as `local name -> (module specifier, exported name)`, with
+impl<'a> Origins<'_, 'a> {
+    /// The import `identifier` reads, as `(module specifier, exported name)`, or
+    /// `None` when it reads anything else.
+    fn of(&self, identifier: &IdentifierReference<'_>) -> Option<(&'a str, &'a str)> {
+        let reference = self.scoping.get_reference(identifier.reference_id.get()?);
+        self.by_symbol.get(&reference.symbol_id()?).copied()
+    }
+}
+
+/// Each imported binding as `symbol -> (module specifier, exported name)`, with
 /// `default` and `*` standing for the two unnamed import forms.
-pub(crate) fn origins<'a>(imports: &'a [ImportBinding], sources: &'a [String]) -> Origins<'a> {
-    let mut map = Origins::default();
+pub(crate) fn origins<'s, 'a>(
+    ctx: &Ctx<'s>,
+    imports: &'a [ImportBinding],
+    sources: &'a [String],
+) -> Origins<'s, 'a> {
+    let scoping = ctx.semantic.scoping();
+    let mut by_symbol = AHashMap::default();
     for binding in imports {
         let Some(source) = sources.get(binding.reference.source as usize) else {
+            continue;
+        };
+        // The binding the import statement made, which is what a callee must
+        // resolve to for an entry to speak for it.
+        let Some(symbol) = scoping
+            .get_root_binding(binding.local.as_str().into())
+            .filter(|&symbol| scoping.symbol_flags(symbol).is_import())
+        else {
             continue;
         };
         let exported = match &binding.reference.target {
             ImportTarget::Named(name) | ImportTarget::Member { export: name, .. } => name.as_str(),
             ImportTarget::Namespace => "*",
         };
-        map.insert(binding.local.as_str(), (source.as_str(), exported));
+        by_symbol.insert(symbol, (source.as_str(), exported));
     }
-    map
+    Origins { scoping, by_symbol }
 }
 
 /// Declarations module initialisation depends on.
@@ -44,7 +73,7 @@ pub(crate) fn collect(
     program: &Program<'_>,
     drafts: &[DeclDraft],
     decls: &[Decl],
-    origins: &Origins<'_>,
+    origins: &Origins<'_, '_>,
     pure: &PureList,
     conditional: &AHashSet<usize>,
 ) -> (Vec<DeclId>, Vec<DeclId>) {
@@ -149,7 +178,7 @@ fn referenced_decls(ctx: &Ctx<'_>, statement: &Statement<'_>, drafts: &[DeclDraf
 /// template, or an assignment to a member is impure. Later steps narrow this.
 fn statement_has_impure_initialiser(
     statement: &Statement<'_>,
-    origins: &Origins<'_>,
+    origins: &Origins<'_, '_>,
     pure: &PureList,
     local: &LocalPure<'_, '_>,
 ) -> bool {
@@ -205,7 +234,7 @@ fn statement_has_impure_initialiser(
 trait ImpurityCheck<'a> {
     fn check_impurity(
         &self,
-        origins: &Origins<'_>,
+        origins: &Origins<'_, '_>,
         pure: &PureList,
         local: &LocalPure<'_, '_>,
     ) -> bool;
@@ -214,7 +243,7 @@ trait ImpurityCheck<'a> {
 impl<'a> ImpurityCheck<'a> for Expression<'a> {
     fn check_impurity(
         &self,
-        origins: &Origins<'_>,
+        origins: &Origins<'_, '_>,
         pure: &PureList,
         local: &LocalPure<'_, '_>,
     ) -> bool {
@@ -227,7 +256,7 @@ impl<'a> ImpurityCheck<'a> for Expression<'a> {
 impl<'a> ImpurityCheck<'a> for Class<'a> {
     fn check_impurity(
         &self,
-        origins: &Origins<'_>,
+        origins: &Origins<'_, '_>,
         pure: &PureList,
         local: &LocalPure<'_, '_>,
     ) -> bool {
@@ -240,7 +269,7 @@ impl<'a> ImpurityCheck<'a> for Class<'a> {
 impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
     fn check_impurity(
         &self,
-        origins: &Origins<'_>,
+        origins: &Origins<'_, '_>,
         pure: &PureList,
         local: &LocalPure<'_, '_>,
     ) -> bool {
@@ -265,12 +294,12 @@ impl<'a> ImpurityCheck<'a> for ExportDefaultDeclarationKind<'a> {
 struct ImpureDetector<'c, 'o, 'a> {
     local: &'c LocalPure<'c, 'a>,
     impure: bool,
-    origins: &'c Origins<'o>,
+    origins: &'c Origins<'c, 'o>,
     pure: &'c PureList,
 }
 
 impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
-    fn new(origins: &'c Origins<'o>, pure: &'c PureList, local: &'c LocalPure<'c, 'a>) -> Self {
+    fn new(origins: &'c Origins<'c, 'o>, pure: &'c PureList, local: &'c LocalPure<'c, 'a>) -> Self {
         Self {
             impure: false,
             local,
@@ -292,12 +321,12 @@ impl<'c, 'o, 'a> ImpureDetector<'c, 'o, 'a> {
         let Some((root, members)) = callee_path(callee) else {
             return false;
         };
-        let Some((source, exported)) = self.origins.get(root) else {
+        let Some((source, exported)) = self.origins.of(root) else {
             return false;
         };
 
         let mut path = Vec::with_capacity(members.len() + 1);
-        path.push(*exported);
+        path.push(exported);
         path.extend(members);
         self.pure.contains(source, &path)
     }
@@ -416,11 +445,13 @@ impl<'a, 'c, 'o> Visit<'a> for ImpureDetector<'c, 'o, '_> {
     }
 }
 
-/// Splits `A.b.c` into its root name and the members read from it. `None` when the
-/// callee is anything else, such as a call on a call or a computed member.
-fn callee_path<'a>(callee: &'a Expression<'a>) -> Option<(&'a str, Vec<&'a str>)> {
+/// Splits `A.b.c` into its root identifier and the members read from it. `None` when
+/// the callee is anything else, such as a call on a call or a computed member.
+fn callee_path<'e, 'a>(
+    callee: &'e Expression<'a>,
+) -> Option<(&'e IdentifierReference<'a>, Vec<&'e str>)> {
     match callee {
-        Expression::Identifier(ident) => Some((ident.name.as_str(), Vec::new())),
+        Expression::Identifier(ident) => Some((ident, Vec::new())),
         Expression::StaticMemberExpression(member) => {
             let (root, mut path) = callee_path(&member.object)?;
             path.push(member.property.name.as_str());
@@ -561,5 +592,51 @@ mod tests {
         ] {
             assert!(init(source).is_empty(), "{source}");
         }
+    }
+
+    #[test]
+    fn a_local_that_shadows_a_pure_import_is_not_the_import() {
+        for source in [
+            "import { memo } from 'react';
+            export const Widget = class { static { const memo = () => register(1); memo(); } };",
+            "import { memo } from 'react';
+            export class Widget { static { function memo() { register(1); } memo(); } }",
+            "import { memo } from 'react';
+            export class Widget { static id = ((memo) => memo(1))(register); }",
+            "import * as React from 'react';
+            export class Widget { static { const React = { memo: () => register(1) }; React.memo(1); } }",
+        ] {
+            assert!(init(source).contains(&"Widget".to_string()), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_pure_annotation_speaks_for_its_call_whatever_the_callee_is() {
+        let source = "import { memo } from 'react';
+            export class Widget { static { const memo = () => register(1); /* @__PURE__ */ memo(); } }";
+        assert!(init(source).is_empty());
+    }
+
+    #[test]
+    fn a_shadowed_pure_import_in_a_factory_argument_makes_the_call_initialisation() {
+        let shadowed = module(
+            "import { createAsyncThunk } from '@reduxjs/toolkit';
+            import { memo } from 'react';
+            export const t = createAsyncThunk('a/b', class {
+                static { const memo = () => register(1); memo(); }
+            });\n",
+        );
+        let t = shadowed.decl_named("t").unwrap();
+        assert!(shadowed.init_decls.contains(&t));
+        assert!(!shadowed.conditional_init.contains(&t));
+
+        let imported = module(
+            "import { createAsyncThunk } from '@reduxjs/toolkit';
+            import { memo } from 'react';
+            export const t = createAsyncThunk('a/b', class { static { memo(1); } });\n",
+        );
+        let t = imported.decl_named("t").unwrap();
+        assert!(!imported.init_decls.contains(&t));
+        assert!(imported.conditional_init.contains(&t));
     }
 }

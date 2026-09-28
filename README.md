@@ -291,7 +291,10 @@ An entry is written as the import source, `#`, and the path taken from the bindi
 that import introduces. The first segment is the name the target exports, with
 `default` and `*` for the two unnamed forms, so `React.memo` is `react#default.memo`.
 An entry is honoured only where the callee is reached from the import it names: a
-local function called `memo` is not covered by React's entry.
+local function called `memo` is not covered by React's entry. That includes a local
+declared inside a function or a class body with the same name as the import: the
+entry applies where the callee is the import binding itself, not a local that shadows
+it.
 
 An entry is a claim about someone else's function. It says nothing about the
 arguments, which still run, and nothing about the exports of the file it sits in,

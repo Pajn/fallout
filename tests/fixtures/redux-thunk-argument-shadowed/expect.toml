@@ -1,0 +1,23 @@
+# Creating a thunk runs nothing but the factory, unless an argument runs something
+# when it is evaluated. Here the argument is a class whose static block declares a
+# `memo` of its own and calls it. The project calls the imported `memo` pure, but
+# the entry speaks for that import and not for a local of the same name, so the
+# block runs something when the module loads. The case imports `PLANS` alone, and
+# the edit to the block reaches it.
+[[anchor]]
+path = "src/cases/plans.cases.ts"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/plans.cases.ts)",
+    "ModuleInit(src/cases/plans.cases.ts)",
+    "ModuleInit(src/store/session.ts)",
+    "Decl(src/store/session.ts, refreshPlan)",
+]
+
+# The same block calling the imported `memo` runs nothing, so creating that thunk
+# still waits on the factory, which the graph knows builds values and nothing else.
+[[anchor]]
+path = "src/cases/invoices.cases.ts"
+affected = false
