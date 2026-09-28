@@ -279,7 +279,7 @@ pure = [
 ]
 
 # Drop the built-in React entries.
-builtin-pure = true
+builtin-pure = false
 ```
 
 The same file carries `inline-requires`, under [Inline requires](#inline-requires),
