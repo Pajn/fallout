@@ -1,0 +1,11 @@
+# A local helper that returns an object holding an arrow and a method, as a store's
+# creator does. Creating a function runs nothing, since its body runs only when it
+# is called, so `createCounter()` runs nothing on load and an edit inside one of the
+# functions it creates reaches only the page that reads `counter`.
+[[anchor]]
+path = "label.js"
+affected = false
+
+[[anchor]]
+path = "counter.js"
+affected = true

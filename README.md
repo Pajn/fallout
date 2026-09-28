@@ -270,6 +270,18 @@ example, `const make = (value) => ({ value })` makes `const item = make("item")`
 independent of unrelated exports. Consumers of `item` still depend on `make` and any
 helpers it calls.
 
+Creating a function — an arrow, a function expression, or a method, getter or setter
+in an object literal, async and generator ones included — is taken to run nothing,
+since its body, its defaults and every read in it wait until it is called. So
+`(name) => ({ name, rename: (next) => save(next) })` is proven whatever `rename`
+does, as a store's creator returning its actions is, and so is a function that reads
+a `const` declared further down. Calling one is judged as any call is, and a function
+a helper returned or one written in place is not a proven helper, so `make().rename()`
+and `(() => register())()` stay in initialisation, and so does a call that reads a
+`const` before it exists. A computed key still runs where the object is created, and
+is not proven. A class expression is not a plain value, since defining one runs its
+heritage and static members (see [Granularity](#granularity)).
+
 A helper may also call what the module body may: a callee named by a `pure` entry and
 a call annotated `/* @__PURE__ */`. An entry is matched as it is everywhere else, by
 the import binding the callee is reached from and only where the entry applies to the
@@ -292,8 +304,8 @@ cycle that would throw, because the imported module has not run yet, goes unseen
 it does in the module body (see [Known gaps](#known-gaps)).
 
 The proof also checks argument evaluation. Literals, top-level `const` primitives,
-direct reads of imports and calls to proven helpers qualify; other variable arguments
-remain conservative. A throw is not a side effect, but a throw in the module body stops
+direct reads of imports, functions created in place and calls to proven helpers
+qualify; other variable arguments remain conservative. A throw is not a side effect, but a throw in the module body stops
 the module loading, and every importer with it. A helper is only ever proven on behalf
 of a call written in the module body, which runs its body there, so nothing the call
 evaluates may throw, in the helper or out of it, beyond the calls a claim above is
@@ -308,7 +320,7 @@ reads in front of every importer, which is what could change whether it throws, 
 nothing else in the module. Function declarations are hoisted and can be called from
 anywhere. Reads of other captured values, property reads (which may invoke getters),
 coercing arithmetic, interpolated templates, writes, loops, unknown calls, recursion,
-defaults, destructuring, spread, `this`, `arguments`, async and generator functions,
+defaults, destructuring, spread, `this`, `arguments`, async and generator helpers,
 and default-exported declarations keep the existing broad behaviour. No annotation or
 configuration is needed for an inferred helper. Use `--base` to detect an effect
 removed from a helper: line-only analysis sees its current body, not the previous side

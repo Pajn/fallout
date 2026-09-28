@@ -1,0 +1,111 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== label.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, file granularity):
+  File(label.js)
+  File(store.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(label.js)","File(store.js)"],"granularity":"file","unresolved":[]}]}
+
+== label.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, file granularity):
+  File(label.js)
+  File(store.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(label.js)","File(store.js)"],"granularity":"file","unresolved":[]}]}
+
+== label.js [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== label.js [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== label.js [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== label.js [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== counter.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, file granularity):
+  File(counter.js)
+  File(store.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"counter.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(counter.js)","File(store.js)"],"granularity":"file","unresolved":[]}]}
+
+== counter.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, file granularity):
+  File(counter.js)
+  File(store.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"counter.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(counter.js)","File(store.js)"],"granularity":"file","unresolved":[]}]}
+
+== counter.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, symbol granularity):
+  File(counter.js)
+  Decl(counter.js, page)
+  Export(store.js, counter)
+  Decl(store.js, counter)
+  Decl(store.js, createCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"counter.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(counter.js)","Decl(counter.js, page)","Export(store.js, counter)","Decl(store.js, counter)","Decl(store.js, createCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== counter.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, symbol granularity):
+  File(counter.js)
+  Decl(counter.js, page)
+  Export(store.js, counter)
+  Decl(store.js, counter)
+  Decl(store.js, createCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"counter.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(counter.js)","Decl(counter.js, page)","Export(store.js, counter)","Decl(store.js, counter)","Decl(store.js, createCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== counter.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, symbol granularity):
+  File(counter.js)
+  Decl(counter.js, page)
+  Export(store.js, counter)
+  Decl(store.js, counter)
+  Decl(store.js, createCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"counter.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(counter.js)","Decl(counter.js, page)","Export(store.js, counter)","Decl(store.js, counter)","Decl(store.js, createCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== counter.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "store.js"
+Path (downstream, symbol granularity):
+  File(counter.js)
+  Decl(counter.js, page)
+  Export(store.js, counter)
+  Decl(store.js, counter)
+  Decl(store.js, createCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"counter.js","affected":true,"direction":"downstream","changed":"store.js","path":["File(counter.js)","Decl(counter.js, page)","Export(store.js, counter)","Decl(store.js, counter)","Decl(store.js, createCounter)"],"granularity":"symbol","unresolved":[]}]}

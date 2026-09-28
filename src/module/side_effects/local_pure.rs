@@ -9,7 +9,9 @@
 //! callee is a proven helper, or one the project's list or a `/* @__PURE__ */`
 //! annotation clears, and every argument is itself provable. The list and the
 //! annotation speak for the call alone, so its arguments are proven here as any
-//! other's.
+//! other's. Creating a function — an arrow, a function expression or an object
+//! literal's method — runs nothing, since its body runs only when it is called, and
+//! a call to one is proven by the same rules as any other call.
 //!
 //! A proven call must also not throw. A throw is not a side effect, but every call
 //! this is asked about is written in the module body, and runs whatever helpers it
@@ -597,7 +599,10 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                     let ObjectPropertyKind::ObjectProperty(property) = property else {
                         return None;
                     };
-                    if property.kind != PropertyKind::Init || property.method || property.computed {
+                    // A computed key runs where the object is created. A method, a
+                    // getter or a setter is a function created with it, whose value
+                    // is proven as any other function's is.
+                    if property.computed {
                         return None;
                     }
                     ready = ready.max(self.expression(&property.value, locals)?);
@@ -619,6 +624,13 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 self.expression(&expr.argument, locals)
             }
             Expression::CallExpression(call) => self.call_ready(call, locals),
+            // Creating a function runs nothing, async and generator ones included:
+            // its defaults and its body wait for a call, and so does every read in
+            // it, so what it reads need not be ready yet. A call to it is judged
+            // where it is written, as any call is, and proving one here takes a
+            // helper, the list or an annotation. A class expression is not one of
+            // these, since defining it runs its heritage and static members.
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => Some(0),
             _ => None,
         }
     }
@@ -1053,6 +1065,94 @@ mod tests {
     }
 
     #[test]
+    fn creating_a_function_runs_nothing() {
+        for source in [
+            // An object of actions, as a store's creator returns. No body runs until
+            // it is called, whatever it holds.
+            "function make() { return { count: 0, inc: () => 1 }; } export const store = make();",
+            "function make() { return { count: 0, inc() { return register(); } }; } export const store = make();",
+            "const make = () => ({ get count() { return register(); }, set count(v) { register(v); } }); export const store = make();",
+            "const make = (set) => ({ count: 0, inc: () => set((s) => ({ count: s.count + 1 })) }); export const store = make(null);",
+            // A function returned whole.
+            "function make() { return () => register(); } export const run = make();",
+            "function make() { return function () { return register(); }; } export const run = make();",
+            "const make = () => { const run = () => register(); return { run }; }; export const store = make();",
+            // An async or generator function is created as any other, and nothing in
+            // it runs until it is called.
+            "const make = () => ({ load: async () => fetch('/items') }); export const store = make();",
+            "function make() { return async function () { await register(); }; } export const load = make();",
+            "function make() { return function* () { yield register(); }; } export const items = make();",
+            // A default runs when the function is called, not when it is created.
+            "function make() { return (x = register()) => x; } export const run = make();",
+            // A read in the body happens when it is called, so what it reads need not
+            // exist yet.
+            "function make() { return () => LATER; } export const read = make(); const LATER = 1;",
+            // Handing a function to a proven helper creates it and no more.
+            "function make(x) { return 1; } export const result = make(() => register());",
+            "function make(x) { return 1; } export const result = make({ get x() { return 1; } });",
+        ] {
+            assert!(init(source).is_empty(), "{source}");
+        }
+    }
+
+    #[test]
+    fn what_runs_when_a_function_is_created_or_called_stays_in_initialisation() {
+        for source in [
+            // A computed key runs where the object is created, method or not.
+            "function make() { return { [key()]() { return 1; } }; } export const result = make();",
+            "function make() { return { get [key()]() { return 1; } }; } export const result = make();",
+            // Defining a class runs its heritage and static members, so a class
+            // expression is not taken for a plain value.
+            "function make() { return class { static { register(); } }; } export const result = make();",
+            "function make() { return class { static x = register(); }; } export const result = make();",
+            "function make() { return class extends Base() {}; } export const result = make();",
+            // Calling a function runs its body, however it was made.
+            "export const result = (() => register())();",
+            "function make() { return (() => register())(); } export const result = make();",
+            "function make() { const run = () => register(); return run(); } export const result = make();",
+            "function make() { return () => register(); } export const result = make()();",
+            "function make() { return () => register(); } const run = make(); export const result = run();",
+            "function make() { return { inc: () => register() }; } export const result = make().inc();",
+            "function make() { return () => register(); } const run = make(); function use() { return run(); } export const result = use();",
+            "function apply(run) { return run(); } export const result = apply(() => register());",
+            "const make = () => ({ load: async () => 1 }); export const result = make().load();",
+            // A function held by a literal that is converted is called by the
+            // conversion.
+            "export const result = Math.max({ valueOf: () => register() });",
+            "export const result = String([{ toString() { return register(); } }]);",
+            "function make() { return String({ valueOf: () => register(), toString() { return 'a'; } }); } export const result = make();",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_function_created_early_is_still_judged_where_it_is_called() {
+        // Creating a function that reads a `const` declared further down runs
+        // nothing. Calling it before that declaration has run reads the `const`
+        // early and throws, and that call is judged by the rules for any call, which
+        // do not prove a call to a value a helper returned.
+        let source = "function make() { return () => LATER; } \
+                      const read = make(); \
+                      export const result = read(); \
+                      const LATER = 1;";
+        // Initialisation then reaches what the call reads, down to the `const` it
+        // reads too early, so an edit to any of them reaches every importer.
+        let found = init(source);
+        for name in ["result", "read", "make", "LATER"] {
+            assert!(found.contains(&name.to_string()), "{name}: {source}");
+        }
+        for source in [
+            "function make() { return () => LATER; } export const result = make()(); const LATER = 1;",
+            "const make = () => ({ get: () => LATER }); export const result = make().get(); const LATER = 1;",
+            "function make() { return () => inner(); } export const result = make()(); const inner = () => 1;",
+            "function make() { return { read() { return LATER; } }; } const store = make(); export const result = store.read(); const LATER = 1;",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+    }
+
+    #[test]
     fn freezing_says_nothing_about_what_the_literal_holds() {
         let source = "export const Colors = Object.freeze({ red: register('red') });";
         assert!(init(source).contains(&"Colors".to_string()), "{source}");
@@ -1067,7 +1167,8 @@ mod tests {
             "x++",
             "x = 1",
             "unknown",
-            "{ get x() { return 1; } }",
+            "{ get [key()]() { return 1; } }",
+            "class { static { register(); } }",
             "{ ...obj }",
             "null.value",
             "1n + 1",
