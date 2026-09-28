@@ -4,7 +4,8 @@
 //! A helper is a top-level function declaration, or a `const` bound to an arrow or
 //! a function expression. Its body is a run of `const` locals, `if`s that return,
 //! statements such as `console.log(value);` whose expression is itself provable,
-//! and a final return, built from the expressions below. A call is pure where the
+//! and a final return, built from the expressions below. An import may be read
+//! directly, as the module body may, but not read through. A call is pure where the
 //! callee is a proven helper, or one the project's list or a `/* @__PURE__ */`
 //! annotation clears, and every argument is itself provable. The list and the
 //! annotation speak for the call alone, so its arguments are proven here as any
@@ -540,7 +541,11 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 let Some(symbol) = self.symbol(id) else {
                     return self.primitive(expr, locals, false);
                 };
-                if locals.contains_key(&symbol) {
+                // An import is bound before anything in the module runs, and reading
+                // one directly is taken to run nothing, as it is in the module body.
+                // Its value is unknown, so it is not a primitive to convert, and a
+                // member read through it is not proven.
+                if locals.contains_key(&symbol) || self.imports.is_import(id) {
                     Some(0)
                 } else {
                     self.values.get(&symbol).copied()
@@ -952,6 +957,59 @@ mod tests {
             "export const result = console.profile('a');",
             // A statement in a helper body is still held to the subset.
             "function make(x) { register(x); return x; } export const result = make(1);",
+        ] {
+            assert!(init(source).contains(&"result".to_string()), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_helper_may_read_an_import_directly() {
+        for source in [
+            "import { base } from './tokens'; function size(n) { return { base, n }; } export const small = size(1);",
+            "import base from './tokens'; const size = (n) => [base, n]; export const small = size(1);",
+            "import * as tokens from './tokens'; const all = () => tokens; export const result = all();",
+            "import { base } from './tokens'; function size(n) { const b = base; return n ? b : null; } export const small = size(1);",
+            "import { base } from './tokens'; const same = (n) => n === base; export const result = same(1);",
+            // An import is bound before anything in the module runs.
+            "function size(n) { return { base, n }; } export const small = size(1); import { base } from './tokens';",
+            // Handing one to a helper reads it, as the helper's own body may.
+            "import { base } from './tokens'; function size(n) { return { n }; } export const small = size(base);",
+            "import { base } from './tokens'; export const shown = console.log(base);",
+        ] {
+            assert!(init(source).is_empty(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_helper_that_does_more_with_an_import_than_read_it_stays_in_initialisation() {
+        for source in [
+            // A local named like the import is not the import, and reading it before
+            // its own declaration throws.
+            "import { base } from './tokens'; function size() { const a = base; const base = 1; return a; } export const result = size();",
+            // Nor is a parameter named like it, which may be anything.
+            "import { base } from './tokens'; function size(base) { return base(); } export const result = size(1);",
+            // A member read through an import may run a getter, however it is imported.
+            "import { theme } from './theme'; function color() { return theme.colors.primary; } export const result = color();",
+            "import * as tokens from './tokens'; const size = () => tokens.base; export const result = size();",
+            "import tokens from './tokens'; function size(n) { return { n, base: tokens.base }; } export const result = size(1);",
+            // Calling or constructing an import is not reading it.
+            "import { format } from './format'; function label(n) { return format(n); } export const result = label(1);",
+            "import * as text from './format'; const label = (n) => text.format(n); export const result = label(1);",
+            "import { Size } from './size'; function make() { return new Size(); } export const result = make();",
+            // Writing an import throws.
+            "import { base } from './tokens'; function size() { base = 1; return 1; } export const result = size();",
+            "import { base } from './tokens'; function size() { base += 1; return 1; } export const result = size();",
+            "import { base } from './tokens'; function size() { base++; return 1; } export const result = size();",
+            // Reading an import clears nothing else the body does.
+            "import { base } from './tokens'; function size() { register(); return base; } export const result = size();",
+            "import { base } from './tokens'; const size = () => ({ base, id: register() }); export const result = size();",
+            // An imported value may be a BigInt or a symbol, which converting throws on,
+            // in a helper or in the module body.
+            "import { base } from './tokens'; function size() { return String(base); } export const result = size();",
+            "import { base } from './tokens'; const size = (n) => Math.max(base, 1); export const result = size(1);",
+            "import { base } from './tokens'; export const result = Math.abs(base);",
+            "import { base } from './tokens'; function size(n) { return base * n; } export const result = size(1);",
+            "import { base } from './tokens'; function size() { return `${base}px`; } export const result = size();",
         ] {
             assert!(init(source).contains(&"result".to_string()), "{source}");
         }
