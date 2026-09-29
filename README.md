@@ -133,11 +133,16 @@ declarations that only do those stay apart. Nor can checking it with `in`,
 or in a `switch` or one of its `case`s, or using it as a computed key, `o[state]`:
 that reads the value and does not write it. What a check can run, a proxy trap,
 `Symbol.hasInstance`, `valueOf` or `toString`, is taken to run nothing, as it is
-below. Everything else — passing it to a function, returning it, putting it in an
-array or object literal, `await`ing it, which calls a `then` it may have, `yield`ing
-it, throwing it, `export default` of it, writing through it, spreading it, arithmetic
-on it, or naming a member of it as an element, which is how a React context is
-written — counts as a write. So does calling a method on it, except a method that
+below. Arithmetic (`state + 1`, `-state`, `state * 2` and the rest), an untagged
+template such as `` `${state}` `` and a truth test (`if (state)`, a loop's condition,
+`!state`, the condition of `?:`, or the left of `&&` tested) read the value too,
+whether it is used whole or in part: they can run only `valueOf`, `toString` or
+`Symbol.toPrimitive`, taken to run nothing in the same way, and none of them changes
+the value or hands it on. Everything else — passing it to a function, returning it,
+putting it in an array or object literal, `await`ing it, which calls a `then` it may
+have, `yield`ing it, throwing it, `export default` of it, writing through it,
+spreading it, or naming a member of it as an element, which is how a React context
+is written — counts as a write. So does calling a method on it, except a method that
 reads a [Zustand store](#zustand) or a collection whose type the file shows. What a
 property holds is part of the value, so a write or a method call anywhere down a
 member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,

@@ -1,0 +1,35 @@
+# Three modules of the same shape, each with a module-scope `let count` that one
+# declaration reassigns, so it is read as one value. One declaration only tests it,
+# one only puts it through arithmetic, and one compares it for the page. Each module
+# has one of them edited.
+#
+# Testing a value and putting it through arithmetic read it and do not write it:
+# what they can run, `valueOf`, `toString` or `Symbol.toPrimitive`, is taken to run
+# nothing, and neither hands the value to other code. So a declaration that only
+# does those is no writer that every other reader of the binding reaches.
+
+# The declaration that only tests `count` is edited. `isAtLimit` reads `count`, but
+# nothing the test does can change what `count` holds.
+[[anchor]]
+path = "src/pages/TestedPage.tsx"
+affected = false
+
+# The declaration that only adds to `count` is edited, and is no writer either.
+[[anchor]]
+path = "src/pages/AddedPage.tsx"
+affected = false
+
+# The declaration that reassigns `count` is edited, and `isAtLimit` reads what it
+# writes.
+[[anchor]]
+path = "src/pages/WrittenPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/WrittenPage.tsx)",
+    "Decl(src/pages/WrittenPage.tsx, WrittenPage)",
+    "Export(src/lib/written.ts, isAtLimit)",
+    "Decl(src/lib/written.ts, isAtLimit)",
+    "Decl(src/lib/written.ts, bump)",
+]
