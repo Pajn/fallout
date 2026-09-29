@@ -1,0 +1,195 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/SizesPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, file granularity):
+  File(src/pages/SizesPage.tsx)
+  File(src/lib/sizes.ts)
+  File(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizesPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SizesPage.tsx)","File(src/lib/sizes.ts)","File(src/lib/tokens.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SizesPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, file granularity):
+  File(src/pages/SizesPage.tsx)
+  File(src/lib/sizes.ts)
+  File(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizesPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SizesPage.tsx)","File(src/lib/sizes.ts)","File(src/lib/tokens.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SizesPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SizesPage.tsx)
+  Decl(src/pages/SizesPage.tsx, default)
+  Export(src/lib/sizes.ts, label)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, small)
+  Export(src/lib/tokens.ts, base)
+  Decl(src/lib/tokens.ts, base)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizesPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SizesPage.tsx)","Decl(src/pages/SizesPage.tsx, default)","Export(src/lib/sizes.ts, label)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, small)","Export(src/lib/tokens.ts, base)","Decl(src/lib/tokens.ts, base)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizesPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SizesPage.tsx)
+  Decl(src/pages/SizesPage.tsx, default)
+  Export(src/lib/sizes.ts, label)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, small)
+  Export(src/lib/tokens.ts, base)
+  Decl(src/lib/tokens.ts, base)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizesPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SizesPage.tsx)","Decl(src/pages/SizesPage.tsx, default)","Export(src/lib/sizes.ts, label)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, small)","Export(src/lib/tokens.ts, base)","Decl(src/lib/tokens.ts, base)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizesPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SizesPage.tsx)
+  Decl(src/pages/SizesPage.tsx, default)
+  Export(src/lib/sizes.ts, label)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, small)
+  Export(src/lib/tokens.ts, base)
+  ModuleInit(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizesPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SizesPage.tsx)","Decl(src/pages/SizesPage.tsx, default)","Export(src/lib/sizes.ts, label)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, small)","Export(src/lib/tokens.ts, base)","ModuleInit(src/lib/tokens.ts)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizesPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SizesPage.tsx)
+  Decl(src/pages/SizesPage.tsx, default)
+  Export(src/lib/sizes.ts, label)
+  ModuleInit(src/lib/sizes.ts)
+  Decl(src/lib/sizes.ts, small)
+  Export(src/lib/tokens.ts, base)
+  ModuleInit(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizesPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SizesPage.tsx)","Decl(src/pages/SizesPage.tsx, default)","Export(src/lib/sizes.ts, label)","ModuleInit(src/lib/sizes.ts)","Decl(src/lib/sizes.ts, small)","Export(src/lib/tokens.ts, base)","ModuleInit(src/lib/tokens.ts)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BannerPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, file granularity):
+  File(src/pages/BannerPage.tsx)
+  File(src/lib/banner.ts)
+  File(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BannerPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/BannerPage.tsx)","File(src/lib/banner.ts)","File(src/lib/tokens.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BannerPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, file granularity):
+  File(src/pages/BannerPage.tsx)
+  File(src/lib/banner.ts)
+  File(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BannerPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/BannerPage.tsx)","File(src/lib/banner.ts)","File(src/lib/tokens.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BannerPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BannerPage.tsx)
+  Decl(src/pages/BannerPage.tsx, default)
+  Export(src/lib/banner.ts, label)
+  ModuleInit(src/lib/banner.ts)
+  Export(src/lib/tokens.ts, base)
+  Decl(src/lib/tokens.ts, base)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BannerPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/BannerPage.tsx)","Decl(src/pages/BannerPage.tsx, default)","Export(src/lib/banner.ts, label)","ModuleInit(src/lib/banner.ts)","Export(src/lib/tokens.ts, base)","Decl(src/lib/tokens.ts, base)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BannerPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BannerPage.tsx)
+  Decl(src/pages/BannerPage.tsx, default)
+  Export(src/lib/banner.ts, label)
+  ModuleInit(src/lib/banner.ts)
+  Export(src/lib/tokens.ts, base)
+  Decl(src/lib/tokens.ts, base)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BannerPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/BannerPage.tsx)","Decl(src/pages/BannerPage.tsx, default)","Export(src/lib/banner.ts, label)","ModuleInit(src/lib/banner.ts)","Export(src/lib/tokens.ts, base)","Decl(src/lib/tokens.ts, base)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BannerPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BannerPage.tsx)
+  Decl(src/pages/BannerPage.tsx, default)
+  Export(src/lib/banner.ts, label)
+  ModuleInit(src/lib/banner.ts)
+  Export(src/lib/tokens.ts, base)
+  ModuleInit(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BannerPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/BannerPage.tsx)","Decl(src/pages/BannerPage.tsx, default)","Export(src/lib/banner.ts, label)","ModuleInit(src/lib/banner.ts)","Export(src/lib/tokens.ts, base)","ModuleInit(src/lib/tokens.ts)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/BannerPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BannerPage.tsx)
+  Decl(src/pages/BannerPage.tsx, default)
+  Export(src/lib/banner.ts, label)
+  ModuleInit(src/lib/banner.ts)
+  Export(src/lib/tokens.ts, base)
+  ModuleInit(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BannerPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/BannerPage.tsx)","Decl(src/pages/BannerPage.tsx, default)","Export(src/lib/banner.ts, label)","ModuleInit(src/lib/banner.ts)","Export(src/lib/tokens.ts, base)","ModuleInit(src/lib/tokens.ts)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SpacingPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, file granularity):
+  File(src/pages/SpacingPage.tsx)
+  File(src/lib/spacing.ts)
+  File(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SpacingPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SpacingPage.tsx)","File(src/lib/spacing.ts)","File(src/lib/tokens.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SpacingPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tokens.ts"
+Path (downstream, file granularity):
+  File(src/pages/SpacingPage.tsx)
+  File(src/lib/spacing.ts)
+  File(src/lib/tokens.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SpacingPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tokens.ts","path":["File(src/pages/SpacingPage.tsx)","File(src/lib/spacing.ts)","File(src/lib/tokens.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SpacingPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SpacingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SpacingPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SpacingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SpacingPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SpacingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SpacingPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SpacingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

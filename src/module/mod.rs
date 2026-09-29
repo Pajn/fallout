@@ -267,6 +267,18 @@ pub struct FineModule {
     /// be a factory the graph knows, or `withTypes` of one. Module initialisation
     /// reaches each one the graph cannot prove made by such a factory.
     pub conditional_init: Vec<DeclId>,
+    /// Declarations whose initialiser, as it runs at load, reads an imported
+    /// binding: itself, or in a local function it calls there. Where a project
+    /// defers each import to its first use, that evaluates the module the binding
+    /// names as this one is evaluated, so the graph counts them as initialisation
+    /// then. Of a call that may be a factory's, only its arguments are asked about,
+    /// since the call around them is reached whenever the call is.
+    pub reads_on_load: Vec<DeclId>,
+    /// Imported bindings read by the top-level statements that declare nothing,
+    /// which run for their effect and are initialisation already. Where each
+    /// import is deferred to its first use, reading one there is what evaluates
+    /// its module.
+    pub init_imports: Vec<ImportRef>,
 }
 
 impl FineModule {

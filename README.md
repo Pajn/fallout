@@ -548,6 +548,13 @@ attributed to whoever actually causes it: a declaration that uses `g`'s export
 reaches `g`'s top-level statements, and a module that imports `g` and never touches
 it reaches nothing.
 
+Module-level code that reads an import loads that module at first use, which is as
+the reading module is evaluated. So a declaration whose initialiser reads an import as
+it runs at load, as `export const small = base` does, or a call there to a local
+helper that reads one, counts as module initialisation, and so does what a statement
+that declares nothing reads. A read in a function body waits for a call, and a
+type-only import loads nothing.
+
 Two things are unchanged. A bare `import "./setup"` introduces no binding, so there
 is nothing to defer and it still runs when the importing module is evaluated. And a
 namespace reference — `import * as ns`, `require(...)` — reaches the module itself

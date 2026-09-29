@@ -1,0 +1,42 @@
+# Under a bundler that moves each `require` to the first use of its binding, reading
+# an import is what evaluates the module it names. `small` reads `base` as `sizes.ts`
+# is evaluated, so evaluating `sizes.ts` evaluates `tokens.ts`, whose top-level
+# statement is edited. A page that imports only `label` from `sizes.ts` still
+# evaluates it, and is reached. `small` runs nothing, but it reads an import where it
+# is written, and that makes it module initialisation.
+[[anchor]]
+path = "src/pages/SizesPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/SizesPage.tsx)",
+    "Decl(src/pages/SizesPage.tsx, default)",
+    "Export(src/lib/sizes.ts, label)",
+    "ModuleInit(src/lib/sizes.ts)",
+    "Decl(src/lib/sizes.ts, small)",
+    "Export(src/lib/tokens.ts, base)",
+    "ModuleInit(src/lib/tokens.ts)",
+]
+
+# A statement that declares nothing is module initialisation already. What it reads
+# is evaluated with it.
+[[anchor]]
+path = "src/pages/BannerPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/BannerPage.tsx)",
+    "Decl(src/pages/BannerPage.tsx, default)",
+    "Export(src/lib/banner.ts, label)",
+    "ModuleInit(src/lib/banner.ts)",
+    "Export(src/lib/tokens.ts, base)",
+    "ModuleInit(src/lib/tokens.ts)",
+]
+
+# `gap` reads `base` only when it is called, and nothing on this page calls it, so
+# evaluating `spacing.ts` evaluates nothing else.
+[[anchor]]
+path = "src/pages/SpacingPage.tsx"
+affected = false

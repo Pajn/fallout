@@ -264,7 +264,7 @@ fn build_fine(
                 callable: Vec::new(),
             });
     }
-    let (import_spans, shared) =
+    let (import_spans, shared, statement_imports) =
         refs::link(&ctx, &drafts, &imports, &objects.by_symbol, &mut decls);
     let requires = decls::require_calls(program, sources)?;
     let placed = &mut candidates.placed;
@@ -276,8 +276,15 @@ fn build_fine(
     factories::attach(
         &ctx, &drafts, &imports, &by_symbol, candidates, &shared, &mut decls,
     );
-    let (init_decls, conditional_init) =
-        init::collect(&ctx, program, &drafts, &decls, &effects, &conditional);
+    let init = init::collect(
+        &ctx,
+        program,
+        &drafts,
+        &decls,
+        &effects,
+        &conditional,
+        &statement_imports,
+    );
 
     // A `require` outside every declaration runs on evaluation, exactly like a bare
     // `import "./x"`, so the two share a list.
@@ -293,10 +300,12 @@ fn build_fine(
         exports,
         export_stars,
         sources: sources.to_vec(),
-        init_decls,
+        init_decls: init.decls,
         bare_sources,
         import_spans,
-        conditional_init,
+        conditional_init: init.conditional,
+        reads_on_load: init.reads_on_load,
+        init_imports: init.imports,
     })
 }
 
