@@ -134,7 +134,8 @@ that reads the value and does not write it. What a check can run, a proxy trap,
 `Symbol.hasInstance`, `valueOf` or `toString`, is taken to run nothing, as it is
 below. Everything else — passing it to a function, returning it, writing through it,
 spreading it, arithmetic on it, or naming a member of it as an element, which is how
-a React context is written — counts as a write.
+a React context is written — counts as a write. So does calling a method on it,
+except a method that reads a [Zustand store](#zustand).
 
 A binding initialised with a plain object literal, frozen or not, which nothing
 reassigns and which has no getter, setter or prototype-setting `__proto__: value`, is
@@ -465,6 +466,29 @@ narrowed. A store written through `setState` by a declaration of its own file, s
 `export const reset = () => useCounter.setState({ count: 0 })`, links every page that
 uses the store to that declaration, as [shared state](#granularity) does for any
 exported value.
+
+Under that rule, a method call on a value writes it. A store's own methods are told
+apart: `getState()`, `getInitialState()` and `subscribe(listener)` read the store and
+change none of it, as Zustand 4 and 5 write them, so a declaration that only reads
+the store through them is no writer of it, and neither pages that use the store nor
+other declarations that read it are linked to it. That holds only where what is
+done with what they hand out reads it too: a property of the state used in place as
+a value, compared, put through arithmetic or into a string, tested or rendered, the
+state destructured into a local `const` whose bindings are used the same way, or a
+listener written out in place, given alone, that does the same with the state it is
+called with. Nothing taken from the state may leave the expression it is read in,
+since which properties are actions cannot be told: returning one, as in
+`() => useCounter.getState().count`, passing it on, storing it or spreading it
+writes the store, as `() => useCounter.getState().inc` would hand out an action for
+the caller to call. So do `setState()`, an action called on what `getState()`
+returns, as in `useCounter.getState().inc()`, the state handed to other code, a
+listener that is not written out in place, and every other method, Zustand 4's
+`destroy()` among them. What a listener's body does to
+the store through the store's own name is its declaration's, so a listener that
+calls `setState()` still makes one a writer. The methods are recognised on a store
+that one of the factories above is found to have made, however the app reaches the
+factory; the same names on any other value, a store made by an app's own `create`
+among them, are method calls like any other.
 
 Three middlewares are recognised as wrappers, and count as quiet when what they wrap
 is: `immer` from `zustand/middleware/immer`, and `subscribeWithSelector` and

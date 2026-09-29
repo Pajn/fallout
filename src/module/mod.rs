@@ -47,6 +47,22 @@ pub struct Decl {
     /// A reader in another module does not, since exporting a value is no use of
     /// it, so these are for the nodes an importer lands on.
     pub writers: Vec<(DeclId, Option<String>)>,
+    /// Of `writers`, those whose every use of the binding that could change it is a
+    /// call of a method that some factory's rule declares a read of the value it
+    /// makes, each with the methods it calls. Sorted.
+    ///
+    /// Only the graph can tell whether the binding holds such a value, so the rule
+    /// counts them as writers here, and the graph drops them where the factory it
+    /// confirms declares every one of those methods a read; see
+    /// [`crate::factories::rules::Reads`].
+    pub read_calls: Vec<(DeclId, Vec<String>)>,
+    /// Of the edges the shared-state rule gave this declaration, those it gave only
+    /// because the writer is in the `read_calls` of each of the declarations listed
+    /// with it, and which this declaration does not otherwise name. Sorted.
+    ///
+    /// The rule's edges are in `refs`, and in what an object's members and a
+    /// factory call's frame inherit, so the graph drops them from each of those.
+    pub read_call_edges: Vec<(DeclId, Vec<DeclId>)>,
     /// Imported bindings this one references.
     pub imports: Vec<ImportRef>,
     /// The properties of the plain object literal this declaration binds, where

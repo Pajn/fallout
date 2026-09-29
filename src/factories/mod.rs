@@ -148,6 +148,12 @@ impl Made {
         Some(deps)
     }
 
+    /// Whether calling `method` on the value, in the way its form says, reads it
+    /// and changes none of it. See [`rules::Reads`].
+    pub fn read_by(&self, method: &str) -> bool {
+        self.rule.reads(method)
+    }
+
     /// Every property the rule lets a reader reach on its own.
     pub fn member_names(&self) -> impl Iterator<Item = &'static str> + use<> {
         self.rule.member_names()
@@ -203,6 +209,7 @@ impl Made {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::Node;
     use crate::graph::tests::{file, graph_for};
 
     /// What made `name` in `slice.ts`, in a tree of the given files.
@@ -585,5 +592,194 @@ export const t = createAsyncThunk(
         ] {
             assert!(store(&source).is_none(), "{source}");
         }
+    }
+
+    /// Whether a read of `useCounter` reaches `peek`, in a `slice.ts` that imports
+    /// what `import` says, makes the store with `make`, and declares `peek` as
+    /// `body`, among the given other files. Both a reader in the same file and a
+    /// reader in another module, landing on the export, are asked, and must agree.
+    fn peek_writes(files: &[(&str, &str)], import: &str, make: &str, body: &str) -> bool {
+        let source = format!(
+            "{import}\nexport const useCounter = {make}(() => ({{ count: 0, inc: () => {{}} }}));\nexport const read = () => useCounter((state) => state.count);\nexport const peek = () => {body};\n"
+        );
+        let mut files = files.to_vec();
+        files.push(("slice.ts", &source));
+        let (dir, graph) = graph_for(&files);
+        let slice = file(&graph, &dir, "slice.ts");
+        let module = graph.view(slice).fine().unwrap();
+        let decl = |name: &str| module.module().decl_named(name).expect(name);
+        let peek = Node::Decl(slice, decl("peek"));
+        let local = graph.edges(Node::Decl(slice, decl("read"))).contains(&peek);
+        let exported = graph
+            .edges(Node::Export(slice, graph.name_id("useCounter")))
+            .contains(&peek);
+        assert_eq!(local, exported, "{source}");
+        local
+    }
+
+    const ZUSTAND: &str = "import { create } from 'zustand';";
+
+    #[test]
+    fn reading_a_stores_state_or_subscribing_to_it_does_not_write_it() {
+        for body in [
+            "useCounter.getState().count > 0",
+            "useCounter.getInitialState().count > 0",
+            "useCounter.getState()['count'] === 1",
+            "(useCounter.getState() as { count: number }).count + 1",
+            "useCounter.getState() === undefined",
+            "`${useCounter.getState().count}`",
+            "{ if (useCounter.getState().count > 1) { document.title = 'many'; } }",
+            "{ const { count } = useCounter.getState(); return count > 0; }",
+            "{ const count = useCounter.getState().count; return -count; }",
+            "{ const state = useCounter.getState(); return state.count > 0; }",
+            "useCounter.subscribe((state) => { document.title = `${state.count}`; })",
+            "useCounter.subscribe(function (state, previous) { return state.count === previous.count; })",
+            "useCounter.subscribe(({ count }) => { document.title = `${count}`; })",
+            "useCounter.subscribe(() => {})",
+            // The function `subscribe` returns unsubscribes, and changes no state.
+            "{ const stop = useCounter.subscribe(() => {}); stop(); }",
+        ] {
+            assert!(!peek_writes(&[], ZUSTAND, "create", body), "{body}");
+        }
+    }
+
+    #[test]
+    fn every_zustand_store_is_read_by_its_read_methods_however_its_factory_is_reached() {
+        let body = "useCounter.getState().count > 0";
+        for (import, make) in [
+            (
+                "import { createStore } from 'zustand/vanilla';",
+                "createStore",
+            ),
+            (
+                "import { createWithEqualityFn } from 'zustand/traditional';",
+                "createWithEqualityFn",
+            ),
+            ("import create from 'zustand';", "create"),
+            ("import * as z from 'zustand';", "z.create"),
+            (
+                "import { create } from 'zustand';\nconst typed = create<{ count: number }>();",
+                "typed",
+            ),
+        ] {
+            assert!(!peek_writes(&[], import, make, body), "{import}");
+        }
+        // Through a module of the app that re-exports the factory.
+        let files = [("zustand.ts", "export { create } from 'zustand';\n")];
+        assert!(!peek_writes(
+            &files,
+            "import { create } from './zustand';",
+            "create",
+            body
+        ));
+    }
+
+    #[test]
+    fn acting_on_what_a_store_hands_out_still_writes_it() {
+        for body in [
+            // An action on the state calls `set`.
+            "useCounter.getState().inc()",
+            "{ const state = useCounter.getState(); state.inc(); }",
+            "{ const { inc } = useCounter.getState(); inc(); }",
+            "{ const inc = useCounter.getState().inc; inc(); }",
+            "register(useCounter.getState())",
+            "register(useCounter.getState().inc)",
+            "useCounter.getState().count = 1",
+            "{ const { inc } = useCounter.getState(); register(inc); }",
+            // Anything taken from the state and returned may be an action, which the
+            // caller is free to call.
+            "useCounter.getState()",
+            "useCounter.getState().inc",
+            "useCounter.getState().count",
+            "useCounter.getInitialState().count",
+            "{ return useCounter.getState().inc; }",
+            "{ const { inc } = useCounter.getState(); return inc; }",
+            "{ const count = useCounter.getState().count; return count; }",
+            "{ const state = useCounter.getState(); return state.inc; }",
+            "({ inc: useCounter.getState().inc })",
+            "[...useCounter.getState().list]",
+            // Any other method, and a read method not called.
+            "useCounter.setState({ count: 1 })",
+            "useCounter.destroy()",
+            "useCounter.other()",
+            "register(useCounter.getState)",
+            // A listener that writes, or that this cannot read.
+            "useCounter.subscribe((state) => state.inc())",
+            "useCounter.subscribe((state) => register(state))",
+            "useCounter.subscribe(() => useCounter.setState({ count: 1 }))",
+            "useCounter.subscribe(() => useCounter.getState().inc())",
+            "useCounter.subscribe(register)",
+            "useCounter.subscribe((state) => state.count, (count) => register(count))",
+            "useCounter.subscribe((...args) => args)",
+        ] {
+            assert!(peek_writes(&[], ZUSTAND, "create", body), "{body}");
+        }
+    }
+
+    #[test]
+    fn a_declaration_that_reads_a_store_is_still_reached_by_what_names_it_and_still_reads_its_writers()
+     {
+        let source = "import { create } from 'zustand';
+export const useCounter = create(() => ({ count: 0 }));
+export const peek = () => useCounter.getState().count > 0;
+export const show = () => peek() + useCounter.getState().count;
+export const reset = () => useCounter.setState({ count: 0 });\n";
+        let (dir, graph) = graph_for(&[("slice.ts", source)]);
+        let slice = file(&graph, &dir, "slice.ts");
+        let module = graph.view(slice).fine().unwrap();
+        let decl = |name: &str| Node::Decl(slice, module.module().decl_named(name).expect(name));
+        let show = graph.edges(decl("show"));
+        assert!(show.contains(&decl("peek")));
+        assert!(show.contains(&decl("reset")));
+        assert!(graph.edges(decl("peek")).contains(&decl("reset")));
+        let exported = graph.edges(Node::Export(slice, graph.name_id("useCounter")));
+        assert!(exported.contains(&decl("reset")));
+        assert!(!exported.contains(&decl("peek")));
+        assert!(!exported.contains(&decl("show")));
+    }
+
+    #[test]
+    fn the_same_methods_on_anything_but_a_zustand_store_still_write_it() {
+        let body = "useCounter.getState().count > 0";
+        // Another library's `create`.
+        assert!(peek_writes(
+            &[],
+            "import { create } from 'another-library';",
+            "create",
+            body
+        ));
+        // The app's own `create`.
+        let files = [(
+            "make.ts",
+            "export function create(f: () => object) { const state = f(); return { getState() { register(); return state; } }; }\n",
+        )];
+        assert!(peek_writes(
+            &files,
+            "import { create } from './make';",
+            "create",
+            body
+        ));
+        // A file of the app that Zustand's name resolves to.
+        let files = [
+            (
+                "tsconfig.json",
+                "{ \"compilerOptions\": { \"paths\": { \"zustand\": [\"./shims/zustand.ts\"] } } }\n",
+            ),
+            (
+                "shims/zustand.ts",
+                "export function create(f: () => object) { const state = f(); return { getState() { register(); return state; } }; }\n",
+            ),
+        ];
+        assert!(peek_writes(&files, ZUSTAND, "create", body));
+        // A local object with methods of the same names.
+        let class = "class Counter { constructor(f: () => object) {} getState() { register(); return {}; } }";
+        assert!(peek_writes(&[], class, "new Counter", body));
+        // RTK's factory makes no store.
+        assert!(peek_writes(
+            &[],
+            "import { createAsyncThunk } from '@reduxjs/toolkit';",
+            "createAsyncThunk",
+            body
+        ));
     }
 }

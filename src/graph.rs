@@ -355,21 +355,44 @@ impl Graph {
             return Vec::new();
         };
 
-        self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports)
+        self.reference_edges(
+            fine,
+            Some(decl),
+            &entry.refs,
+            &entry.member_refs,
+            &entry.imports,
+        )
     }
 
-    /// The nodes a declaration's references, or a member's, point at.
+    /// The nodes a declaration's references, or a member's, point at: those of
+    /// `from`, or of part of it.
+    ///
+    /// An edge the shared-state rule gave `from` only for calls that read a value a
+    /// factory made is left out where the graph confirms that factory; see
+    /// [`Graph::only_read_calls`].
     fn reference_edges(
         &self,
         fine: &Fine,
+        from: Option<DeclId>,
         refs: &[DeclId],
         member_refs: &[(DeclId, String)],
         imports: &[ImportRef],
     ) -> Vec<Node> {
         let (file, analysed) = (fine.file(), fine.analysed());
+        let read_call_edges = from
+            .and_then(|from| fine.module().decls.get(from as usize))
+            .map_or(&[][..], |entry| entry.read_call_edges.as_slice());
         let mut edges = Vec::new();
         for &target in refs {
-            edges.push(Node::Decl(file, target));
+            let dropped = read_call_edges.iter().any(|(writer, owners)| {
+                *writer == target
+                    && owners
+                        .iter()
+                        .all(|&owner| self.only_read_calls(fine, owner, target))
+            });
+            if !dropped {
+                edges.push(Node::Decl(file, target));
+            }
         }
         for (target, member) in member_refs {
             edges.push(self.local_member(fine, *target, member));
@@ -399,12 +422,22 @@ impl Graph {
         let (file, module) = (fine.file(), fine.module());
         let member = self.name(member);
         let mut edges = match member_of(module, decl, &member) {
-            None if let Some(deps) = self.factory_member(fine, decl, &member) => {
-                self.reference_edges(fine, &deps.refs, &deps.member_refs, &deps.imports)
-            }
+            None if let Some(deps) = self.factory_member(fine, decl, &member) => self
+                .reference_edges(
+                    fine,
+                    Some(decl),
+                    &deps.refs,
+                    &deps.member_refs,
+                    &deps.imports,
+                ),
             Some(entry) => {
-                let mut edges =
-                    self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports);
+                let mut edges = self.reference_edges(
+                    fine,
+                    Some(decl),
+                    &entry.refs,
+                    &entry.member_refs,
+                    &entry.imports,
+                );
                 // Called through the object, it may read any other property as
                 // `this`.
                 if entry.receiver {
@@ -437,11 +470,30 @@ impl Graph {
                 (Some(read), Some(written)) => read == written,
                 _ => true,
             })
+            .filter(|(writer, _)| !self.only_read_calls(fine, decl, *writer))
             .map(|(writer, _)| Node::Decl(fine.file(), *writer))
             .collect();
         // Sorted by writer, so one that writes several properties is next to itself.
         edges.dedup();
         edges
+    }
+
+    /// Whether `writer` changes what `owner` binds only by calling methods on it that
+    /// the factory which made it declares reads: `store.getState().count`, where
+    /// `store` is a Zustand store.
+    ///
+    /// Such a call counts as a write where it is parsed, since only the graph can
+    /// tell what made the value. Where it cannot, because the factory is the app's
+    /// own, another library's, or none, the call stays a write.
+    fn only_read_calls(&self, fine: &Fine, owner: DeclId, writer: DeclId) -> bool {
+        let Some(entry) = fine.module().decls.get(owner as usize) else {
+            return false;
+        };
+        let Some((_, methods)) = entry.read_calls.iter().find(|(w, _)| *w == writer) else {
+            return false;
+        };
+        self.made_by(fine.file(), owner)
+            .is_some_and(|made| methods.iter().all(|method| made.read_by(method)))
     }
 
     /// A read of `member` off the declaration `decl` of the same file: that member
@@ -561,6 +613,7 @@ impl Graph {
                         let frame = made.frame();
                         edges.extend(self.reference_edges(
                             fine,
+                            Some(decl),
                             &frame.refs,
                             &frame.member_refs,
                             &frame.imports,
@@ -587,7 +640,7 @@ impl Graph {
         // this one's, so a claim that this module has no side effects leaves these
         // edges standing then, as it leaves the imports below.
         if self.runs_on_import(file) || self.inline_requires {
-            edges.extend(self.reference_edges(fine, &[], &[], &module.init_imports));
+            edges.extend(self.reference_edges(fine, None, &[], &[], &module.init_imports));
         }
         if self.inline_requires {
             edges.extend(
