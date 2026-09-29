@@ -3,7 +3,8 @@
 use ahash::{AHashMap, AHashSet};
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    BindingPattern, CallExpression, Expression, JSXMemberExpressionObject, UnaryOperator,
+    BinaryOperator, BindingPattern, CallExpression, Expression, JSXMemberExpressionObject,
+    UnaryOperator,
 };
 use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
@@ -411,6 +412,29 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
         // same context reads it out. That is a channel between two declarations
         // however little the syntax looks like one.
         AstKind::JSXOpeningElement(_) | AstKind::JSXClosingElement(_) => Use::Read,
+        // `k in s`, `s instanceof C` and `s === o` check the value, on either side,
+        // and yield a boolean that holds no reference to it. What they can run, a
+        // proxy's `has` trap, `Symbol.hasInstance`, `valueOf` or `toString`, is
+        // taken to run nothing, as it is for property reads and pure calls.
+        AstKind::BinaryExpression(binary)
+            if matches!(
+                binary.operator,
+                BinaryOperator::In
+                    | BinaryOperator::Instanceof
+                    | BinaryOperator::Equality
+                    | BinaryOperator::Inequality
+                    | BinaryOperator::StrictEquality
+                    | BinaryOperator::StrictInequality
+                    | BinaryOperator::LessThan
+                    | BinaryOperator::LessEqualThan
+                    | BinaryOperator::GreaterThan
+                    | BinaryOperator::GreaterEqualThan
+            ) =>
+        {
+            Use::Read
+        }
+        // `#x in s` asks the same of a private field.
+        AstKind::PrivateInExpression(_) => Use::Read,
         // `s.x` is a read where the value it yields stays in the expression.
         AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
             match nodes.parent_kind(nodes.parent_id(node_id)) {
@@ -1087,6 +1111,50 @@ mod tests {
         assert_eq!(uses_of_s("export const a = () => S.x;"), [Use::Read]);
         assert_eq!(uses_of_s("export const a = () => S[\"y\"];"), [Use::Read]);
         assert_eq!(uses_of_s("export const a = () => S.x + 1;"), [Use::Read]);
+    }
+
+    #[test]
+    fn checking_a_value_is_a_read() {
+        for check in [
+            "k in S",
+            "S in o",
+            "S instanceof C",
+            "v instanceof S",
+            "S == o",
+            "o != S",
+            "S === o",
+            "o !== S",
+            "S < 1",
+            "1 <= S",
+            "S > 1",
+            "1 >= S",
+        ] {
+            let body = format!("export const a = () => {{ if ({check}) go(); }};");
+            assert_eq!(uses_of_s(&body), [Use::Read], "{check}");
+        }
+        // With both operands the binding, each is read.
+        assert_eq!(
+            uses_of_s("export const a = () => { if (S === S) go(); };"),
+            [Use::Read, Use::Read]
+        );
+        // `#x in S` asks the same of a private field.
+        assert_eq!(
+            uses_of_s("class K { #x; static t = () => #x in S; }"),
+            [Use::Read]
+        );
+    }
+
+    #[test]
+    fn arithmetic_on_a_value_is_still_counted_as_a_write() {
+        // Only the checks above are taken out of the catch-all. Arithmetic can run
+        // `valueOf` no more than a comparison can, but it stays in it.
+        assert_eq!(uses_of_s("export const a = () => S + 1;"), [Use::Mutate]);
+        assert_eq!(uses_of_s("export const a = () => S | 1;"), [Use::Mutate]);
+        // A check does not make passing the value on any less of a hand-off.
+        assert_eq!(
+            uses_of_s("export const a = () => { if (k in S) other(S); };"),
+            [Use::Read, Use::Mutate]
+        );
     }
 
     #[test]

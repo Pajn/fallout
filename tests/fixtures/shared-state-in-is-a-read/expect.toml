@@ -1,0 +1,48 @@
+# Three modules of the same shape, each with a module-scope `let prefs`, one
+# declaration that only checks it with `in`, one that only compares it, one that
+# reassigns it and one that reads a property off it. Each module has one of them
+# edited.
+#
+# Checking a value with `in`, `instanceof` or a comparison reads it and does not
+# write it, so a declaration that only checks is no writer that every other reader
+# of the binding reaches.
+
+# The `in` check is edited. `theme` reads `prefs`, but nothing the check does can
+# change what `prefs` holds.
+[[anchor]]
+path = "src/pages/InCheckedPage.tsx"
+affected = false
+
+# The comparison is edited, and is no writer either.
+[[anchor]]
+path = "src/pages/CompareCheckedPage.tsx"
+affected = false
+
+# The declaration that reassigns `prefs` is edited, and `theme` reads what it
+# writes.
+[[anchor]]
+path = "src/pages/WrittenPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/WrittenPage.tsx)",
+    "Decl(src/pages/WrittenPage.tsx, WrittenPage)",
+    "Export(src/lib/written.ts, theme)",
+    "Decl(src/lib/written.ts, theme)",
+    "Decl(src/lib/written.ts, set)",
+]
+
+# A check still reads the value, so an edit to its writer still reaches it.
+[[anchor]]
+path = "src/pages/CheckWrittenPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CheckWrittenPage.tsx)",
+    "Decl(src/pages/CheckWrittenPage.tsx, CheckWrittenPage)",
+    "Export(src/lib/written.ts, isSet)",
+    "Decl(src/lib/written.ts, isSet)",
+    "Decl(src/lib/written.ts, set)",
+]
