@@ -1,0 +1,65 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== label.js [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "limit.js"
+Path (downstream, file granularity):
+  File(label.js)
+  File(limit.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"limit.js","path":["File(label.js)","File(limit.js)"],"granularity":"file","unresolved":[]}]}
+
+== label.js [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "limit.js"
+Path (downstream, file granularity):
+  File(label.js)
+  File(limit.js)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"limit.js","path":["File(label.js)","File(limit.js)"],"granularity":"file","unresolved":[]}]}
+
+== label.js [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "limit.js"
+Path (downstream, symbol granularity):
+  File(label.js)
+  ModuleInit(label.js)
+  ModuleInit(limit.js)
+  Decl(limit.js, LIMIT)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"limit.js","path":["File(label.js)","ModuleInit(label.js)","ModuleInit(limit.js)","Decl(limit.js, LIMIT)"],"granularity":"symbol","unresolved":[]}]}
+
+== label.js [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "limit.js"
+Path (downstream, symbol granularity):
+  File(label.js)
+  ModuleInit(label.js)
+  ModuleInit(limit.js)
+  Decl(limit.js, LIMIT)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"limit.js","path":["File(label.js)","ModuleInit(label.js)","ModuleInit(limit.js)","Decl(limit.js, LIMIT)"],"granularity":"symbol","unresolved":[]}]}
+
+== label.js [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "limit.js"
+Path (downstream, symbol granularity):
+  File(label.js)
+  ModuleInit(label.js)
+  ModuleInit(limit.js)
+  Decl(limit.js, LIMIT)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"limit.js","path":["File(label.js)","ModuleInit(label.js)","ModuleInit(limit.js)","Decl(limit.js, LIMIT)"],"granularity":"symbol","unresolved":[]}]}
+
+== label.js [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "limit.js"
+Path (downstream, symbol granularity):
+  File(label.js)
+  ModuleInit(label.js)
+  ModuleInit(limit.js)
+  Decl(limit.js, LIMIT)
+-- --json: exit 0
+{"anchors":[{"anchor":"label.js","affected":true,"direction":"downstream","changed":"limit.js","path":["File(label.js)","ModuleInit(label.js)","ModuleInit(limit.js)","Decl(limit.js, LIMIT)"],"granularity":"symbol","unresolved":[]}]}

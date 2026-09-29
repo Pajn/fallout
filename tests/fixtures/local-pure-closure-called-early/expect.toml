@@ -1,0 +1,18 @@
+# A local helper returns a function that reads a `const` declared at the bottom of
+# the file, and the function is called on load, before that `const` exists. Creating
+# the function runs nothing, but calling it is judged as any call is, and a value a
+# helper returned is not a proven helper. So the call stays in initialisation, and an
+# edit to the `const` it reads too early reaches every importer. Initialisation
+# lists everything the call reaches, through `read` and `makeReader`, so the path
+# goes straight to `LIMIT`.
+[[anchor]]
+path = "label.js"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(label.js)",
+    "ModuleInit(label.js)",
+    "ModuleInit(limit.js)",
+    "Decl(limit.js, LIMIT)",
+]
