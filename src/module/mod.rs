@@ -50,7 +50,8 @@ pub struct Decl {
     pub interior: Span,
     /// What this declaration's value is another name for: `const f = X` and
     /// `const f = X.withTypes<T>()`, where `X` is an import or a declaration here
-    /// and `withTypes` is a method some rule declares an identity form.
+    /// and `withTypes` is a method some rule declares an identity form, and
+    /// `const f = X<T>()`, where `X` is an import.
     pub derived: Option<Callee>,
     /// The call this declaration's value is the result of, `const t = f(...)`,
     /// with what each argument depends on. The graph decides whether `f` is a
@@ -112,8 +113,7 @@ pub struct Deps {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FactoryCall {
     pub callee: Callee,
-    /// Each argument's span, and what it depends on.
-    pub args: Vec<(Span, Deps)>,
+    pub args: Vec<Argument>,
     /// What the declaration depends on outside every argument: the callee, a type
     /// annotation, every edge of the shared-state rule, and anything no reference
     /// accounts for, such as an import or `require` inside an argument.
@@ -125,6 +125,27 @@ pub struct FactoryCall {
     /// one and its trailing comma, if it has one, up to the closing parenthesis.
     /// Removing that argument leaves its mark here.
     pub missing: Span,
+}
+
+/// One argument of a [`FactoryCall`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Argument {
+    pub span: Span,
+    /// What it depends on.
+    pub deps: Deps,
+    /// Whether calling it once, where the call is written, with arguments nobody
+    /// here knows anything about, is proven to run nothing and not to throw: a
+    /// function written out in place, whose body the local-helper proof clears.
+    ///
+    /// Evaluating a function runs nothing, whatever its body does, so this is the
+    /// question for a factory that calls what it is given while creating its value.
+    pub quiet_when_called: bool,
+    /// Whether calling it may read an imported binding, directly or through a
+    /// declaration of this file it names, such as a helper it calls. Where a
+    /// project defers each import to its first use, reading one evaluates the
+    /// module it names, which is not quiet. Which reads would happen when is not
+    /// told apart, so one inside a function the argument only creates counts too.
+    pub reads_imports: bool,
 }
 
 /// One property of an object literal declaration, and what reading it depends on.

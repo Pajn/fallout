@@ -1,0 +1,1 @@
+{ "compilerOptions": { "paths": { "zustand": ["../lib/state.ts"] } } }

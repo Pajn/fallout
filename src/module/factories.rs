@@ -7,9 +7,11 @@
 //! this records what the graph needs to decide it:
 //!
 //! - which declarations are another name for an import or a declaration here,
-//!   `const f = X` and `const f = X.withTypes<T>()`;
+//!   `const f = X`, `const f = X.withTypes<T>()` and, for an import `X`,
+//!   `const f = X<T>()`;
 //! - which are the result of calling one, `const t = f(…)`, with what each argument
-//!   depends on kept apart;
+//!   depends on kept apart, and whether calling it there would run anything, for a
+//!   factory that calls what it is given;
 //! - which of those run nothing but that call, so that module initialisation need
 //!   not reach them if the callee turns out to be a factory that only builds values.
 //!
@@ -27,8 +29,9 @@ use super::decls::{DeclDraft, ImportBinding};
 use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
 use super::refs::{SharedEdges, narrowed, unwritten_member_read};
-use super::{Callee, Decl, DeclId, Deps, FactoryCall, ImportTarget, Span, Step};
-use crate::factories::rules::is_identity_method;
+use super::side_effects::SideEffects;
+use super::{Argument, Callee, Decl, DeclId, Deps, FactoryCall, ImportTarget, Span, Step};
+use crate::factories::rules::{is_identity_call, is_identity_method};
 
 /// What [`find`] found, before any reference is linked.
 #[derive(Default)]
@@ -36,7 +39,7 @@ pub(crate) struct Candidates {
     /// The binding of each call whose result may be read by property.
     pub by_symbol: Vec<(SymbolId, DeclId)>,
     /// Statements whose initialiser runs nothing but one call, whether that call is
-    /// a factory's or `withTypes` of one.
+    /// a factory's or an identity form of one, such as `withTypes`.
     pub conditional: AHashSet<usize>,
     calls: Vec<Pending>,
     derived: Vec<(DeclId, Callee)>,
@@ -49,6 +52,9 @@ struct Pending {
     decl: DeclId,
     callee: Callee,
     args: Vec<Span>,
+    /// Whether calling each argument where the call is written runs nothing. See
+    /// [`super::Argument::quiet_when_called`].
+    quiet: Vec<bool>,
     /// The top-level statement the call is written in.
     statement: usize,
     /// Inside the parentheses: from the end of the callee, and of any type
@@ -94,6 +100,7 @@ pub(crate) fn find<'a>(
     program: &'a Program<'a>,
     drafts: &[DeclDraft],
     imports: &[ImportBinding],
+    effects: &SideEffects<'_, '_>,
 ) -> Candidates {
     let mut candidates = Candidates::default();
     let names = Names::new(drafts, imports);
@@ -110,7 +117,8 @@ pub(crate) fn find<'a>(
         let (Some(decl), Some(callee)) = (decl_of(index, id), callee_of(ctx, init, &names)) else {
             continue;
         };
-        // `X.withTypes<T>()` is a call, and runs nothing if `X` is a factory.
+        // `X.withTypes<T>()` and `X<T>()` are calls, and run nothing if `X` is a
+        // factory whose rule declares them.
         if matches!(init.get_inner_expression(), Expression::CallExpression(_)) {
             candidates.conditional.insert(index);
         }
@@ -141,12 +149,14 @@ pub(crate) fn find<'a>(
             _ => continue,
         };
         let mut args = Vec::with_capacity(call.arguments.len());
+        let mut quiet = Vec::with_capacity(call.arguments.len());
         for argument in &call.arguments {
             // A spread is arguments nobody here can count.
-            if argument.as_expression().is_none() {
+            let Some(expression) = argument.as_expression() else {
                 break;
-            }
+            };
             args.push(span_of(argument.span()));
+            quiet.push(!effects.runs_when_called(expression, call.span.start));
         }
         if args.len() != call.arguments.len() {
             continue;
@@ -167,6 +177,7 @@ pub(crate) fn find<'a>(
             decl,
             callee,
             args,
+            quiet,
             statement: index,
             interior: Span {
                 start: opens,
@@ -240,9 +251,10 @@ impl<'d> Names<'d> {
 /// them and which returns the factory itself.
 ///
 /// Whether such a call returns what it was called on is the matched rule's to say,
-/// so it is kept as a step for the graph. Only a call with no arguments to a method
-/// some rule declares an identity form is read at all: any other call's result is
-/// a value no rule speaks for, and calling it is plain initialisation.
+/// so it is kept as a step for the graph. Only a call with no arguments is read at
+/// all, and only where some rule declares such a call an identity form: to a method
+/// of that name, or, for Zustand's `create<T>()`, to an import itself. Any other call's
+/// result is a value no rule speaks for, and calling it is plain initialisation.
 fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<Callee> {
     match expr.get_inner_expression() {
         Expression::Identifier(identifier) => {
@@ -283,14 +295,20 @@ fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<
             Some(callee)
         }
         Expression::CallExpression(call) if call.arguments.is_empty() => {
-            let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression()
-            else {
-                return None;
+            let method = match call.callee.get_inner_expression() {
+                Expression::StaticMemberExpression(member) => {
+                    is_identity_method(&member.property.name)
+                }
+                _ => false,
             };
-            if !is_identity_method(&member.property.name) {
+            let mut callee = callee_of(ctx, &call.callee, names)?;
+            // Called with no arguments, it is the import itself that may be the
+            // factory. A function this file declares is plain initialisation to
+            // call, as it is with arguments, and so is anything read off an import.
+            let imported = matches!(&callee, Callee::Import { path, .. } if path.is_empty());
+            if !method && !(is_identity_call() && imported) {
                 return None;
             }
-            let mut callee = callee_of(ctx, &call.callee, names)?;
             callee.path_mut().push(Step::Call);
             Some(callee)
         }
@@ -457,14 +475,52 @@ pub(crate) fn attach(
             push_unique(&mut frame.imports, import);
         }
         frame.refs.retain(|&target| target != call.decl);
+        let args = call
+            .args
+            .into_iter()
+            .zip(args)
+            .zip(call.quiet)
+            .map(|((span, deps), quiet_when_called)| Argument {
+                span,
+                reads_imports: reads_imports(decls, &deps),
+                deps,
+                quiet_when_called,
+            })
+            .collect();
         decls[call.decl as usize].factory = Some(FactoryCall {
             callee: call.callee,
-            args: call.args.into_iter().zip(args).collect(),
+            args,
             frame,
             interior: call.interior,
             missing: call.missing,
         });
     }
+}
+
+/// Whether code that depends on `deps` may read an imported binding: `deps` names
+/// one, or a declaration of this file does that `deps` reaches, followed as far as
+/// the declarations go.
+fn reads_imports(decls: &[Decl], deps: &Deps) -> bool {
+    if !deps.imports.is_empty() {
+        return true;
+    }
+    let objects = deps.member_refs.iter().map(|(object, _)| object);
+    let mut queue: Vec<DeclId> = deps.refs.iter().chain(objects).copied().collect();
+    let mut seen: AHashSet<DeclId> = AHashSet::default();
+    while let Some(decl) = queue.pop() {
+        if !seen.insert(decl) {
+            continue;
+        }
+        let Some(entry) = decls.get(decl as usize) else {
+            continue;
+        };
+        if !entry.imports.is_empty() {
+            return true;
+        }
+        let objects = entry.member_refs.iter().map(|(object, _)| object);
+        queue.extend(entry.refs.iter().chain(objects).copied());
+    }
+    false
 }
 
 fn push_unique<T: PartialEq>(list: &mut Vec<T>, value: T) {
@@ -501,7 +557,7 @@ mod tests {
         let refs: Vec<Vec<String>> = call
             .args
             .iter()
-            .map(|(_, deps)| deps.refs.iter().map(name).collect())
+            .map(|argument| argument.deps.refs.iter().map(name).collect())
             .collect();
         assert_eq!(refs, [vec!["TYPE".to_string()], vec!["load".to_string()]]);
         // The callee is an import, which is the frame's.
@@ -527,7 +583,7 @@ mod tests {
             let call = module.decls[t].factory.as_ref().expect("a call");
             let modal = module.sources.iter().position(|s| s == "./modal").unwrap() as u32;
             let reads = |deps: &crate::module::Deps| deps.imports.iter().any(|i| i.source == modal);
-            assert!(reads(&call.args[1].1), "{payload}");
+            assert!(reads(&call.args[1].deps), "{payload}");
             assert!(!reads(&call.frame), "{payload}");
         }
     }
@@ -543,8 +599,8 @@ mod tests {
         let create = module.decl_named("create").unwrap();
         let call = module.decls[t].factory.as_ref().expect("a call");
         assert!(call.frame.refs.contains(&create));
-        assert!(call.args[1].1.refs.contains(&create));
-        assert!(!call.args[0].1.refs.contains(&create));
+        assert!(call.args[1].deps.refs.contains(&create));
+        assert!(!call.args[0].deps.refs.contains(&create));
     }
 
     #[test]
@@ -622,5 +678,59 @@ mod tests {
         let t = module.decl_named("t").unwrap();
         assert!(module.init_decls.contains(&t));
         assert!(!module.conditional_init.contains(&t));
+    }
+
+    /// Whether calling the first argument of the call `store` binds, where it is
+    /// written, is proven to run nothing, in a module that is `source` with the
+    /// store's import above it.
+    fn creator_is_quiet(source: &str) -> bool {
+        let module = module(&format!("import {{ create }} from 'zustand';\n{source}"));
+        let store = module.decl_named("store").expect(source) as usize;
+        let call = module.decls[store].factory.as_ref().expect(source);
+        call.args[0].quiet_when_called
+    }
+
+    #[test]
+    fn a_creator_is_quiet_when_called_where_its_body_is_proven_to_run_nothing() {
+        for source in [
+            "export const store = create(() => ({ count: 0 }));",
+            // The parameters may be handed on, or held by functions that call them
+            // later, since no body but the creator's runs as the store is made.
+            "export const store = create((set) => ({ count: 0, inc: () => set((s) => ({ count: s.count + 1 })) }));",
+            "export const store = create((set, get, api) => ({ api, read: () => get() }));",
+            "export const store = create(function (set) { const count = 0; return { count, set }; });",
+            // What it reads is ready by the time the store is made.
+            "const START = 1; export const store = create(() => ({ count: START }));",
+            "import { base } from './tokens'; export const store = create(() => ({ base }));",
+            "function initial() { return { count: 0 }; } export const store = create(() => initial());",
+            "export const store = create(() => initial()); function initial() { return { count: 0 }; }",
+        ] {
+            assert!(creator_is_quiet(source), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_creator_that_may_run_something_or_throw_when_called_is_not_quiet() {
+        for source in [
+            "export const store = create(() => ({ id: register() }));",
+            // Calling a parameter, or reading through one, runs code nobody here
+            // can see: the store's own `set` notifies its listeners.
+            "export const store = create((set) => { set({ count: 1 }); return { count: 0 }; });",
+            "export const store = create((set, get) => ({ count: get().count }));",
+            "export const store = create((set, get, api) => ({ state: api.getState }));",
+            // A `const` read before its declaration has run throws, and the creator
+            // runs where the store is made.
+            "export const store = create(() => ({ count: START })); const START = 1;",
+            "export const store = create(() => initial()); const initial = () => ({ count: 0 });",
+            // Not a function written out, or not one whose body the proof reads.
+            "const creator = () => ({ count: 0 }); export const store = create(creator);",
+            "export const store = create(persist(() => ({ count: 0 }), { name: 'count' }));",
+            "export const store = create(async () => ({ count: 0 }));",
+            "export const store = create(function* () { yield 1; });",
+            "export const store = create(({ setState }) => ({ count: 0 }));",
+            "export const store = create(() => this);",
+        ] {
+            assert!(!creator_is_quiet(source), "{source}");
+        }
     }
 }

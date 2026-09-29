@@ -357,6 +357,8 @@ which are reached by name however the declaration was built.
 
 ### Known factories
 
+#### Redux Toolkit
+
 A Redux Toolkit app makes its async actions with `createAsyncThunk`, and its slices
 name them in their reducers:
 
@@ -402,6 +404,57 @@ the options marks `rejected`. Adding or removing the options counts as an edit t
 them wherever the edit lands after the last argument. An edit to the type string, to
 the call around the arguments, or to the binding marks all of them, and so does one
 to a line the payload creator shares with any of those.
+
+#### Zustand
+
+A Zustand store is usually declared beside other exports of its module:
+
+```ts
+export const COUNTER_TITLE = "Counter";
+
+export const useCounter = create<CounterState>()((set) => ({
+  count: 0,
+  increment: () => set((state) => ({ count: state.count + 1 })),
+}));
+```
+
+Read as a plain call, making the store is module initialisation, so a page that
+imports only `COUNTER_TITLE` is reached by every edit to the store. But making a
+store is not free of effects either: Zustand calls the creator there and then, with
+`set`, `get` and the store's `api`, for the initial state. So the store counts as
+initialisation unless calling its creator, once and where the store is made, is
+proven to run nothing and not to throw. The proof is the one for [local
+helpers](#pure-calls), with the creator's parameters standing for values nobody
+knows: the creator may hand them on or hold them in the functions it returns, as
+actions do, but calling one or reading through one is not proven, and what the
+creator reads must already be declared where the store is made. Where the proof
+holds, initialisation reaches only the call around the creator, and an edit inside
+the creator reaches only what uses the store. With [inline
+requires](#inline-requires), reading an import evaluates the module it names, so a
+creator that may read one, directly or through a function of its file, is not proven
+either, and its store stays initialisation.
+
+Recognised are `create` from `zustand` and `zustand/react`, `createStore` from
+`zustand` and `zustand/vanilla`, `createWithEqualityFn` from `zustand/traditional`,
+whose equality function is kept for the hook rather than called, and Zustand 4's
+default exports of `zustand` and `zustand/vanilla`. Each is matched in the curried form
+`create<State>()(creator)` too, and however the app reaches it, as for
+`createAsyncThunk`. An app's own function that wraps `create`, and a file of the app
+that `zustand` resolves to, are not matched.
+
+Using the store is not split by state key. Calling the hook, `getState()`,
+`setState()` and passing the store around each reach the whole declaration, as they
+would for any other value, whichever keys they read. Only making the store is
+narrowed.
+
+Middleware and slices are not proven yet. A store whose creator is wrapped in
+`persist`, `devtools`, `immer`, `subscribeWithSelector` or `combine`, or assembled
+from slices with `(...a) => ({ ...createSlice(...a) })`, stays initialisation.
+
+Without `--base`, an edit that takes an effect out of a creator is not seen as a
+change to initialisation, since the creator the change leaves behind runs nothing
+and a line range cannot tell what it ran before. Against a base revision it is
+seen.
 
 ### Where a claim applies
 

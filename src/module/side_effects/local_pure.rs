@@ -23,6 +23,11 @@
 //! and calling or reading one early throws. So every proof carries the position from
 //! which it holds — the end of the latest `const` it depends on, helper or value —
 //! and a call written before that position is not proven.
+//!
+//! The same proof answers for a function a known factory calls while creating its
+//! value, such as a Zustand store's creator: its body is held to the rules for a
+//! helper's, with its parameters standing for values nobody here knows anything
+//! about, and it runs where the factory is called.
 use ahash::AHashMap;
 use oxc_ast::ast::*;
 use oxc_semantic::{IsGlobalReference, SymbolId};
@@ -173,12 +178,7 @@ impl<'c, 'a> LocalPure<'c, 'a> {
                 if result.proven.contains_key(&candidate.symbol) {
                     continue;
                 }
-                let mut locals: Locals = candidate.params.iter().map(|&p| (p, ())).collect();
-                let proof = match &candidate.body {
-                    Body::Expression(expr) => result.expression(expr, &locals),
-                    Body::Statements(statements) => result.statements(statements, &mut locals),
-                };
-                if let Some(ready) = proof {
+                if let Some(ready) = result.body(&candidate.params, &candidate.body) {
                     result
                         .proven
                         .insert(candidate.symbol, ready.max(candidate.ready));
@@ -193,6 +193,36 @@ impl<'c, 'a> LocalPure<'c, 'a> {
 
     pub(super) fn imports(&self) -> &Imports<'c> {
         &self.imports
+    }
+
+    /// Whether calling `function`, a function written out in place, once at `at`
+    /// with arguments nobody here knows anything about, is proven to run nothing
+    /// and not to throw.
+    ///
+    /// A factory that calls what it is given while creating its value asks this:
+    /// Zustand calls a store's creator as it makes the store. The parameters are
+    /// held as a helper's are, so the body may hand them on or return them, but
+    /// calling one, or reading through it, is not proven. The body runs at `at`, so
+    /// what it reads must be ready there.
+    pub(super) fn invoked(&self, function: &Expression<'_>, at: u32) -> bool {
+        let parts = match function.get_inner_expression() {
+            Expression::ArrowFunctionExpression(arrow) => arrow_parts(arrow),
+            Expression::FunctionExpression(function) => function_parts(function),
+            _ => None,
+        };
+        parts
+            .and_then(|(params, body)| self.body(&params, &body))
+            .is_some_and(|ready| ready <= at)
+    }
+
+    /// From where running `body`, with `params` bound to values nobody here knows
+    /// anything about, runs nothing and does not throw.
+    fn body(&self, params: &[SymbolId], body: &Body<'_, '_>) -> Option<Ready> {
+        let mut locals: Locals = params.iter().map(|&p| (p, ())).collect();
+        match body {
+            Body::Expression(expr) => self.expression(expr, &locals),
+            Body::Statements(statements) => self.statements(statements, &mut locals),
+        }
     }
 
     /// How much of a top-level call is proven to run nothing where it is written.
@@ -641,14 +671,12 @@ fn function_candidate<'s, 'a>(
     ready: Ready,
     function: &'s Function<'a>,
 ) -> Option<Candidate<'s, 'a>> {
-    if function.r#async || function.generator {
-        return None;
-    }
+    let (params, body) = function_parts(function)?;
     Some(Candidate {
         symbol,
         ready,
-        params: simple_params(&function.params)?,
-        body: Body::Statements(&function.body.as_ref()?.statements),
+        params,
+        body,
     })
 }
 
@@ -657,6 +685,31 @@ fn arrow_candidate<'s, 'a>(
     ready: Ready,
     arrow: &'s ArrowFunctionExpression<'a>,
 ) -> Option<Candidate<'s, 'a>> {
+    let (params, body) = arrow_parts(arrow)?;
+    Some(Candidate {
+        symbol,
+        ready,
+        params,
+        body,
+    })
+}
+
+/// The parameters and body of a function the proof can read. An async function
+/// runs its body up to the first `await` and a generator returns an iterator, so
+/// neither is one.
+fn function_parts<'s, 'a>(function: &'s Function<'a>) -> Option<(Vec<SymbolId>, Body<'s, 'a>)> {
+    if function.r#async || function.generator {
+        return None;
+    }
+    Some((
+        simple_params(&function.params)?,
+        Body::Statements(&function.body.as_ref()?.statements),
+    ))
+}
+
+fn arrow_parts<'s, 'a>(
+    arrow: &'s ArrowFunctionExpression<'a>,
+) -> Option<(Vec<SymbolId>, Body<'s, 'a>)> {
     if arrow.r#async {
         return None;
     }
@@ -664,12 +717,7 @@ fn arrow_candidate<'s, 'a>(
         ArrowFunctionBody::FunctionBody(body) => Body::Statements(&body.statements),
         body => Body::Expression(body.as_expression()?),
     };
-    Some(Candidate {
-        symbol,
-        ready,
-        params: simple_params(&arrow.params)?,
-        body,
-    })
+    Some((simple_params(&arrow.params)?, body))
 }
 
 /// Plain named parameters, or `None`: a default runs, a pattern reads properties

@@ -10,7 +10,6 @@ use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 
-use crate::factories::Creation;
 use crate::module::Reading;
 use crate::module::{
     DeclId, ExportTarget, FineModule, ImportRef, ImportTarget, LineTable, Member, ModuleAnalysis,
@@ -513,11 +512,14 @@ impl Graph {
             // makes the callee one is initialisation's to reach: an edit that turns a
             // wrapper with an effect into the factory changes what loading this module
             // does. The call's arguments are what a factory whose creation reaches only
-            // the frame leaves alone. A name that is `withTypes` of a factory reads
-            // nothing but it, so it is reached whole.
+            // the frame leaves alone, and so is a function it calls that is proven to
+            // run nothing there. With imports deferred to first use, such a function
+            // must read no import either, since reading one evaluates its module. A
+            // name that is `withTypes` of a factory reads nothing but it, so it is
+            // reached whole.
             for &decl in &module.conditional_init {
                 match self.made_by(file, decl) {
-                    Some(made) if made.creation() == Creation::Frame => {
+                    Some(made) if made.creates_quietly(self.inline_requires) => {
                         let frame = made.frame();
                         edges.extend(self.reference_edges(
                             fine,
@@ -1163,6 +1165,58 @@ pub(crate) mod tests {
         for file in ["src/barrel.ts", "src/star.ts", "src/deep.ts"] {
             let file = graph.file_id(&root.join(file));
             assert!(edges.contains(&Node::File(file)), "{edges:?}");
+        }
+    }
+
+    /// With inline requires, a module is evaluated where one of its names is first
+    /// read, and a store's creator runs where the store is made. A creator that
+    /// reads `b` in place of `a` makes loading the store's module evaluate `b`'s
+    /// module and no longer `a`'s, so against a base revision a page that imports
+    /// only the constant beside the store is reached. Without inline requires, both
+    /// modules are evaluated as the store's module is, whatever the creator reads,
+    /// and the page is not reached.
+    #[test]
+    fn a_creator_that_reads_another_import_changes_what_loading_evaluates_under_inline_requires() {
+        let store = |read: &str| {
+            format!(
+                "import {{ create }} from \"zustand\";\nimport {{ a }} from \"./a\";\nimport {{ b }} from \"./b\";\n\
+                 export const TITLE = \"Counter\";\n\
+                 export const useCounter = create(() => ({{ value: {read} }}));\n"
+            )
+        };
+        let (before, after) = (store("a"), store("b"));
+        for (inline, expected) in [(true, true), (false, false)] {
+            let mut files = vec![
+                ("src/a.ts", "registerFeature(\"a\");\nexport const a = 1;\n"),
+                ("src/b.ts", "export const b = 2;\n"),
+                ("src/store.ts", after.as_str()),
+                (
+                    "src/page.tsx",
+                    "import { TITLE } from \"./store\";\nexport const Page = () => <h1>{TITLE}</h1>;\n",
+                ),
+            ];
+            if inline {
+                files.push(("fallout.toml", "inline-requires = true\n"));
+            }
+            let (_dir, root) = tree(&files);
+            let options = crate::Options {
+                anchors: vec![PathBuf::from("src/page.tsx")],
+                changed: vec![PathBuf::from("src/store.ts")],
+                diff: None,
+                base: Some("HEAD".to_string()),
+                root: root.clone(),
+                only: None,
+                granularity: crate::Granularity::Symbol,
+                include_types: false,
+            };
+            let earlier: AHashMap<PathBuf, String> =
+                AHashMap::from_iter([(root.join("src/store.ts"), before.clone())]);
+            let answer = crate::analyse_with(&options, Some(Box::new(earlier))).expect("an answer");
+            assert_eq!(
+                answer.verdict.is_affected(),
+                expected,
+                "inline requires: {inline}"
+            );
         }
     }
 }

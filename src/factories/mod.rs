@@ -13,6 +13,12 @@
 //! only on the arguments it lists. Reading any other property of the result, calling the
 //! result, or using it as a whole depends on every argument.
 //!
+//! Some factories call what they are given while they build. Zustand's
+//! `create(createState)` calls `createState` for the store's initial state, so
+//! creating a store runs whatever the creator's body runs. Its rule names that
+//! argument, and initialisation reaches only the frame where the module proves that
+//! calling it there runs nothing; see [`Creation::Calls`].
+//!
 //! A factory is matched however an app reaches it: imported directly, through a
 //! namespace, through `withTypes<…>()`, which types it and returns it, and through
 //! a module of the app's own that exports any of those. The last is the usual
@@ -68,6 +74,29 @@ impl Made {
         self.rule.creation
     }
 
+    /// Whether creating the value runs nothing but the factory, so that module
+    /// initialisation reaches the frame and no argument.
+    ///
+    /// A factory that calls some of its arguments as it creates the value does so
+    /// only where each of them is a function written out in place that the
+    /// local-helper proof clears when called there. One the call does not pass
+    /// would be called all the same, and calling nothing throws.
+    ///
+    /// With `inline_requires`, reading an import evaluates the module it names, so
+    /// an argument that may read one is not quiet either. Initialisation then
+    /// reaches the whole declaration, and what it reads is followed as any read is.
+    pub fn creates_quietly(&self, inline_requires: bool) -> bool {
+        match self.creation() {
+            Creation::Frame => true,
+            Creation::Calls(called) => called.iter().all(|&index| {
+                self.call().args.get(index).is_some_and(|argument| {
+                    argument.quiet_when_called && !(inline_requires && argument.reads_imports)
+                })
+            }),
+            Creation::Whole => false,
+        }
+    }
+
     /// What the declaration depends on outside every argument: the callee, and the
     /// call around the arguments.
     pub fn frame(&self) -> &Deps {
@@ -82,9 +111,10 @@ impl Made {
         let args = self.rule.member(name)?;
         let mut deps = call.frame.clone();
         for &index in args {
-            let Some((_, argument)) = call.args.get(index) else {
+            let Some(argument) = call.args.get(index) else {
                 continue;
             };
+            let argument = &argument.deps;
             deps.refs.extend(argument.refs.iter().copied());
             deps.member_refs
                 .extend(argument.member_refs.iter().cloned());
@@ -115,7 +145,7 @@ impl Made {
             .filter(move |(_, args)| {
                 framing
                     || args.iter().any(|&index| match call.args.get(index) {
-                        Some((span, _)) => span.intersects(start, end),
+                        Some(argument) => argument.span.intersects(start, end),
                         None => call.missing.intersects(start, end),
                     })
             })
@@ -126,7 +156,11 @@ impl Made {
     /// around them.
     pub fn reads(&self, reads: impl Fn(&[ImportRef]) -> bool) -> bool {
         let call = self.call();
-        reads(&call.frame.imports) || call.args.iter().any(|(_, deps)| reads(&deps.imports))
+        reads(&call.frame.imports)
+            || call
+                .args
+                .iter()
+                .any(|argument| reads(&argument.deps.imports))
     }
 
     fn decl(&self) -> &Decl {
@@ -366,5 +400,130 @@ export const t = createAsyncThunk(
             made.touched_members(after, after + 1).collect::<Vec<_>>(),
             ["rejected"]
         );
+    }
+
+    /// What made `t` in `slice.ts`, where `slice.ts` is `source`.
+    fn store(source: &str) -> Option<Made> {
+        made(&[("slice.ts", source)], "t")
+    }
+
+    #[test]
+    fn a_store_is_created_quietly_only_where_its_creator_is_proven_to_run_nothing() {
+        let quiet = store(
+            "import { create } from 'zustand';\nexport const t = create((set) => ({ count: 0, inc: () => set({ count: 1 }) }));\n",
+        )
+        .expect("made by the factory");
+        assert_eq!(quiet.creation(), Creation::Calls(&[0]));
+        assert!(quiet.creates_quietly(false));
+        // Every use of a store can read all of it, so nothing is read apart.
+        assert_eq!(quiet.member_names().count(), 0);
+        assert!(quiet.member("getState").is_none());
+
+        let loud = store(
+            "import { create } from 'zustand';\nexport const t = create(() => ({ id: register() }));\n",
+        )
+        .expect("made by the factory");
+        assert!(!loud.creates_quietly(false));
+
+        // Where imports are deferred to first use, reading one evaluates its module,
+        // whether the creator reads it or a helper it calls does. A creator that
+        // reads none is quiet either way.
+        assert!(quiet.creates_quietly(true));
+        for source in [
+            "import { create } from 'zustand';\nimport { base } from './tokens';\nexport const t = create(() => ({ base }));\n",
+            "import { create } from 'zustand';\nimport { base } from './tokens';\nfunction initial() { return { base }; }\nexport const t = create(() => initial());\n",
+        ] {
+            let made = store(source).expect("made by the factory");
+            assert!(made.creates_quietly(false), "{source}");
+            assert!(!made.creates_quietly(true), "{source}");
+        }
+
+        // A thunk's payload creator is not called as the thunk is made, whatever
+        // it runs.
+        let thunk = store(
+            "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk('a/b', () => register());\n",
+        )
+        .expect("made by the factory");
+        assert!(thunk.creates_quietly(false));
+
+        let other = "import { create } from 'another-library';\nexport const t = create(() => ({ count: 0 }));\n";
+        assert!(store(other).is_none());
+    }
+
+    const CREATOR: &str = "(set) => ({ count: 0 })";
+
+    #[test]
+    fn a_store_is_made_by_create_called_first_with_no_arguments() {
+        for source in [
+            format!(
+                "import {{ create }} from 'zustand';\nexport const t = create<{{ count: number }}>()({CREATOR});\n"
+            ),
+            format!(
+                "import * as z from 'zustand';\nexport const t = z.create<{{ count: number }}>()({CREATOR});\n"
+            ),
+            format!(
+                "import {{ create }} from 'zustand';\nconst typed = create<{{ count: number }}>();\nexport const t = typed({CREATOR});\n"
+            ),
+        ] {
+            let made = store(&source).unwrap_or_else(|| panic!("{source}"));
+            assert!(made.creates_quietly(false), "{source}");
+        }
+    }
+
+    #[test]
+    fn every_way_zustand_offers_to_make_a_store_is_a_factory() {
+        for import in [
+            "import { create } from 'zustand/react';",
+            "import { createStore as create } from 'zustand/vanilla';",
+            "import { createStore as create } from 'zustand';",
+            "import { createWithEqualityFn as create } from 'zustand/traditional';",
+            // Zustand 4's default exports.
+            "import create from 'zustand';",
+            "import create from 'zustand/vanilla';",
+        ] {
+            for call in [
+                format!("export const t = create({CREATOR});"),
+                format!("export const t = create<{{ count: number }}>()({CREATOR});"),
+            ] {
+                let source = format!("{import}\n{call}\n");
+                let made = store(&source).unwrap_or_else(|| panic!("{source}"));
+                assert_eq!(made.creation(), Creation::Calls(&[0]), "{source}");
+                assert!(made.creates_quietly(false), "{source}");
+            }
+        }
+        // The equality function is kept for the hook, and is not called as the store
+        // is made.
+        let source = format!(
+            "import {{ createWithEqualityFn }} from 'zustand/traditional';\nexport const t = createWithEqualityFn({CREATOR}, (a, b) => register(a, b));\n"
+        );
+        assert!(store(&source).expect("made").creates_quietly(false));
+
+        // A default Zustand does not export is no factory.
+        let source = format!(
+            "import create from 'zustand/traditional';\nexport const t = create({CREATOR});\n"
+        );
+        assert!(store(&source).is_none());
+    }
+
+    #[test]
+    fn only_a_rules_own_identity_forms_return_its_factory() {
+        for source in [
+            // Twice with no arguments makes a store with no creator.
+            format!("import {{ create }} from 'zustand';\nexport const t = create()()({CREATOR});\n"),
+            // `withTypes` is RTK's, and Zustand's `create` has none.
+            format!("import {{ create }} from 'zustand';\nexport const t = create.withTypes<{{ count: number }}>()({CREATOR});\n"),
+            format!("import {{ create }} from 'zustand';\nconst typed = create.withTypes<{{ count: number }}>();\nexport const t = typed({CREATOR});\n"),
+            // A call on something read off the factory.
+            format!("import {{ create }} from 'zustand';\nexport const t = create.other()({CREATOR});\n"),
+            // RTK's factory called with no arguments is not RTK's factory.
+            "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk()('a/b', async () => 1);\n".to_string(),
+            // A function of this file called with no arguments is not an import.
+            format!("import {{ create }} from 'zustand';\nconst make = () => create;\nexport const t = make()({CREATOR});\n"),
+            // Nor is another name for the factory, which is not read so far: the
+            // call is plain initialisation, as it was.
+            format!("import {{ create as base }} from 'zustand';\nconst create = base;\nexport const t = create<{{ count: number }}>()({CREATOR});\n"),
+        ] {
+            assert!(store(&source).is_none(), "{source}");
+        }
     }
 }

@@ -250,10 +250,11 @@ fn build_fine(
         })
         .collect();
 
+    let effects = SideEffects::new(&ctx, program, &imports, sources, pure);
     let mut objects = members::find(&ctx, program, &drafts, cjs);
     // A call's result read by property is linked the way an object's is, and is
     // never read as one only for its members: calling it is not a read of one.
-    let mut candidates = factories::find(&ctx, program, &drafts, &imports);
+    let mut candidates = factories::find(&ctx, program, &drafts, &imports, &effects);
     for &(symbol, decl) in &candidates.by_symbol {
         objects
             .by_symbol
@@ -275,7 +276,6 @@ fn build_fine(
     factories::attach(
         &ctx, &drafts, &imports, &by_symbol, candidates, &shared, &mut decls,
     );
-    let effects = SideEffects::new(&ctx, program, &imports, sources, pure);
     let (init_decls, conditional_init) =
         init::collect(&ctx, program, &drafts, &decls, &effects, &conditional);
 

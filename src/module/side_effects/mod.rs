@@ -18,7 +18,9 @@
 //!   class runs, and a binding read before its declaration has run.
 //!
 //! Whether a known factory's call runs anything is not here. That needs the
-//! callee's own file, so [`super::init`] defers it and the graph resolves it.
+//! callee's own file, so [`super::init`] defers it and the graph resolves it. What
+//! is here is the half of that question this file can answer: whether calling a
+//! function it hands such a factory runs anything, for a factory that calls it.
 
 mod globals;
 mod imports;
@@ -76,6 +78,13 @@ impl<'c, 'a> SideEffects<'c, 'a> {
     /// run. A function body inside it is not evaluated, and so says nothing.
     pub(super) fn runs(&self, expression: &Expression<'_>) -> bool {
         self.detect(|detector| detector.visit_expression(expression))
+    }
+
+    /// Whether calling `function` once at `at`, with arguments nobody here knows
+    /// anything about, may run anything or throw. Only a function written out in
+    /// place whose body the local-helper proof clears does neither.
+    pub(super) fn runs_when_called(&self, function: &Expression<'_>, at: u32) -> bool {
+        !self.local.invoked(function, at)
     }
 
     /// Whether declaring what `statement` declares runs anything: its initialisers,
