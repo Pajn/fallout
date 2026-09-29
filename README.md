@@ -553,7 +553,8 @@ the reading module is evaluated. So a declaration whose initialiser reads an imp
 it runs at load, as `export const small = base` does, or a call there to a local
 helper that reads one, counts as module initialisation, and so does what a statement
 that declares nothing reads. A read in a function body waits for a call, and a
-type-only import loads nothing.
+type-only import loads nothing. Against a base revision, a declaration that stops
+reading an import, or goes, is a change to initialisation too.
 
 Two things are unchanged. A bare `import "./setup"` introduces no binding, so there
 is nothing to defer and it still runs when the importing module is evaluated. And a

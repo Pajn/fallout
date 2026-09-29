@@ -224,6 +224,11 @@ impl Graph {
         &self.reading
     }
 
+    /// Whether this run may treat an import as deferred to its first use.
+    pub fn inline_requires(&self) -> bool {
+        self.inline_requires
+    }
+
     /// The resolver this graph is built on.
     ///
     /// Shared rather than rebuilt by the parts of the run that need one of their own:
@@ -1236,6 +1241,59 @@ pub(crate) mod tests {
                 expected,
                 "inline requires: {inline}"
             );
+        }
+    }
+
+    /// With inline requires, a declaration that reads an import as its module is
+    /// evaluated evaluates the imported module there. One that stops reading it, or
+    /// goes, no longer does, so against a base revision a page that imports only the
+    /// constant beside it is reached: the top-level call in `tokens.ts` no longer
+    /// runs as it loads. Without inline requires, importing `tokens.ts` evaluates it
+    /// whatever reads it, and the page is not reached.
+    #[test]
+    fn a_declaration_that_stops_reading_an_import_changes_what_loading_evaluates_under_inline_requires()
+     {
+        let before = "import { base } from \"./tokens\";\nexport const label = \"sizes\";\nexport const small = base;\n";
+        for after in [
+            "import { base } from \"./tokens\";\nexport const label = \"sizes\";\nexport const small = 0;\n",
+            "import { base } from \"./tokens\";\nexport const label = \"sizes\";\n",
+        ] {
+            for (inline, expected) in [(true, true), (false, false)] {
+                let mut files = vec![
+                    (
+                        "src/tokens.ts",
+                        "registerTokens();\nexport const base = 4;\n",
+                    ),
+                    ("src/sizes.ts", after),
+                    (
+                        "src/page.tsx",
+                        "import { label } from \"./sizes\";\nexport const Page = () => <h1>{label}</h1>;\n",
+                    ),
+                ];
+                if inline {
+                    files.push(("fallout.toml", "inline-requires = true\n"));
+                }
+                let (_dir, root) = tree(&files);
+                let options = crate::Options {
+                    anchors: vec![PathBuf::from("src/page.tsx")],
+                    changed: vec![PathBuf::from("src/sizes.ts")],
+                    diff: None,
+                    base: Some("HEAD".to_string()),
+                    root: root.clone(),
+                    only: None,
+                    granularity: crate::Granularity::Symbol,
+                    include_types: false,
+                };
+                let earlier: AHashMap<PathBuf, String> =
+                    AHashMap::from_iter([(root.join("src/sizes.ts"), before.to_string())]);
+                let answer =
+                    crate::analyse_with(&options, Some(Box::new(earlier))).expect("an answer");
+                assert_eq!(
+                    answer.verdict.is_affected(),
+                    expected,
+                    "{after} (inline requires: {inline})"
+                );
+            }
         }
     }
 }

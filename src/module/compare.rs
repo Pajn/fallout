@@ -46,6 +46,11 @@ pub struct Comparison {
     /// This includes an edited helper that used to have effects: its unchanged
     /// caller may no longer be part of initialisation in the current graph.
     pub init_differs: bool,
+    /// A declaration that read an import as the module was evaluated no longer
+    /// does, or has gone. Where each import is deferred to its first use, that is a
+    /// module evaluating this one no longer evaluates. Whether the project defers
+    /// them is the anchor's to say, so this is kept apart from `init_differs`.
+    pub reads_differ: bool,
 }
 
 impl Comparison {
@@ -55,6 +60,7 @@ impl Comparison {
             && self.lost_exports.is_empty()
             && !self.whole_file
             && !self.init_differs
+            && !self.reads_differ
     }
 }
 
@@ -147,6 +153,7 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
     let mut changed = Vec::new();
     let mut changed_before = Vec::new();
     let mut init_differs = false;
+    let mut reads_differ = false;
     let mut furthest = 0;
 
     let old_cjs = cjs::table(&old.program);
@@ -223,27 +230,36 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
             continue;
         };
         let ran = evaluation(module, &old_statements[index], &before);
-        if ran == Evaluation::Nothing {
+        let read = reads_on_load(module, &old_statements[index]);
+        if ran == Evaluation::Nothing && !read {
             continue;
         }
         let new_module = new_analysis.get_or_insert_with(|| {
             analyse_source(path, &after, reading).map(|(analysis, _)| analysis)
         });
-        let runs_now = match new_module {
-            Some(ModuleAnalysis::Fine(module)) => match evaluation(module, statement, &after) {
-                Evaluation::Runs => true,
-                Evaluation::Nothing => false,
-                // The current graph decides whether a call runs anything, which
-                // answers for the base version only if it asked the same of the
-                // same callee, with arguments that would run the same when called:
-                // a store's creator that has lost an effect is written in a call
-                // that reads as it did up to its arguments.
-                now @ Evaluation::Call { .. } => now == ran,
-            },
-            _ => true,
+        let (runs_now, reads_now) = match new_module {
+            Some(ModuleAnalysis::Fine(module)) => {
+                let runs_now = match evaluation(module, statement, &after) {
+                    Evaluation::Runs => true,
+                    Evaluation::Nothing => false,
+                    // The current graph decides whether a call runs anything, which
+                    // answers for the base version only if it asked the same of the
+                    // same callee, with arguments that would run the same when
+                    // called: a store's creator that has lost an effect is written in
+                    // a call that reads as it did up to its arguments.
+                    now @ Evaluation::Call { .. } => now == ran,
+                };
+                (runs_now, reads_on_load(module, statement))
+            }
+            _ => (true, true),
         };
-        if !runs_now {
+        if ran != Evaluation::Nothing && !runs_now {
             init_differs = true;
+        }
+        // One that still reads an import, or starts to, is reached through its own
+        // declaration wherever that evaluates the import's module.
+        if read && !reads_now {
+            reads_differ = true;
         }
     }
     for index in removed {
@@ -272,6 +288,8 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
 
         if statement.runs || evaluation(module, statement, &before) != Evaluation::Nothing {
             init_differs = true;
+        } else if reads_on_load(module, statement) {
+            reads_differ = true;
         }
     }
 
@@ -280,6 +298,7 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         lost_exports,
         whole_file,
         init_differs,
+        reads_differ,
     })
 }
 
@@ -445,6 +464,17 @@ fn evaluation(module: &FineModule, statement: &Keyed<'_>, source: &str) -> Evalu
         quiet: positions(|argument| argument.quiet_when_called),
         reading: positions(|argument| argument.quiet_when_called && argument.reads_imports),
     }
+}
+
+/// Whether evaluating `module` reads an import as it runs this statement. See
+/// [`FineModule::reads_on_load`].
+fn reads_on_load(module: &FineModule, statement: &Keyed<'_>) -> bool {
+    matches!(statement.key, Key::Declares(_))
+        && module
+            .reads_on_load
+            .iter()
+            .filter_map(|&decl| module.decls.get(decl as usize))
+            .any(|decl| decl.span == statement.span)
 }
 
 /// Text to compare with its counterpart in the other version, with each line break
@@ -709,6 +739,49 @@ mod tests {
         for (before, after) in [(&reads, &reads_nothing), (&reads_nothing, &reads)] {
             let comparison = compared(before, after).expect("comparable");
             assert!(comparison.init_differs, "{before} -> {after}");
+        }
+    }
+
+    #[test]
+    fn a_declaration_that_stops_reading_an_import_at_load_changes_what_loading_reads() {
+        // With inline requires, reading an import evaluates its module, so a
+        // declaration that stops reading one, or goes, no longer evaluates it as its
+        // own module is evaluated. That is the graph's to weigh, since it knows how
+        // the project bundles, and it is kept apart from what loading runs.
+        let reads = "import { base } from './tokens';\nexport const label = 'sizes';\nexport const small = base;\n";
+        for after in [
+            "import { base } from './tokens';\nexport const label = 'sizes';\nexport const small = 0;\n",
+            "import { base } from './tokens';\nexport const label = 'sizes';\n",
+            // A read moved into a function body waits for a call.
+            "import { base } from './tokens';\nexport const label = 'sizes';\nexport const small = () => base;\n",
+        ] {
+            let comparison = compared(reads, after).expect("comparable");
+            assert!(comparison.reads_differ, "{after}");
+            assert!(!comparison.init_differs, "{after}");
+        }
+        // Of a store, an argument read as the store is made.
+        let store = |equality: &str| {
+            format!(
+                "import {{ createWithEqualityFn }} from 'zustand/traditional';\nimport {{ same }} from './equality';\nexport const store = createWithEqualityFn(() => ({{ count: 0 }}), {equality});\n"
+            )
+        };
+        let comparison = compared(&store("same"), &store("Object.is")).expect("comparable");
+        assert!(comparison.reads_differ);
+
+        // One that still reads it, or starts to, evaluates it still, and is reached
+        // through its own declaration where it does.
+        for (before, after) in [
+            (
+                reads,
+                "import { base } from './tokens';\nexport const label = 'sizes';\nexport const small = base + 1;\n",
+            ),
+            (
+                "import { base } from './tokens';\nexport const label = 'sizes';\nexport const small = 0;\n",
+                reads,
+            ),
+        ] {
+            let comparison = compared(before, after).expect("comparable");
+            assert!(!comparison.reads_differ, "{before} -> {after}");
         }
     }
 
