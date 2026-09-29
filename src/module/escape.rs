@@ -149,14 +149,16 @@ impl Policy {
 
     /// A binding read as one value, such as a reassigned `let` or a call's result,
     /// and what is read off it. The value itself escapes wherever it is not
-    /// checked, called, constructed, rendered where it stands or read from, so
-    /// arithmetic on it, testing it and dropping it count as escapes. A local
-    /// `const` or `let` that holds it, or takes it apart one level, is followed to
-    /// its own uses. What is read off it is in place where it is only tested,
-    /// dropped or put through arithmetic.
+    /// checked, tested, put through arithmetic, called, constructed, rendered where
+    /// it stands or read from, so dropping it counts as an escape. Arithmetic and a
+    /// test can run only `valueOf`, `toString` or `Symbol.toPrimitive`, which are
+    /// taken to run nothing, as a comparison's are, and neither hands the value to
+    /// other code. A local `const` or `let` that holds it, or takes it apart one
+    /// level, is followed to its own uses. What is read off it is in place where it
+    /// is only tested, dropped or put through arithmetic.
     pub(crate) const WHOLE: Policy = Policy {
-        arithmetic: Fate::Escapes,
-        test: Fate::Escapes,
+        arithmetic: Fate::InPlace,
+        test: Fate::InPlace,
         discard: Fate::Escapes,
         returns: None,
         aliases: Aliases::Local,
@@ -799,20 +801,20 @@ mod tests {
         "@;"                                         => [E,  I,  I,  I,  I,  I,  I,  I ];
         "typeof @;"                                  => [I,  I,  I,  I,  I,  I,  I,  I ];
         "void @;"                                    => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "!@;"                                        => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "-@;"                                        => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "!@;"                                        => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "-@;"                                        => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@ === o;"                                   => [I,  I,  I,  I,  I,  I,  I,  I ];
         "k in @;"                                    => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@ instanceof C;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@ < 1;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
-        "@ + 1;"                                     => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "@ | 1;"                                     => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "`${@}`;"                                    => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "if (@) go();"                               => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "@ ? 1 : 2;"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "while (@) go();"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "do go(); while (@);"                        => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "for (; @; ) go();"                          => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "@ + 1;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "@ | 1;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "`${@}`;"                                    => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "if (@) go();"                               => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "@ ? 1 : 2;"                                 => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "while (@) go();"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "do go(); while (@);"                        => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "for (; @; ) go();"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
         "switch (@) {}"                              => [I,  I,  I,  I,  I,  I,  I,  I ];
         "switch (o) { case @: }"                     => [I,  I,  I,  I,  I,  I,  I,  I ];
         "class K { #x; m() { if (#x in @) go(); } }" => [I,  I,  I,  I,  I,  I,  I,  I ];
@@ -874,7 +876,7 @@ mod tests {
         "f((0, @));"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return c ? @ : d;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return o && @;"                             => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "f(@ && o);"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "f(@ && o);"                                 => [I,  I,  I,  I,  I,  I,  I,  I ];
         "(o || @) === 1;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
         "return <li>{o && @}</li>;"                  => [I,  I,  I,  I,  I,  I,  E,  I ];
         "return <Foo>{o && @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
@@ -1106,16 +1108,64 @@ mod tests {
     }
 
     #[test]
-    fn arithmetic_on_a_value_is_still_counted_as_a_write() {
-        // Only the checks above are taken out of the catch-all. Arithmetic can run
-        // `valueOf` no more than a comparison can, but it stays in it.
-        assert_eq!(uses_of_s("export const a = () => S + 1;"), [Use::Mutate]);
-        assert_eq!(uses_of_s("export const a = () => S | 1;"), [Use::Mutate]);
+    fn arithmetic_on_a_value_is_a_read() {
+        // Arithmetic can run `valueOf`, `toString` or `Symbol.toPrimitive`, which
+        // are taken to run nothing, as for a comparison, and what it yields is a
+        // primitive that holds nothing of the value.
+        for arithmetic in [
+            "S + 1", "1 + S", "S - 1", "S * 2", "S / 2", "S % 2", "S ** 2", "S | 1", "S & 1",
+            "S ^ 1", "S << 1", "S >> 1", "S >>> 1", "-S", "+S", "~S", "`${S}`",
+        ] {
+            let body = format!("export const a = () => {{ {arithmetic}; }};");
+            assert_eq!(uses_of_s(&body), [Use::Read], "{arithmetic}");
+        }
+        // What it yields may go anywhere, since it is not the value.
+        assert_eq!(uses_of_s("export const a = () => S + 1;"), [Use::Read]);
+        assert_eq!(
+            uses_of_s("export const a = () => other(S * 2);"),
+            [Use::Read]
+        );
         // A check does not make passing the value on any less of a hand-off.
         assert_eq!(
             uses_of_s("export const a = () => { if (k in S) other(S); };"),
             [Use::Read, Use::Mutate]
         );
+    }
+
+    #[test]
+    fn testing_a_value_is_a_read() {
+        // A test converts the value to a boolean, which can run nothing at all.
+        for test in [
+            "if (S) go();",
+            "while (S) go();",
+            "do go(); while (S);",
+            "for (; S; ) go();",
+            "!S;",
+            "S ? 1 : 2;",
+            "S && go();",
+            "if (S && o) go();",
+            "other(S && o);",
+        ] {
+            let body = format!("export const a = () => {{ {test} }};");
+            assert_eq!(uses_of_s(&body), [Use::Read], "{test}");
+        }
+    }
+
+    #[test]
+    fn handing_the_value_on_is_still_a_mutation() {
+        // Only the positions that consume the value changed, not what an operator
+        // yielding one of its operands hands on.
+        for body in [
+            "other(S);",
+            "return S;",
+            "return <Foo value={S} />;",
+            "other(o || S);",
+            "other(c ? S : d);",
+            "other(o && S);",
+        ] {
+            let source = format!("export const a = () => {{ {body} }};");
+            assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
     }
 
     #[test]

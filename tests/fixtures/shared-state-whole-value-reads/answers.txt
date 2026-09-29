@@ -1,0 +1,153 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/TestedPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tested.ts"
+Path (downstream, file granularity):
+  File(src/pages/TestedPage.tsx)
+  File(src/lib/tested.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TestedPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tested.ts","path":["File(src/pages/TestedPage.tsx)","File(src/lib/tested.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/TestedPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/tested.ts"
+Path (downstream, file granularity):
+  File(src/pages/TestedPage.tsx)
+  File(src/lib/tested.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TestedPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/tested.ts","path":["File(src/pages/TestedPage.tsx)","File(src/lib/tested.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/TestedPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TestedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/TestedPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TestedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/TestedPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TestedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/TestedPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TestedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AddedPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/added.ts"
+Path (downstream, file granularity):
+  File(src/pages/AddedPage.tsx)
+  File(src/lib/added.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AddedPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/added.ts","path":["File(src/pages/AddedPage.tsx)","File(src/lib/added.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AddedPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/added.ts"
+Path (downstream, file granularity):
+  File(src/pages/AddedPage.tsx)
+  File(src/lib/added.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AddedPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/added.ts","path":["File(src/pages/AddedPage.tsx)","File(src/lib/added.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AddedPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AddedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AddedPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AddedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AddedPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AddedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AddedPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AddedPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WrittenPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/written.ts"
+Path (downstream, file granularity):
+  File(src/pages/WrittenPage.tsx)
+  File(src/lib/written.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/written.ts","path":["File(src/pages/WrittenPage.tsx)","File(src/lib/written.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/WrittenPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/written.ts"
+Path (downstream, file granularity):
+  File(src/pages/WrittenPage.tsx)
+  File(src/lib/written.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/written.ts","path":["File(src/pages/WrittenPage.tsx)","File(src/lib/written.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/WrittenPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/written.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WrittenPage.tsx)
+  Decl(src/pages/WrittenPage.tsx, WrittenPage)
+  Export(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/written.ts","path":["File(src/pages/WrittenPage.tsx)","Decl(src/pages/WrittenPage.tsx, WrittenPage)","Export(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, bump)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WrittenPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/written.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WrittenPage.tsx)
+  Decl(src/pages/WrittenPage.tsx, WrittenPage)
+  Export(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/written.ts","path":["File(src/pages/WrittenPage.tsx)","Decl(src/pages/WrittenPage.tsx, WrittenPage)","Export(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, bump)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WrittenPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/written.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WrittenPage.tsx)
+  Decl(src/pages/WrittenPage.tsx, WrittenPage)
+  Export(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/written.ts","path":["File(src/pages/WrittenPage.tsx)","Decl(src/pages/WrittenPage.tsx, WrittenPage)","Export(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, bump)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WrittenPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/written.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WrittenPage.tsx)
+  Decl(src/pages/WrittenPage.tsx, WrittenPage)
+  Export(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, isAtLimit)
+  Decl(src/lib/written.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/written.ts","path":["File(src/pages/WrittenPage.tsx)","Decl(src/pages/WrittenPage.tsx, WrittenPage)","Export(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, isAtLimit)","Decl(src/lib/written.ts, bump)"],"granularity":"symbol","unresolved":[]}]}
