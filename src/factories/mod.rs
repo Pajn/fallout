@@ -468,6 +468,31 @@ export const t = createAsyncThunk(
     }
 
     #[test]
+    fn every_way_zustand_offers_to_make_a_store_is_a_factory() {
+        for import in [
+            "import { createStore as create } from 'zustand/vanilla';",
+            "import { createStore as create } from 'zustand';",
+            "import { createWithEqualityFn as create } from 'zustand/traditional';",
+        ] {
+            for call in [
+                format!("export const t = create({CREATOR});"),
+                format!("export const t = create<{{ count: number }}>()({CREATOR});"),
+            ] {
+                let source = format!("{import}\n{call}\n");
+                let made = store(&source).unwrap_or_else(|| panic!("{source}"));
+                assert_eq!(made.creation(), Creation::Calls(&[0]), "{source}");
+                assert!(made.creates_quietly(), "{source}");
+            }
+        }
+        // The equality function is kept for the hook, and is not called as the store
+        // is made.
+        let source = format!(
+            "import {{ createWithEqualityFn }} from 'zustand/traditional';\nexport const t = createWithEqualityFn({CREATOR}, (a, b) => register(a, b));\n"
+        );
+        assert!(store(&source).expect("made").creates_quietly());
+    }
+
+    #[test]
     fn only_a_rules_own_identity_forms_return_its_factory() {
         for source in [
             // Twice with no arguments makes a store with no creator.
@@ -481,6 +506,9 @@ export const t = createAsyncThunk(
             "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk()('a/b', async () => 1);\n".to_string(),
             // A function of this file called with no arguments is not an import.
             format!("import {{ create }} from 'zustand';\nconst make = () => create;\nexport const t = make()({CREATOR});\n"),
+            // Nor is another name for the factory, which is not read so far: the
+            // call is plain initialisation, as it was.
+            format!("import {{ create as base }} from 'zustand';\nconst create = base;\nexport const t = create<{{ count: number }}>()({CREATOR});\n"),
         ] {
             assert!(store(&source).is_none(), "{source}");
         }

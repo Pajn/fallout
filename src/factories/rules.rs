@@ -161,6 +161,25 @@ pub const RULES: &[Rule] = &[
         creation: Creation::Calls(&[0]),
         identity: &[Identity::Curried],
     },
+    // `createStore(createState)` is the store without the hook, and `create` is
+    // built on it. `zustand` re-exports it from `zustand/vanilla`.
+    Rule {
+        sources: &["zustand", "zustand/vanilla"],
+        export: "createStore",
+        members: &[],
+        creation: Creation::Calls(&[0]),
+        identity: &[Identity::Curried],
+    },
+    // `createWithEqualityFn(createState, equalityFn)` is `create` with a default
+    // equality function for the hook's selectors, which it keeps and calls only
+    // when the hook is.
+    Rule {
+        sources: &["zustand/traditional"],
+        export: "createWithEqualityFn",
+        members: &[],
+        creation: Creation::Calls(&[0]),
+        identity: &[Identity::Curried],
+    },
 ];
 
 /// The rule for `source#export`, if there is one.
