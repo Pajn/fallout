@@ -1,0 +1,17 @@
+import { create } from "zustand";
+
+interface CounterState {
+  count: number;
+  step: number;
+  increment: () => void;
+}
+
+export const COUNTER_TITLE = "Counter";
+
+const createCounter = create.withTypes<CounterState>();
+
+export const useCounter = createCounter((set) => ({
+  count: 0,
+  step: 1,
+  increment: () => set((state) => ({ count: state.count + state.step })),
+}));
