@@ -243,6 +243,8 @@ fn build_fine(
             refs: Vec::new(),
             member_refs: Vec::new(),
             writers: Vec::new(),
+            read_calls: Vec::new(),
+            read_call_edges: Vec::new(),
             imports: Vec::new(),
             members: Vec::new(),
             interior: Span::default(),

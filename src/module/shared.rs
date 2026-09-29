@@ -26,6 +26,7 @@ use oxc_span::{GetSpan, Span as OxcSpan};
 use super::members::object_literal;
 use super::parse::Ctx;
 use super::refs::{Use, classify};
+use crate::factories::rules::{Reads, read_forms};
 
 /// One way a reference touches a shared binding.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -34,6 +35,11 @@ pub(crate) struct Access {
     pub property: Option<String>,
     /// Whether it could change what the binding, or that property, holds.
     pub write: bool,
+    /// The method a write calls on the binding, where it is a call that some
+    /// factory's rule declares a read of the value it makes and the call is written
+    /// the way that rule's form says. Whether the binding holds such a value is the
+    /// graph's to tell, so the access stays a write here; see [`read_call`].
+    pub read_call: Option<String>,
 }
 
 impl Access {
@@ -41,6 +47,7 @@ impl Access {
         Self {
             property: None,
             write,
+            read_call: None,
         }
     }
 
@@ -123,11 +130,22 @@ pub(crate) fn independent_properties(ctx: &Ctx<'_>, symbol: SymbolId) -> bool {
 /// makes it.
 pub(crate) fn accesses(ctx: &Ctx<'_>, node_id: NodeId, mode: Mode) -> Vec<(u32, Access)> {
     let at = ctx.semantic.nodes().get_node(node_id).kind().span().start;
-    if mode == Mode::Whole {
+    let mut uses = if mode == Mode::Whole {
         let write = classify(ctx.semantic.nodes(), node_id) == Use::Mutate;
-        return vec![(at, Access::whole(write))];
+        vec![(at, Access::whole(write))]
+    } else {
+        reference_accesses(ctx, node_id, mode, 0)
+    };
+    // A method call on the binding writes the whole of it, as far as this file can
+    // tell. The graph may yet find that the method only reads what made the value.
+    if let [(offset, access)] = uses.as_mut_slice()
+        && *offset == at
+        && access.write
+        && access.property.is_none()
+    {
+        access.read_call = read_call(ctx, node_id);
     }
-    reference_accesses(ctx, node_id, mode, 0)
+    uses
 }
 
 fn reference_accesses(
@@ -202,6 +220,7 @@ fn reference_accesses(
                 Access {
                     property,
                     write: false,
+                    read_call: None,
                 },
             )]
         }
@@ -215,6 +234,7 @@ fn reference_accesses(
                     Access {
                         property: property.clone(),
                         write,
+                        read_call: None,
                     },
                 )
             })
@@ -484,6 +504,165 @@ fn declared_from<'n, 'a>(
             }
             _ => return None,
         }
+    }
+}
+
+/// The method this reference calls on its binding, where some factory's rule
+/// declares that method a read of the value it makes and the call is written the
+/// way each form declared for the name says: `store.getState().count` and
+/// `store.subscribe((state) => …)` for a Zustand store.
+///
+/// Which factory made the binding, if any, is not known here, so this only picks
+/// out the calls the graph may treat as reads. Anything else stays a write:
+/// calling what the state holds, `store.getState().inc()`, calls an action that
+/// sets the store, and handing the state on lets other code do the same.
+fn read_call(ctx: &Ctx<'_>, node_id: NodeId) -> Option<String> {
+    let nodes = ctx.semantic.nodes();
+    let (object, span) = through_wrappers(nodes, node_id);
+    let AstKind::StaticMemberExpression(member) = nodes.parent_kind(object) else {
+        return None;
+    };
+    if member.object.span() != span {
+        return None;
+    }
+    let (callee, span) = through_wrappers(nodes, nodes.parent_id(object));
+    let AstKind::CallExpression(call) = nodes.parent_kind(callee) else {
+        return None;
+    };
+    if call.callee.span() != span {
+        return None;
+    }
+    let call_id = nodes.parent_id(callee);
+    let name = member.property.name.as_str();
+    let mut forms = read_forms(name).peekable();
+    forms.peek()?;
+    forms
+        .all(|form| match form {
+            Reads::State(_) => stays_read(ctx, call_id, true, 0),
+            Reads::Listener(_) => only_reads_what_it_is_given(ctx, call),
+        })
+        .then(|| name.to_string())
+}
+
+/// Whether a call is given a single listener, written out in place, that does
+/// nothing with the state it is called with but read it. What else its body does
+/// is classified where it is written, so a listener that sets the store through
+/// the store's own binding is a write there.
+fn only_reads_what_it_is_given(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> bool {
+    let [listener] = call.arguments.as_slice() else {
+        return false;
+    };
+    let params = match listener {
+        Argument::ArrowFunctionExpression(function) => &function.params,
+        Argument::FunctionExpression(function) => &function.params,
+        _ => return false,
+    };
+    params.rest.is_none()
+        && params
+            .items
+            .iter()
+            .all(|param| param.initializer.is_none() && binding_reads(ctx, &param.pattern, true, 0))
+}
+
+/// Whether what is done with a value only reads it: `whole` for the state itself,
+/// and otherwise for something read off it.
+///
+/// A property read off the value may be used in place as a value: compared, put
+/// through arithmetic or into a string, tested, or rendered as a child. The state
+/// itself may only be read from, compared or tested. A local `const` that holds
+/// either, or that takes the state apart, is followed to its own uses.
+///
+/// Nothing obtained from the state may leave the expression it is read in. Which
+/// of its properties are actions, whose calls set the store, cannot be told here,
+/// so returning one, passing it on, storing it, spreading it, or calling it is
+/// taken as handing on an action, and is not a read. Nor is writing through it.
+fn stays_read(ctx: &Ctx<'_>, value: NodeId, mut whole: bool, depth: usize) -> bool {
+    let nodes = ctx.semantic.nodes();
+    let mut current = value;
+    loop {
+        let (outer, span) = through_wrappers(nodes, current);
+        match nodes.parent_kind(outer) {
+            AstKind::StaticMemberExpression(next) if next.object.span() == span => {}
+            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {}
+            AstKind::ChainExpression(_) => {
+                current = nodes.parent_id(outer);
+                continue;
+            }
+            _ => break,
+        }
+        current = nodes.parent_id(outer);
+        whole = false;
+    }
+
+    let (top, span) = through_wrappers(nodes, current);
+    let parent = nodes.parent_id(top);
+    match nodes.parent_kind(top) {
+        AstKind::BinaryExpression(_) => true,
+        AstKind::UnaryExpression(unary) => unary.operator != UnaryOperator::Delete,
+        AstKind::IfStatement(test) => test.test.span() == span,
+        AstKind::ConditionalExpression(test) => test.test.span() == span,
+        AstKind::ExpressionStatement(_) => true,
+        // A template's values go to its tag, where it has one.
+        AstKind::TemplateLiteral(_) => !matches!(
+            nodes.parent_kind(parent),
+            AstKind::TaggedTemplateExpression(_)
+        ),
+        // A child of an element is rendered; a prop is handed to the component.
+        AstKind::JSXExpressionContainer(_) => {
+            !whole
+                && matches!(
+                    nodes.parent_kind(parent),
+                    AstKind::JSXElement(_) | AstKind::JSXFragment(_)
+                )
+        }
+        AstKind::VariableDeclarator(declarator)
+            if declarator
+                .init
+                .as_ref()
+                .is_some_and(|init| init.span() == span) =>
+        {
+            let declaration = nodes.parent_id(parent);
+            let local_const = matches!(
+                nodes.kind(declaration),
+                AstKind::VariableDeclaration(variable)
+                    if variable.kind == VariableDeclarationKind::Const
+            ) && !matches!(
+                nodes.parent_kind(declaration),
+                AstKind::ExportDeclaration(_)
+            );
+            local_const && binding_reads(ctx, &declarator.id, whole, depth)
+        }
+        _ => false,
+    }
+}
+
+/// Whether every binding a pattern declares is only read, as [`stays_read`] says,
+/// where the pattern takes apart the state if `whole` and something read off it
+/// otherwise. Taking apart anything past one level, or with a rest element or a
+/// default, is not followed.
+fn binding_reads(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>, whole: bool, depth: usize) -> bool {
+    if depth >= ALIAS_DEPTH {
+        return false;
+    }
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => {
+            let Some(symbol) = identifier.symbol_id.get() else {
+                return false;
+            };
+            let scoping = ctx.semantic.scoping();
+            scoping.get_resolved_reference_ids(symbol).iter().all(|id| {
+                let reference = scoping.get_reference(*id);
+                !reference.is_write() && stays_read(ctx, reference.node_id(), whole, depth + 1)
+            })
+        }
+        BindingPattern::ObjectPattern(object) => {
+            object.rest.is_none()
+                && object.properties.iter().all(|property| {
+                    matches!(property.value, BindingPattern::BindingIdentifier(_))
+                        && binding_reads(ctx, &property.value, false, depth)
+                })
+        }
+        _ => false,
     }
 }
 

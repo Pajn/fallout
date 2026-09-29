@@ -19,6 +19,36 @@ pub struct Rule {
     /// Forms that read the factory and return it unchanged, so that calling what
     /// they return is calling the factory.
     pub identity: &'static [Identity],
+    /// Methods of its result that read what the result holds and change none of it,
+    /// so that calling one in the way its form says is no write under the
+    /// shared-state rule.
+    pub reads: &'static [Reads],
+}
+
+/// A method of a factory's result that leaves what the result holds as it found
+/// it, as a rule declares for its own factory and no other.
+///
+/// The parse-time half cannot tell which rule, if any, a binding's factory will
+/// turn out to be, so it checks a call of such a name against every form any rule
+/// declares for it, and the graph keeps the call a read only where the rule it
+/// confirms declares the name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reads {
+    /// `.name()` returns the state the result holds. What is done with that state
+    /// is another matter, since the state may hold functions that change it.
+    State(&'static str),
+    /// `.name(listener)` keeps `listener` to call later with the state, and
+    /// returns a function that forgets it. The listener is as free to change the
+    /// state as any other code it is handed to.
+    Listener(&'static str),
+}
+
+impl Reads {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Reads::State(name) | Reads::Listener(name) => name,
+        }
+    }
 }
 
 /// A form that reads a factory and returns the factory itself, as a rule declares
@@ -84,6 +114,11 @@ impl Rule {
         self.members.iter().map(|(name, _)| *name)
     }
 
+    /// Whether calling `name` on the result reads it, in the way its form says.
+    pub fn reads(&self, name: &str) -> bool {
+        self.reads.iter().any(|form| form.name() == name)
+    }
+
     /// Whether `source#export` names this factory.
     pub fn names(&self, source: &str, export: &str) -> bool {
         self.export == export && self.sources.contains(&source)
@@ -128,6 +163,30 @@ pub fn is_identity_call() -> bool {
         .any(|rule| rule.identity.contains(&Identity::Curried))
 }
 
+/// Every form some rule declares for a method named `name`, which is what the
+/// parse-time half checks a call of that name against.
+pub fn read_forms(name: &str) -> impl Iterator<Item = Reads> + '_ {
+    RULES
+        .iter()
+        .flat_map(|rule| rule.reads)
+        .copied()
+        .filter(move |form| form.name() == name)
+}
+
+/// What a Zustand store's own methods do, in Zustand 4 and 5 alike
+/// (`src/vanilla.ts`): `getState` returns the state, `getInitialState` the state
+/// the creator returned, and `subscribe` adds the listener to a set and returns a
+/// function that deletes it. Only `setState` changes the state, and it is what
+/// calls each listener. Zustand 4's `destroy` clears the listeners, and is not
+/// listed. The hook `create` returns has the store's methods copied onto it
+/// (`src/react.ts`), and `subscribeWithSelector` replaces `subscribe` with one that
+/// does the same when given a single listener.
+const ZUSTAND_READS: &[Reads] = &[
+    Reads::State("getState"),
+    Reads::State("getInitialState"),
+    Reads::Listener("subscribe"),
+];
+
 pub const RULES: &[Rule] = &[
     // `createAsyncThunk(type, payloadCreator, options)` returns a thunk action
     // creator with `pending`, `fulfilled` and `rejected` action creators, a
@@ -147,6 +206,7 @@ pub const RULES: &[Rule] = &[
         ],
         creation: Creation::Frame,
         identity: &[Identity::Method("withTypes")],
+        reads: &[],
     },
     // Zustand's `create(createState)` makes a store and returns a hook bound to it.
     // Making the store calls `createState(set, get, api)` there and then for the
@@ -160,6 +220,7 @@ pub const RULES: &[Rule] = &[
         members: &[],
         creation: Creation::Calls(&[0]),
         identity: &[Identity::Curried],
+        reads: ZUSTAND_READS,
     },
     // `createStore(createState)` is the store without the hook, and `create` is
     // built on it. `zustand` re-exports it from `zustand/vanilla`.
@@ -169,6 +230,7 @@ pub const RULES: &[Rule] = &[
         members: &[],
         creation: Creation::Calls(&[0]),
         identity: &[Identity::Curried],
+        reads: ZUSTAND_READS,
     },
     // `createWithEqualityFn(createState, equalityFn)` is `create` with a default
     // equality function for the hook's selectors, which it keeps and calls only
@@ -179,6 +241,7 @@ pub const RULES: &[Rule] = &[
         members: &[],
         creation: Creation::Calls(&[0]),
         identity: &[Identity::Curried],
+        reads: ZUSTAND_READS,
     },
     // Zustand 4 also exports `create` as the default of `zustand`, and
     // `createStore` as the default of `zustand/vanilla`. From 4.4 each warns on the
@@ -190,6 +253,7 @@ pub const RULES: &[Rule] = &[
         members: &[],
         creation: Creation::Calls(&[0]),
         identity: &[Identity::Curried],
+        reads: ZUSTAND_READS,
     },
 ];
 
@@ -298,6 +362,7 @@ mod tests {
             members: &[],
             creation: Creation::Frame,
             identity: &[],
+            reads: &[],
         };
         let typed = [prop("withTypes"), Step::Call];
         assert_eq!(other.strip_identity(&typed), typed.as_slice());

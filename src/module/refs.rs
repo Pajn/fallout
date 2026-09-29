@@ -225,6 +225,12 @@ fn member_call(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
 /// Each binding's writers are also recorded on the declaration that binds it, for a
 /// reader in another module. Exporting a value is no use of it, so nothing else
 /// connects that reader to them.
+///
+/// A writer that only calls methods a factory's rule declares reads, such as a
+/// Zustand store's `getState`, is linked all the same, since only the graph can tell
+/// what made the value. Such writers are recorded on the binding's declaration, and
+/// each edge that stands only for them on the declaration it is given to, for the
+/// graph to drop; see [`Decl::read_calls`].
 fn apply_shared_state(
     accesses_of: &AHashMap<DeclId, Vec<(DeclId, Access)>>,
     decls: &mut [Decl],
@@ -236,6 +242,9 @@ fn apply_shared_state(
     // Recorded whether or not the declaration already named the writer, since an
     // object's members each get the rule's edges whatever the declaration names.
     let mut recorded: AHashSet<(DeclId, DeclId)> = AHashSet::default();
+    // Each edge the rule gives, with the bindings it is given for where every one of
+    // them is written only by read calls, and `None` where any is written otherwise.
+    let mut reasons: AHashMap<(DeclId, DeclId), Option<Vec<DeclId>>> = AHashMap::default();
     for (&owner, accesses) in accesses_of {
         let writers: Vec<&(DeclId, Access)> =
             accesses.iter().filter(|(_, access)| access.write).collect();
@@ -253,24 +262,74 @@ fn apply_shared_state(
         );
         recorded_writers.sort();
         recorded_writers.dedup();
+        let read_calls = read_calls(owner, &writers);
         for (user, used) in accesses {
             for (writer, written) in &writers {
                 if user == writer || !used.sees(written) {
                     continue;
                 }
-                let known = seen
-                    .entry(*user)
-                    .or_insert_with(|| decls[*user as usize].refs.iter().copied().collect());
-                if known.insert(*writer) {
-                    decls[*user as usize].refs.push(*writer);
-                }
-                if recorded.insert((*user, *writer)) {
-                    added.entry(*user).or_default().push(*writer);
+                let only_read_calls = read_calls.iter().any(|(w, _)| w == writer);
+                let reason = reasons
+                    .entry((*user, *writer))
+                    .or_insert_with(|| Some(Vec::new()));
+                match reason {
+                    Some(owners) if only_read_calls => owners.push(owner),
+                    _ => *reason = None,
                 }
             }
         }
+        decls[owner as usize].read_calls = read_calls;
+    }
+
+    // Sorted, so that the order edges are added in does not turn on the map's.
+    let mut reasons: Vec<_> = reasons.into_iter().collect();
+    reasons.sort();
+    for ((user, writer), owners) in reasons {
+        let known = seen
+            .entry(user)
+            .or_insert_with(|| decls[user as usize].refs.iter().copied().collect());
+        // A writer the declaration names itself is an edge whatever the rule says,
+        // so only one it does not name can be dropped.
+        if known.insert(writer) {
+            decls[user as usize].refs.push(writer);
+            if let Some(mut owners) = owners {
+                owners.sort_unstable();
+                owners.dedup();
+                decls[user as usize].read_call_edges.push((writer, owners));
+            }
+        }
+        if recorded.insert((user, writer)) {
+            added.entry(user).or_default().push(writer);
+        }
     }
     added
+}
+
+/// The writers of `owner`'s binding whose every write is a read call, each with the
+/// methods it calls, sorted. See [`Decl::read_calls`].
+fn read_calls(owner: DeclId, writers: &[&(DeclId, Access)]) -> Vec<(DeclId, Vec<String>)> {
+    let mut calls: AHashMap<DeclId, Option<Vec<String>>> = AHashMap::default();
+    for (writer, written) in writers {
+        if *writer == owner {
+            continue;
+        }
+        let methods = calls.entry(*writer).or_insert_with(|| Some(Vec::new()));
+        match (methods, &written.read_call) {
+            (Some(methods), Some(method)) => methods.push(method.clone()),
+            (methods, _) => *methods = None,
+        }
+    }
+    let mut calls: Vec<(DeclId, Vec<String>)> = calls
+        .into_iter()
+        .filter_map(|(writer, methods)| {
+            let mut methods = methods?;
+            methods.sort();
+            methods.dedup();
+            Some((writer, methods))
+        })
+        .collect();
+    calls.sort();
+    calls
 }
 
 /// A namespace read for one of its exports depends on that export alone, and an

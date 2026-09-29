@@ -148,22 +148,482 @@ Path (downstream, file granularity):
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/TitlePage.tsx [symbol] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/TitlePage.tsx [base]
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/TitlePage.tsx [base] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/CountPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/counter.ts"
+Path (downstream, file granularity):
+  File(src/pages/CountPage.tsx)
+  File(src/stores/counter.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/counter.ts","path":["File(src/pages/CountPage.tsx)","File(src/stores/counter.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/counter.ts"
+Path (downstream, file granularity):
+  File(src/pages/CountPage.tsx)
+  File(src/stores/counter.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/counter.ts","path":["File(src/pages/CountPage.tsx)","File(src/stores/counter.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, reset)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, reset)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]}]}]}
+
+== src/pages/CountPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, reset)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, reset)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]}]}]}
+
+== src/pages/CountPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, reset)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, reset)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]}]}]}
+
+== src/pages/CountPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/counter.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, countNow)
+  Decl(src/stores/counter.ts, reset)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/counter.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, countNow)","Decl(src/stores/counter.ts, reset)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts"]}]}]}
+
+== src/pages/PeekPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/PeekPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/PeekPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PeekPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/PeekPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/PeekPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/PeekPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/PeekPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/PeekPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/PeekPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/WatchPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/WatchPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/WatchPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/WatchPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/WatchPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/WatchPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/WatchPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/WatchPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/WatchPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/WatchPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/pages/BumpPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/BumpPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BumpPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BumpPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BumpPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/BumpPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BumpPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BumpPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BumpPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BumpPage.tsx)
+  Decl(src/pages/BumpPage.tsx, BumpPage)
+  Export(src/stores/reads.ts, useBump)
+  Decl(src/stores/reads.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BumpPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BumpPage.tsx)","Decl(src/pages/BumpPage.tsx, BumpPage)","Export(src/stores/reads.ts, useBump)","Decl(src/stores/reads.ts, bump)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BumpPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BumpPage.tsx)
+  Decl(src/pages/BumpPage.tsx, BumpPage)
+  Export(src/stores/reads.ts, useBump)
+  Decl(src/stores/reads.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BumpPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BumpPage.tsx)","Decl(src/pages/BumpPage.tsx, BumpPage)","Export(src/stores/reads.ts, useBump)","Decl(src/stores/reads.ts, bump)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BumpPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BumpPage.tsx)
+  Decl(src/pages/BumpPage.tsx, BumpPage)
+  Export(src/stores/reads.ts, useBump)
+  Decl(src/stores/reads.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BumpPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BumpPage.tsx)","Decl(src/pages/BumpPage.tsx, BumpPage)","Export(src/stores/reads.ts, useBump)","Decl(src/stores/reads.ts, bump)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BumpPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BumpPage.tsx)
+  Decl(src/pages/BumpPage.tsx, BumpPage)
+  Export(src/stores/reads.ts, useBump)
+  Decl(src/stores/reads.ts, bump)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BumpPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BumpPage.tsx)","Decl(src/pages/BumpPage.tsx, BumpPage)","Export(src/stores/reads.ts, useBump)","Decl(src/stores/reads.ts, bump)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/TickPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/TickPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/TickPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/TickPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/TickPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/TickPage.tsx)
+  Decl(src/pages/TickPage.tsx, TickPage)
+  Export(src/stores/reads.ts, useTick)
+  Decl(src/stores/reads.ts, pickAction)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","Decl(src/pages/TickPage.tsx, TickPage)","Export(src/stores/reads.ts, useTick)","Decl(src/stores/reads.ts, pickAction)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/TickPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/TickPage.tsx)
+  Decl(src/pages/TickPage.tsx, TickPage)
+  Export(src/stores/reads.ts, useTick)
+  Decl(src/stores/reads.ts, pickAction)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","Decl(src/pages/TickPage.tsx, TickPage)","Export(src/stores/reads.ts, useTick)","Decl(src/stores/reads.ts, pickAction)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/TickPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/TickPage.tsx)
+  Decl(src/pages/TickPage.tsx, TickPage)
+  Export(src/stores/reads.ts, useTick)
+  Decl(src/stores/reads.ts, pickAction)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","Decl(src/pages/TickPage.tsx, TickPage)","Export(src/stores/reads.ts, useTick)","Decl(src/stores/reads.ts, pickAction)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/TickPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/TickPage.tsx)
+  Decl(src/pages/TickPage.tsx, TickPage)
+  Export(src/stores/reads.ts, useTick)
+  Decl(src/stores/reads.ts, pickAction)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","Decl(src/pages/TickPage.tsx, TickPage)","Export(src/stores/reads.ts, useTick)","Decl(src/stores/reads.ts, pickAction)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/SyncPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/SyncPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SyncPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/SyncPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SyncPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/SyncPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SyncPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/SyncPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SyncPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SyncPage.tsx)
+  Decl(src/pages/SyncPage.tsx, SyncPage)
+  Export(src/stores/reads.ts, useSync)
+  Decl(src/stores/reads.ts, sync)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SyncPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/SyncPage.tsx)","Decl(src/pages/SyncPage.tsx, SyncPage)","Export(src/stores/reads.ts, useSync)","Decl(src/stores/reads.ts, sync)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/SyncPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SyncPage.tsx)
+  Decl(src/pages/SyncPage.tsx, SyncPage)
+  Export(src/stores/reads.ts, useSync)
+  Decl(src/stores/reads.ts, sync)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SyncPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/SyncPage.tsx)","Decl(src/pages/SyncPage.tsx, SyncPage)","Export(src/stores/reads.ts, useSync)","Decl(src/stores/reads.ts, sync)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/SyncPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SyncPage.tsx)
+  Decl(src/pages/SyncPage.tsx, SyncPage)
+  Export(src/stores/reads.ts, useSync)
+  Decl(src/stores/reads.ts, sync)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SyncPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/SyncPage.tsx)","Decl(src/pages/SyncPage.tsx, SyncPage)","Export(src/stores/reads.ts, useSync)","Decl(src/stores/reads.ts, sync)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/SyncPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SyncPage.tsx)
+  Decl(src/pages/SyncPage.tsx, SyncPage)
+  Export(src/stores/reads.ts, useSync)
+  Decl(src/stores/reads.ts, sync)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SyncPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/SyncPage.tsx)","Decl(src/pages/SyncPage.tsx, SyncPage)","Export(src/stores/reads.ts, useSync)","Decl(src/stores/reads.ts, sync)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/OwnPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/OwnPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OwnPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/OwnPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/OwnPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/OwnPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OwnPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/OwnPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/OwnPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/OwnPage.tsx)
+  Decl(src/pages/OwnPage.tsx, OwnPage)
+  Export(src/stores/reads.ts, useOwn)
+  Decl(src/stores/reads.ts, peekOwn)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OwnPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/OwnPage.tsx)","Decl(src/pages/OwnPage.tsx, OwnPage)","Export(src/stores/reads.ts, useOwn)","Decl(src/stores/reads.ts, peekOwn)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/OwnPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/OwnPage.tsx)
+  Decl(src/pages/OwnPage.tsx, OwnPage)
+  Export(src/stores/reads.ts, useOwn)
+  Decl(src/stores/reads.ts, peekOwn)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OwnPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/OwnPage.tsx)","Decl(src/pages/OwnPage.tsx, OwnPage)","Export(src/stores/reads.ts, useOwn)","Decl(src/stores/reads.ts, peekOwn)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/OwnPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/OwnPage.tsx)
+  Decl(src/pages/OwnPage.tsx, OwnPage)
+  Export(src/stores/reads.ts, useOwn)
+  Decl(src/stores/reads.ts, peekOwn)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OwnPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/OwnPage.tsx)","Decl(src/pages/OwnPage.tsx, OwnPage)","Export(src/stores/reads.ts, useOwn)","Decl(src/stores/reads.ts, peekOwn)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/OwnPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/OwnPage.tsx)
+  Decl(src/pages/OwnPage.tsx, OwnPage)
+  Export(src/stores/reads.ts, useOwn)
+  Decl(src/stores/reads.ts, peekOwn)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/OwnPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/OwnPage.tsx)","Decl(src/pages/OwnPage.tsx, OwnPage)","Export(src/stores/reads.ts, useOwn)","Decl(src/stores/reads.ts, peekOwn)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BoxPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/BoxPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoxPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BoxPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BoxPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/BoxPage.tsx)
+  File(src/stores/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoxPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BoxPage.tsx)","File(src/stores/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/BoxPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoxPage.tsx)
+  Decl(src/pages/BoxPage.tsx, BoxPage)
+  Export(src/stores/reads.ts, box)
+  Decl(src/stores/reads.ts, peekBox)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoxPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BoxPage.tsx)","Decl(src/pages/BoxPage.tsx, BoxPage)","Export(src/stores/reads.ts, box)","Decl(src/stores/reads.ts, peekBox)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BoxPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoxPage.tsx)
+  Decl(src/pages/BoxPage.tsx, BoxPage)
+  Export(src/stores/reads.ts, box)
+  Decl(src/stores/reads.ts, peekBox)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoxPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BoxPage.tsx)","Decl(src/pages/BoxPage.tsx, BoxPage)","Export(src/stores/reads.ts, box)","Decl(src/stores/reads.ts, peekBox)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BoxPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoxPage.tsx)
+  Decl(src/pages/BoxPage.tsx, BoxPage)
+  Export(src/stores/reads.ts, box)
+  Decl(src/stores/reads.ts, peekBox)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoxPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BoxPage.tsx)","Decl(src/pages/BoxPage.tsx, BoxPage)","Export(src/stores/reads.ts, box)","Decl(src/stores/reads.ts, peekBox)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/BoxPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reads.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/BoxPage.tsx)
+  Decl(src/pages/BoxPage.tsx, BoxPage)
+  Export(src/stores/reads.ts, box)
+  Decl(src/stores/reads.ts, peekBox)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/BoxPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/BoxPage.tsx)","Decl(src/pages/BoxPage.tsx, BoxPage)","Export(src/stores/reads.ts, box)","Decl(src/stores/reads.ts, peekBox)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}

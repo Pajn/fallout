@@ -1,6 +1,7 @@
 # A Zustand store written through `setState` by a declaration of its own file. A
 # page that uses the store reads what `reset` writes, so an edit to `reset` reaches
-# it, though the page never names `reset`.
+# it, though the page never names `reset`. A declaration that only reads a store,
+# with `getState`, `getInitialState` or `subscribe`, is no writer of it.
 
 # `create`, and `useCounter.setState`.
 [[anchor]]
@@ -33,3 +34,97 @@ symbol = [
 [[anchor]]
 path = "src/pages/TitlePage.tsx"
 affected = false
+
+# A declaration that reads the store with `getState` writes nothing, and still
+# reads what `reset` writes.
+[[anchor]]
+path = "src/pages/CountPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CountPage.tsx)",
+    "Decl(src/pages/CountPage.tsx, CountPage)",
+    "Export(src/stores/counter.ts, countNow)",
+    "Decl(src/stores/counter.ts, countNow)",
+    "Decl(src/stores/counter.ts, reset)",
+]
+
+# `peekTotal` reads the store with `getState` and writes nothing, so an edit to it
+# cannot reach a page that reads the store through `peekCount`.
+[[anchor]]
+path = "src/pages/PeekPage.tsx"
+affected = false
+
+# Nor can an edit to a listener given to `subscribe` that only reads the state
+# reach a page that uses the store.
+[[anchor]]
+path = "src/pages/WatchPage.tsx"
+affected = false
+
+# An action called on what `getState` returns sets the store.
+[[anchor]]
+path = "src/pages/BumpPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/BumpPage.tsx)",
+    "Decl(src/pages/BumpPage.tsx, BumpPage)",
+    "Export(src/stores/reads.ts, useBump)",
+    "Decl(src/stores/reads.ts, bump)",
+]
+
+# So does an action handed out from what `getState` returns: `tick` calls what
+# `pickAction` returns, and which action that is cannot be told apart from a value.
+[[anchor]]
+path = "src/pages/TickPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/TickPage.tsx)",
+    "Decl(src/pages/TickPage.tsx, TickPage)",
+    "Export(src/stores/reads.ts, useTick)",
+    "Decl(src/stores/reads.ts, pickAction)",
+]
+
+# So does a listener that calls `setState`.
+[[anchor]]
+path = "src/pages/SyncPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/SyncPage.tsx)",
+    "Decl(src/pages/SyncPage.tsx, SyncPage)",
+    "Export(src/stores/reads.ts, useSync)",
+    "Decl(src/stores/reads.ts, sync)",
+]
+
+# The app's own `create` makes no Zustand store, so its `getState` is a method
+# call like any other.
+[[anchor]]
+path = "src/pages/OwnPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/OwnPage.tsx)",
+    "Decl(src/pages/OwnPage.tsx, OwnPage)",
+    "Export(src/stores/reads.ts, useOwn)",
+    "Decl(src/stores/reads.ts, peekOwn)",
+]
+
+# As is a class's `getState`, which here changes the instance.
+[[anchor]]
+path = "src/pages/BoxPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/BoxPage.tsx)",
+    "Decl(src/pages/BoxPage.tsx, BoxPage)",
+    "Export(src/stores/reads.ts, box)",
+    "Decl(src/stores/reads.ts, peekBox)",
+]
