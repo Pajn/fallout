@@ -94,6 +94,19 @@ impl Made {
         }
     }
 
+    /// What each argument that creating the value calls depends on.
+    pub fn called(&self) -> impl Iterator<Item = &Deps> {
+        let called: &[usize] = match self.creation() {
+            Creation::Calls(called) => called,
+            Creation::Frame | Creation::Whole => &[],
+        };
+        let args = &self.call().args;
+        called
+            .iter()
+            .filter_map(|&index| args.get(index))
+            .map(|argument| &argument.deps)
+    }
+
     /// What the declaration depends on outside every argument: the callee, and the
     /// call around the arguments.
     pub fn frame(&self) -> &Deps {

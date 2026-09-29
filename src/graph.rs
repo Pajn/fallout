@@ -12,8 +12,8 @@ use ahash::{AHashMap, AHashSet};
 
 use crate::module::Reading;
 use crate::module::{
-    DeclId, ExportTarget, FineModule, ImportRef, ImportTarget, LineTable, Member, ModuleAnalysis,
-    SourceId, is_source_file,
+    DeclId, Deps, ExportTarget, FineModule, ImportRef, ImportTarget, LineTable, Member,
+    ModuleAnalysis, SourceId, is_source_file,
 };
 use crate::resolve::{Resolver, SideEffects};
 
@@ -525,6 +525,14 @@ impl Graph {
                             &frame.member_refs,
                             &frame.imports,
                         ));
+                        // With imports deferred to first use, a module is evaluated
+                        // where one of its names is first read, and a function the
+                        // factory calls reads what it reads as the value is created.
+                        // So each module it may read is evaluated with this one,
+                        // though none of its values is initialisation's.
+                        if self.inline_requires {
+                            edges.extend(self.evaluated_by(fine, made.called()));
+                        }
                     }
                     _ => edges.push(Node::Decl(file, decl)),
                 }
@@ -556,6 +564,44 @@ impl Graph {
             }
         }
         edges
+    }
+
+    /// The initialisation of every module that code depending on `deps` may read
+    /// from, directly or through the declarations of this file it reads, which are
+    /// followed as far as they go.
+    ///
+    /// Which of those reads run when, if ever, is not told apart: a function held
+    /// by the value reads its imports only when it is called, and is counted all
+    /// the same.
+    fn evaluated_by<'d>(&self, fine: &Fine, deps: impl Iterator<Item = &'d Deps>) -> Vec<Node> {
+        let (analysed, module) = (fine.analysed(), fine.module());
+        let mut sources: AHashSet<SourceId> = AHashSet::default();
+        let mut seen: AHashSet<DeclId> = AHashSet::default();
+        let mut queue: Vec<DeclId> = Vec::new();
+        for deps in deps {
+            sources.extend(deps.imports.iter().map(|import| import.source));
+            let objects = deps.member_refs.iter().map(|(object, _)| object);
+            queue.extend(deps.refs.iter().chain(objects).copied());
+        }
+        while let Some(decl) = queue.pop() {
+            if !seen.insert(decl) {
+                continue;
+            }
+            let Some(entry) = module.decls.get(decl as usize) else {
+                continue;
+            };
+            sources.extend(entry.imports.iter().map(|import| import.source));
+            let objects = entry.member_refs.iter().map(|(object, _)| object);
+            queue.extend(entry.refs.iter().chain(objects).copied());
+        }
+        let mut sources: Vec<SourceId> = sources.into_iter().collect();
+        sources.sort_unstable();
+        sources
+            .into_iter()
+            .filter_map(|source| self.target_of(analysed, source))
+            .filter(|&target| is_source_file(&self.path(target)))
+            .map(Node::ModuleInit)
+            .collect()
     }
 
     /// Can evaluating `file` run anything of its own, or does it only define
