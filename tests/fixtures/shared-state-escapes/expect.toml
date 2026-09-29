@@ -71,3 +71,33 @@ symbol = [
     "Decl(src/state/return-property.ts, hasItems)",
     "Decl(src/state/return-property.ts, items)",
 ]
+
+# `send` passes `state.items` to `sink` inside an object literal, and `sink` can
+# change the array `hasItems` reads the length of.
+[[anchor]]
+path = "src/pages/LiteralPassedPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LiteralPassedPage.tsx)",
+    "Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)",
+    "Export(src/state/literal-passed.ts, hasItems)",
+    "Decl(src/state/literal-passed.ts, hasItems)",
+    "Decl(src/state/literal-passed.ts, send)",
+]
+
+# `lists` returns `state.items` inside an array literal, and whoever calls it can
+# change the array.
+[[anchor]]
+path = "src/pages/LiteralReturnedPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LiteralReturnedPage.tsx)",
+    "Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)",
+    "Export(src/state/literal-returned.ts, hasItems)",
+    "Decl(src/state/literal-returned.ts, hasItems)",
+    "Decl(src/state/literal-returned.ts, lists)",
+]

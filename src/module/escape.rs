@@ -424,6 +424,8 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         // change it. A number read off a part may be anything else to a caller
         // that does not know what the part is.
         AstKind::ArrowFunctionExpression(_) | AstKind::ReturnStatement(_) => Fate::Escapes,
+        // A literal holds what it is built from, and goes wherever it is taken.
+        AstKind::ArrayExpression(_) | AstKind::ObjectProperty(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -922,10 +924,10 @@ mod tests {
         "return <Foo>{c ? @ : d}</Foo>;"             => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <Foo>{o ?? @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Held in a literal.
-        "f({ a: @ });"                               => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f([@]);"                                    => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return { a: @ };"                           => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return [@];"                                => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "f({ a: @ });"                               => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f([@]);"                                    => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return { a: @ };"                           => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return [@];"                                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Held in a binding, or a class field or default of one.
         "const v = @; f(v);"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
         "const v = @; return v;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];

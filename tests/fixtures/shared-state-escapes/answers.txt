@@ -307,3 +307,135 @@ Path (downstream, symbol granularity):
   Decl(src/state/return-property.ts, items)
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/ReturnPropertyPage.tsx","affected":true,"direction":"downstream","changed":"src/state/return-property.ts","path":["File(src/pages/ReturnPropertyPage.tsx)","Decl(src/pages/ReturnPropertyPage.tsx, ReturnPropertyPage)","Export(src/state/return-property.ts, hasItems)","Decl(src/state/return-property.ts, hasItems)","Decl(src/state/return-property.ts, items)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralPassedPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-passed.ts"
+Path (downstream, file granularity):
+  File(src/pages/LiteralPassedPage.tsx)
+  File(src/state/literal-passed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralPassedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-passed.ts","path":["File(src/pages/LiteralPassedPage.tsx)","File(src/state/literal-passed.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LiteralPassedPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-passed.ts"
+Path (downstream, file granularity):
+  File(src/pages/LiteralPassedPage.tsx)
+  File(src/state/literal-passed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralPassedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-passed.ts","path":["File(src/pages/LiteralPassedPage.tsx)","File(src/state/literal-passed.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LiteralPassedPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-passed.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralPassedPage.tsx)
+  Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)
+  Export(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, send)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralPassedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-passed.ts","path":["File(src/pages/LiteralPassedPage.tsx)","Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)","Export(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, send)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralPassedPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-passed.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralPassedPage.tsx)
+  Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)
+  Export(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, send)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralPassedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-passed.ts","path":["File(src/pages/LiteralPassedPage.tsx)","Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)","Export(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, send)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralPassedPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-passed.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralPassedPage.tsx)
+  Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)
+  Export(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, send)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralPassedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-passed.ts","path":["File(src/pages/LiteralPassedPage.tsx)","Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)","Export(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, send)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralPassedPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-passed.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralPassedPage.tsx)
+  Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)
+  Export(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, hasItems)
+  Decl(src/state/literal-passed.ts, send)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralPassedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-passed.ts","path":["File(src/pages/LiteralPassedPage.tsx)","Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)","Export(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, hasItems)","Decl(src/state/literal-passed.ts, send)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralReturnedPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-returned.ts"
+Path (downstream, file granularity):
+  File(src/pages/LiteralReturnedPage.tsx)
+  File(src/state/literal-returned.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","File(src/state/literal-returned.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LiteralReturnedPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-returned.ts"
+Path (downstream, file granularity):
+  File(src/pages/LiteralReturnedPage.tsx)
+  File(src/state/literal-returned.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","File(src/state/literal-returned.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LiteralReturnedPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-returned.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralReturnedPage.tsx)
+  Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)
+  Export(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, lists)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)","Export(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, lists)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralReturnedPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-returned.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralReturnedPage.tsx)
+  Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)
+  Export(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, lists)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)","Export(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, lists)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralReturnedPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-returned.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralReturnedPage.tsx)
+  Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)
+  Export(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, lists)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)","Export(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, lists)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LiteralReturnedPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/literal-returned.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LiteralReturnedPage.tsx)
+  Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)
+  Export(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, hasItems)
+  Decl(src/state/literal-returned.ts, lists)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)","Export(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, lists)"],"granularity":"symbol","unresolved":[]}]}
