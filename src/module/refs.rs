@@ -3,8 +3,7 @@
 use ahash::{AHashMap, AHashSet};
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    BinaryOperator, BindingPattern, CallExpression, Expression, JSXMemberExpressionObject,
-    UnaryOperator,
+    BindingPattern, CallExpression, Expression, JSXMemberExpressionObject, UnaryOperator,
 };
 use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
@@ -469,66 +468,11 @@ pub(crate) enum Use {
 /// it somewhere, returning it, assigning through it, spreading it — hands the value
 /// to code this declaration does not contain, so it counts as a write.
 pub(crate) fn classify(ctx: &Ctx<'_>, node_id: NodeId) -> Use {
-    let nodes = ctx.semantic.nodes();
-    let span = nodes.get_node(node_id).kind().span();
-    match nodes.parent_kind(node_id) {
-        // `typeof s` reads nothing that can be written back.
-        AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Typeof => Use::Read,
-        // Calling or constructing does not rebind the name. A helper that mutates
-        // itself is not covered, which is the assumption every bundler makes.
-        AstKind::CallExpression(call) if call.callee.span() == span => Use::Read,
-        AstKind::NewExpression(new) if new.callee.span() == span => Use::Read,
-        // `<S />` and `<S>...</S>`, whose closing tag names it again. Rendering a
-        // component passes props to the component, which is its own declaration.
-        //
-        // `<S.Provider value={...}>` is deliberately not here. Naming a member of a
-        // binding as an element is a call on that member, and it is how a React
-        // context is written to: the provider puts a value in, every consumer of the
-        // same context reads it out. That is a channel between two declarations
-        // however little the syntax looks like one.
-        AstKind::JSXOpeningElement(_) | AstKind::JSXClosingElement(_) => Use::Read,
-        // `k in s`, `s instanceof C` and `s === o` check the value, on either side,
-        // and yield a boolean that holds no reference to it. What they can run, a
-        // proxy's `has` trap, `Symbol.hasInstance`, `valueOf` or `toString`, is
-        // taken to run nothing, as it is for property reads and pure calls.
-        AstKind::BinaryExpression(binary)
-            if matches!(
-                binary.operator,
-                BinaryOperator::In
-                    | BinaryOperator::Instanceof
-                    | BinaryOperator::Equality
-                    | BinaryOperator::Inequality
-                    | BinaryOperator::StrictEquality
-                    | BinaryOperator::StrictInequality
-                    | BinaryOperator::LessThan
-                    | BinaryOperator::LessEqualThan
-                    | BinaryOperator::GreaterThan
-                    | BinaryOperator::GreaterEqualThan
-            ) =>
-        {
-            Use::Read
-        }
-        // `#x in s` asks the same of a private field.
-        AstKind::PrivateInExpression(_) => Use::Read,
-        // `<li>{s}</li>` renders the value where it stands; `<Foo value={s} />`
-        // and `<Foo>{s}</Foo>` hand it to a component, which could change it.
-        AstKind::JSXExpressionContainer(_) => {
-            in_place(escape::rendered_in_place(nodes, nodes.parent_id(node_id)))
-        }
-        // `s.x` is a read where the value it yields stays in the expression, followed
-        // to the end of the chain it starts. What a property holds is part of what
-        // the binding holds, so a write anywhere down the chain, `s.a.b = 1`, writes
-        // the binding, and so does a method called on anything read off it,
-        // `s.items.push(1)`, or handing it to other code, a component included, as
-        // in `<List items={s.items} />`. Reading it in place, `s.items.length` or
-        // `<li>{s.name}</li>`, stays a read however deep it goes.
-        AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => in_place(
-            escape::uses(ctx, nodes.parent_id(node_id), Held::Part, &Policy::WHOLE, 0)
-                .iter()
-                .all(|(_, fate)| fate.in_place()),
-        ),
-        _ => Use::Mutate,
-    }
+    in_place(
+        escape::uses(ctx, node_id, Held::Whole, &Policy::WHOLE, 0)
+            .iter()
+            .all(|(_, fate)| fate.in_place()),
+    )
 }
 
 /// A read where what is used stays in place, and a possible write where it does not.

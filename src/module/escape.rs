@@ -57,6 +57,8 @@ impl Fate {
 /// What a value holds, which decides what may be done with it in place.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Held {
+    /// A shared binding's value, used bare: a reference to the binding itself.
+    Whole,
     /// Something read off a shared binding's value: a property, or anything read
     /// off one. What it holds is part of the value, so a change made through it is
     /// a change to the value.
@@ -78,7 +80,8 @@ impl Held {
     /// What something read off a value holding this holds.
     fn read_off(self) -> Self {
         match self {
-            Held::State => Held::StatePart,
+            Held::Whole | Held::Part => Held::Part,
+            Held::State | Held::StatePart => Held::StatePart,
             other => other,
         }
     }
@@ -107,9 +110,15 @@ pub(crate) struct Policy {
     returns: Option<OxcSpan>,
     /// How a binding declared to hold the value is followed.
     aliases: Aliases,
-    /// A position the lists below do not know. Temporary: the soundness PR takes
-    /// every such position as an escape.
+    /// A position the lists below do not know, for anything but a binding's value
+    /// used bare, which escapes there. Temporary: the soundness PR takes every
+    /// such position as an escape.
     legacy_unknown: Fate,
+    /// Whether a binding's value used bare is judged by its direct parent alone,
+    /// with no climb through wrappers: `(v).x` and `v!.x` escape, and `o[v]`, where
+    /// it is the key, is judged as a member read off it. Temporary: the soundness
+    /// PR climbs through wrappers from a bare value as from anything else.
+    legacy_bare_parent: bool,
     /// Whether to climb through the operators that yield an operand as they found
     /// it: both operands of `||` and `??`, the right of `&&`, the branches of `?:`
     /// and the last expression of a comma. Temporary: the soundness PR turns it
@@ -149,18 +158,24 @@ impl Policy {
         returns: None,
         aliases: Aliases::Local,
         legacy_unknown: Fate::Escapes,
+        legacy_bare_parent: false,
         follow_value_ops: false,
     };
 
-    /// What is read off a binding read as one value. Anything this does not know
-    /// leaves it in place, and so does a binding declared to hold it.
+    /// A binding read as one value, such as a reassigned `let` or a call's result,
+    /// and what is read off it. The value itself escapes wherever it is not
+    /// checked, called, constructed, rendered where it stands or read from, so
+    /// arithmetic on it, testing it and dropping it count as escapes, and so does a
+    /// binding declared to hold it. What is read off it is in place anywhere this
+    /// does not know, a binding declared to hold it included.
     pub(crate) const WHOLE: Policy = Policy {
-        arithmetic: Fate::InPlace,
-        test: Fate::InPlace,
-        discard: Fate::InPlace,
+        arithmetic: Fate::Escapes,
+        test: Fate::Escapes,
+        discard: Fate::Escapes,
         returns: None,
         aliases: Aliases::Unfollowed,
         legacy_unknown: Fate::InPlace,
+        legacy_bare_parent: true,
         follow_value_ops: false,
     };
 
@@ -176,6 +191,7 @@ impl Policy {
             returns: None,
             aliases: Aliases::Credited(credit),
             legacy_unknown: Fate::InPlace,
+            legacy_bare_parent: false,
             follow_value_ops: false,
         }
     }
@@ -257,6 +273,23 @@ fn stays(ctx: &Ctx<'_>, value: NodeId, held: Held, policy: &Policy, depth: usize
 fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -> Landing {
     let mut current = value;
     let mut steps = 0;
+    if held == Held::Whole && policy.legacy_bare_parent {
+        match nodes.parent_kind(value) {
+            AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
+                current = nodes.parent_id(value);
+                held = held.read_off();
+                steps = 1;
+            }
+            _ => {
+                return Landing {
+                    top: value,
+                    span: nodes.get_node(value).kind().span(),
+                    held,
+                    steps,
+                };
+            }
+        }
+    }
     loop {
         let (outer, span) = through_wrappers(nodes, current);
         match nodes.parent_kind(outer) {
@@ -304,6 +337,8 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
     // A knob of the policy speaks for the value itself. Anything read off it is a
     // part, which these positions leave in place.
     let own = |fate: Fate| if steps == 0 { fate } else { Fate::InPlace };
+    // A binding's value used bare, as opposed to anything read off it or handed out.
+    let bare = held == Held::Whole;
     match nodes.parent_kind(top) {
         // The state itself is never rendered in place, since it holds the actions.
         AstKind::JSXExpressionContainer(_) => {
@@ -314,6 +349,7 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
             }
         }
         AstKind::UnaryExpression(unary) => match unary.operator {
+            // `typeof v` reads nothing that can be written back.
             UnaryOperator::Typeof => Fate::InPlace,
             UnaryOperator::Delete => Fate::Writes,
             UnaryOperator::LogicalNot => own(policy.test),
@@ -384,14 +420,31 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
                 Fate::Escapes
             }
         }
-        // A method called on what the value was read off gets that as `this`.
+        // Calling or constructing a binding does not rebind the name. A helper that
+        // mutates itself is not covered, which is the assumption every bundler
+        // makes. A method called on what the value was read off gets that as
+        // `this`, and what was handed out may be an action.
         AstKind::CallExpression(call) if call.callee.span() == span => {
             if steps > 0 {
                 Fate::Writes
+            } else if bare {
+                Fate::InPlace
             } else {
                 Fate::Escapes
             }
         }
+        AstKind::NewExpression(new) if bare && new.callee.span() == span => Fate::InPlace,
+        // `<S />` and `<S>...</S>`, whose closing tag names it again. Rendering a
+        // component passes props to the component, which is its own declaration.
+        //
+        // `<S.Provider value={...}>` is deliberately not here. Naming a member of a
+        // binding as an element is a call on that member, and it is how a React
+        // context is written to: the provider puts a value in, every consumer of the
+        // same context reads it out. That is a channel between two declarations
+        // however little the syntax looks like one.
+        AstKind::JSXOpeningElement(_) | AstKind::JSXClosingElement(_) if bare => Fate::InPlace,
+        // `#x in v` asks of a private field what `in` asks of a property.
+        AstKind::PrivateInExpression(_) if bare => Fate::InPlace,
         AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => {
             if steps > 0 {
                 Fate::Writes
@@ -421,6 +474,7 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         | AstKind::SpreadElement(_)
         | AstKind::ForInStatement(_)
         | AstKind::ForOfStatement(_) => Fate::Escapes,
+        _ if bare => Fate::Escapes,
         _ => policy.legacy_unknown,
     }
 }
