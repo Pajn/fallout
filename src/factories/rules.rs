@@ -198,6 +198,70 @@ pub fn rule(source: &str, export: &str) -> Option<&'static Rule> {
     RULES.iter().find(|rule| rule.names(source, export))
 }
 
+/// A middleware that takes a creator and returns another, which a factory that calls
+/// its creator calls in its place.
+///
+/// Calling the middleware only builds the creator it returns, so evaluating the
+/// call runs nothing but its arguments. What calling the creator it returns runs
+/// is what calling the creator it was given runs, and, for [`Wraps::Merged`], a
+/// merge. Middleware that does anything else as the store is made, such as reading
+/// storage or connecting to a debugger, is not listed.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Wrapper {
+    /// The module specifiers it is imported from, written as an import writes them.
+    pub sources: &'static [&'static str],
+    /// The name those modules export it under.
+    pub export: &'static str,
+    pub wraps: Wraps,
+}
+
+/// What a [`Wrapper`] is called with, and what the creator it returns does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wraps {
+    /// `(creator)`. The creator returned calls `creator` with the store's `set`,
+    /// `get` and `api`, perhaps having replaced a function on `api`, and returns
+    /// what it returns.
+    Creator,
+    /// `(initialState, creator)`. The creator returned calls `creator` in the same
+    /// way, and returns a new object with every property of `initialState` and then
+    /// of what `creator` returned copied onto it by `Object.assign`, which reads
+    /// each of them, calling any getter.
+    Merged,
+}
+
+pub const WRAPPERS: &[Wrapper] = &[
+    // `immer(initializer)` returns `(set, get, store) => { store.setState = …;
+    // return initializer(store.setState, get, store) }`. The new `setState` calls
+    // Immer's `produce` only when the store is set, and `store` is the store's own
+    // api, which nobody else holds while it is made. Zustand 4 and 5 alike.
+    Wrapper {
+        sources: &["zustand/middleware/immer"],
+        export: "immer",
+        wraps: Wraps::Creator,
+    },
+    // `subscribeWithSelector(fn)` returns `(set, get, api) => { api.subscribe = …;
+    // return fn(set, get, api) }`, and the new `subscribe` runs only when called.
+    Wrapper {
+        sources: &["zustand/middleware"],
+        export: "subscribeWithSelector",
+        wraps: Wraps::Creator,
+    },
+    // `combine(initialState, create)` returns `(...args) => Object.assign({},
+    // initialState, create(...args))`.
+    Wrapper {
+        sources: &["zustand/middleware"],
+        export: "combine",
+        wraps: Wraps::Merged,
+    },
+];
+
+/// The middleware `source#export` names, if it is one.
+pub fn wrapper(source: &str, export: &str) -> Option<&'static Wrapper> {
+    WRAPPERS
+        .iter()
+        .find(|wrapper| wrapper.export == export && wrapper.sources.contains(&source))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +304,33 @@ mod tests {
 
         assert!(is_identity_method("withTypes"));
         assert!(!is_identity_method("other"));
+    }
+
+    #[test]
+    fn only_middleware_that_does_nothing_else_as_the_store_is_made_is_a_wrapper() {
+        assert_eq!(
+            wrapper("zustand/middleware/immer", "immer").map(|w| w.wraps),
+            Some(Wraps::Creator)
+        );
+        assert_eq!(
+            wrapper("zustand/middleware", "subscribeWithSelector").map(|w| w.wraps),
+            Some(Wraps::Creator)
+        );
+        assert_eq!(
+            wrapper("zustand/middleware", "combine").map(|w| w.wraps),
+            Some(Wraps::Merged)
+        );
+        // `persist` reads storage and `devtools` connects to the extension as the
+        // store is made. And each is known only by the module that exports it.
+        for (source, export) in [
+            ("zustand/middleware", "persist"),
+            ("zustand/middleware", "devtools"),
+            ("zustand/middleware", "immer"),
+            ("zustand", "combine"),
+            ("immer", "immer"),
+        ] {
+            assert!(wrapper(source, export).is_none(), "{source}#{export}");
+        }
     }
 
     #[test]

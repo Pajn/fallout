@@ -20,7 +20,8 @@
 //! Whether a known factory's call runs anything is not here. That needs the
 //! callee's own file, so [`super::init`] defers it and the graph resolves it. What
 //! is here is the half of that question this file can answer: whether calling a
-//! function it hands such a factory runs anything, for a factory that calls it.
+//! function it hands such a factory runs anything, for a factory that calls it,
+//! looking through the middleware Zustand offers to wrap one in ([`wrappers`]).
 //!
 //! Nor is what reading an import does. Where a project defers each import to its
 //! first use, that evaluates the module the import names, and whether this one does
@@ -31,6 +32,7 @@ mod globals;
 mod imports;
 mod local_pure;
 mod reads;
+mod wrappers;
 
 use ahash::AHashMap;
 use oxc_ast::ast::*;
@@ -45,6 +47,7 @@ use crate::pure::PureList;
 use imports::Imports;
 use local_pure::{LocalPure, Proof};
 use reads::Reader;
+pub(super) use wrappers::Wrapped;
 
 /// What code run at module load in one file is judged against: where each import
 /// comes from, what the project has declared pure, what the local-helper proof has
@@ -87,13 +90,6 @@ impl<'c, 'a> SideEffects<'c, 'a> {
     /// run. A function body inside it is not evaluated, and so says nothing.
     pub(super) fn runs(&self, expression: &Expression<'_>) -> bool {
         self.detect(|detector| detector.visit_expression(expression))
-    }
-
-    /// Whether calling `function` once at `at`, with arguments nobody here knows
-    /// anything about, may run anything or throw. Only a function written out in
-    /// place whose body the local-helper proof clears does neither.
-    pub(super) fn runs_when_called(&self, function: &Expression<'_>, at: u32) -> bool {
-        !self.local.invoked(function, at)
     }
 
     /// Whether declaring what `statement` declares runs anything: its initialisers,

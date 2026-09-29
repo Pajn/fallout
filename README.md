@@ -449,9 +449,27 @@ Using the store is not split by state key. Calling the hook, `getState()`,
 would for any other value, whichever keys they read. Only making the store is
 narrowed.
 
-Middleware and slices are not proven yet. A store whose creator is wrapped in
-`persist`, `devtools`, `immer`, `subscribeWithSelector` or `combine`, or assembled
-from slices with `(...a) => ({ ...createSlice(...a) })`, stays initialisation.
+Three middlewares are recognised as wrappers, and count as quiet when what they wrap
+is: `immer` from `zustand/middleware/immer`, and `subscribeWithSelector` and
+`combine` from `zustand/middleware`, in Zustand 4 and 5 alike. Calling one only
+builds the creator it returns, so evaluating `immer(creator)` runs what its
+arguments run and nothing more, and calling what it returns calls the creator it
+was given, after replacing `setState` or `subscribe` on the store's own `api`.
+Wrappers nest, as in `create<State>()(immer(subscribeWithSelector(creator)))`, and
+initialisation reaches each wrapper with the call around the creator. `combine`
+also merges its initial state with what its creator returns, reading every property
+of both, so each must be an object literal written out with no getter, spread or
+computed key, and the initial state must run nothing as it is evaluated. A wrapper
+is matched by the import it is, directly or through a namespace, and not by its
+name, and one whose import lands in a file of the app is not matched. Calling a
+wrapper reads its import, so with [inline requires](#inline-requires) a store
+wrapped in one stays initialisation.
+
+`persist` and `devtools` are not recognised, since `persist` reads storage and
+`devtools` connects to the browser extension as the store is made. A store with
+either anywhere in its chain, or with a wrapper of the app's own, stays
+initialisation. So does one assembled from slices with
+`(...a) => ({ ...createSlice(...a) })`.
 
 Without `--base`, an edit that takes an effect out of a creator is not seen as a
 change to initialisation, since the creator the change leaves behind runs nothing

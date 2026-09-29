@@ -104,13 +104,15 @@ pub(super) fn collect(
 
         // A call that may be a factory's runs nothing else if its arguments do not:
         // whether the call itself does is the graph's to say, once it knows the
-        // callee. See [`super::factories`].
+        // callee. See [`super::factories`]. An argument that calls a Zustand
+        // middleware, such as `immer(creator)`, runs what the middleware's own
+        // arguments run, since the call only builds the creator the factory calls.
         if conditional.contains(&index)
             && let Some((_, call)) = super::factories::call_of(statement)
             && !call.arguments.iter().any(|argument| {
                 argument
                     .as_expression()
-                    .is_none_or(|argument| effects.runs(argument))
+                    .is_none_or(|argument| effects.evaluating_runs(argument))
             })
         {
             for (id, draft) in drafts.iter().enumerate() {
@@ -289,6 +291,12 @@ mod tests {
             // made counts, as it does for any call.
             (
                 "import { createWithEqualityFn } from 'zustand/traditional';\nimport { same } from './equality';\nexport const useStore = createWithEqualityFn(() => ({ count: 0 }), same);\n",
+                "useStore",
+            ),
+            // And so is a middleware called on the creator, even one whose call is
+            // looked through.
+            (
+                "import { create } from 'zustand';\nimport { immer } from 'zustand/middleware/immer';\nexport const useStore = create(immer(() => ({ count: 0 })));\n",
                 "useStore",
             ),
         ] {
