@@ -93,7 +93,7 @@ pub(crate) fn link(
             };
             // A reference from a statement that declares nothing is module
             // initialisation, which `init` handles. What it reads of an import is
-            // kept for it, since reading one can evaluate the module it names.
+            // kept for it, since what the statement does can turn on the value.
             let Some(users) = statement_decls.get(&statement) else {
                 if let Some(binding) = target_import
                     && scoping.get_reference(*reference_id).is_read()

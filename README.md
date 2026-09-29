@@ -160,7 +160,9 @@ is what runs when the class is defined: its `extends` expression, its computed k
 and its static fields and blocks, but not instance fields or method bodies. An enum's
 member initialisers count too. A bare `import "./theme.css"` is a side effect of
 loading the module and reaches every importer, while `import logo from "./logo.png"`
-reaches only the declarations using `logo`.
+reaches only the declarations using `logo`. A top-level statement that declares
+nothing and reads an import, such as `document.title = String(base)`, links the
+file's initialisation to that export.
 
 Some things an initialiser does are taken to run nothing, although they can. Reading a
 property, destructuring, spreading, iterating, `in` and `instanceof` are assumed not

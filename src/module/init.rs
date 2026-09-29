@@ -4,10 +4,12 @@
 //! declarations whose values are computed at import time, either because a top-level
 //! statement uses them or because their own initialiser may have side effects.
 //!
-//! What code run at load reads of the imports is collected too. Reading one runs
-//! nothing of this file's, but where a project defers each import to its first use
-//! it evaluates the module the import names, and the graph, which knows whether the
-//! project does, counts it then.
+//! What code run at load reads of the imports is collected too. A statement that
+//! declares nothing depends on the values it reads, and has no node to reach them
+//! through. And reading an import runs nothing of this file's, but where a project
+//! defers each import to its first use it evaluates the module the import names,
+//! and the graph, which knows whether the project does, counts a declaration that
+//! reads one then.
 
 use oxc_ast::ast::*;
 use oxc_span::GetSpan;

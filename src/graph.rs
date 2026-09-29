@@ -537,16 +537,25 @@ impl Graph {
                 }
             }
         }
-        // With imports deferred to first use, reading an imported binding is what
+        // A statement that declares nothing runs for its effect, and what it reads of
+        // an import is part of that: `document.title = String(base)` shows `base`.
+        // Such a statement has no node of its own, so initialisation reaches the
+        // exports it reads, with or without deferred imports. A declaration needs no
+        // such edge, since what it reads is reached through its own node wherever it
+        // is initialisation or read.
+        //
+        // With imports deferred to first use, reading an imported binding is also what
         // evaluates the module it names. A declaration whose initialiser reads one as
         // it runs at load evaluates that module as this one is evaluated, so it is
         // initialisation, whole: an edit that makes it read another import changes
         // what loading this module evaluates, as it does for a store's creator. Its
         // reads are followed as any are, through a barrel to the module that provides
-        // the name. A statement that declares nothing is initialisation already, and
-        // what it reads of an import is reached here. Evaluating the imported module
-        // is that module's doing rather than this one's, so a claim that this module
-        // has no side effects leaves these standing, as it leaves the imports below.
+        // the name. Evaluating the imported module is that module's doing rather than
+        // this one's, so a claim that this module has no side effects leaves these
+        // edges standing then, as it leaves the imports below.
+        if self.runs_on_import(file) || self.inline_requires {
+            edges.extend(self.reference_edges(fine, &[], &[], &module.init_imports));
+        }
         if self.inline_requires {
             edges.extend(
                 module
@@ -554,7 +563,6 @@ impl Graph {
                     .iter()
                     .map(|&decl| Node::Decl(file, decl)),
             );
-            edges.extend(self.reference_edges(fine, &[], &[], &module.init_imports));
         }
         // Importing a module runs its initialisation, in any form — unless the
         // project defers each import to the first use of the binding it introduces,

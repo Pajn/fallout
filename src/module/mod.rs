@@ -275,9 +275,10 @@ pub struct FineModule {
     /// since the call around them is reached whenever the call is.
     pub reads_on_load: Vec<DeclId>,
     /// Imported bindings read by the top-level statements that declare nothing,
-    /// which run for their effect and are initialisation already. Where each
-    /// import is deferred to its first use, reading one there is what evaluates
-    /// its module.
+    /// which run for their effect and are initialisation already. What they do can
+    /// turn on the values they read, and such a statement has no node of its own
+    /// to reach them through. Where each import is deferred to its first use,
+    /// reading one there is also what evaluates its module.
     pub init_imports: Vec<ImportRef>,
 }
 

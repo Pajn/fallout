@@ -1,0 +1,28 @@
+# A top-level statement that declares nothing runs for its effect when its module is
+# evaluated, and here it writes the page's title from `base`. A page that imports only
+# `label` still evaluates `banner.ts`, so an edit to the value of `base` changes what
+# it shows. Module initialisation reaches the export the statement reads, not only
+# the initialisation of the module it comes from, which evaluating `base` does not
+# change.
+[[anchor]]
+path = "src/pages/BannerPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/BannerPage.tsx)",
+    "ModuleInit(src/pages/BannerPage.tsx)",
+    "ModuleInit(src/lib/banner.ts)",
+    "Export(src/lib/tokens.ts, base)",
+]
+base = [
+    "File(src/pages/BannerPage.tsx)",
+    "ModuleInit(src/pages/BannerPage.tsx)",
+    "ModuleInit(src/lib/banner.ts)",
+    "Export(src/lib/tokens.ts, base)",
+]
+
+# `gap` reads `base` only when it is called, and nothing on this page calls it.
+[[anchor]]
+path = "src/pages/SpacingPage.tsx"
+affected = false
