@@ -153,9 +153,9 @@ pub const RULES: &[Rule] = &[
     // initial state, and does nothing else anyone outside the store can see. The
     // store holds that state and the functions it was built with, and every way of
     // using it — calling the hook, `getState()`, `setState()` — can read any of it,
-    // so no property is read apart.
+    // so no property is read apart. Zustand 5 also exports it from `zustand/react`.
     Rule {
-        sources: &["zustand"],
+        sources: &["zustand", "zustand/react"],
         export: "create",
         members: &[],
         creation: Creation::Calls(&[0]),

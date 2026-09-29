@@ -470,6 +470,7 @@ export const t = createAsyncThunk(
     #[test]
     fn every_way_zustand_offers_to_make_a_store_is_a_factory() {
         for import in [
+            "import { create } from 'zustand/react';",
             "import { createStore as create } from 'zustand/vanilla';",
             "import { createStore as create } from 'zustand';",
             "import { createWithEqualityFn as create } from 'zustand/traditional';",

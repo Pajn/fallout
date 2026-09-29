@@ -433,10 +433,10 @@ the creator reaches only what uses the store. With [inline
 requires](#inline-requires), initialisation also reaches every module the creator
 may read, since reading one of its names is what evaluates it.
 
-Recognised are `create` from `zustand`, `createStore` from `zustand` and
-`zustand/vanilla`, `createWithEqualityFn` from `zustand/traditional`, whose equality
-function is kept for the hook rather than called, and Zustand 4's default exports of
-`zustand` and `zustand/vanilla`. Each is matched in the curried form
+Recognised are `create` from `zustand` and `zustand/react`, `createStore` from
+`zustand` and `zustand/vanilla`, `createWithEqualityFn` from `zustand/traditional`,
+whose equality function is kept for the hook rather than called, and Zustand 4's
+default exports of `zustand` and `zustand/vanilla`. Each is matched in the curried form
 `create<State>()(creator)` too, and however the app reaches it, as for
 `createAsyncThunk`. An app's own function that wraps `create`, and a file of the app
 that `zustand` resolves to, are not matched.
