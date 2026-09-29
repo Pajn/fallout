@@ -1,0 +1,16 @@
+# The sibling store, made with `create` imported under another name. The factory
+# is known by the name its module exports, not by the one the app gives it.
+[[anchor]]
+path = "src/cases/counter-title.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/counter-button.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/counter-button.cases.tsx)",
+    "Decl(src/cases/counter-button.cases.tsx, CounterButton)",
+    "Export(src/store/counter.ts, useCounter)",
+]

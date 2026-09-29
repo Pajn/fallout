@@ -1,0 +1,16 @@
+# The sibling store, made through a namespace import of `zustand`. The factory is
+# the same function however the module reaches it.
+[[anchor]]
+path = "src/cases/counter-title.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/counter-button.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/counter-button.cases.tsx)",
+    "Decl(src/cases/counter-button.cases.tsx, CounterButton)",
+    "Export(src/store/counter.ts, useCounter)",
+]
