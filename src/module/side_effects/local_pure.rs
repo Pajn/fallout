@@ -203,7 +203,8 @@ impl<'c, 'a> LocalPure<'c, 'a> {
     /// Zustand calls a store's creator as it makes the store. The parameters are
     /// held as a helper's are, so the body may hand them on or return them, but
     /// calling one, or reading through it, is not proven. The body runs at `at`, so
-    /// what it reads must be ready there.
+    /// what it reads must be ready there. Middleware around the function is looked
+    /// through before this is asked, in [`super::wrappers`].
     pub(super) fn invoked(&self, function: &Expression<'_>, at: u32) -> bool {
         let parts = match function.get_inner_expression() {
             Expression::ArrowFunctionExpression(arrow) => arrow_parts(arrow),

@@ -8,7 +8,7 @@
 //! identity forms that factory's rule declares are taken off its end.
 
 use crate::graph::{FileId, Fine, Graph, Node};
-use crate::module::{Callee, ExportTarget, Step};
+use crate::module::{Callee, ExportTarget, SourceId, Step};
 use crate::resolve::is_installed;
 
 use super::rules::{Rule, rule};
@@ -36,17 +36,22 @@ pub(super) fn callee_rule(
             // Where the specifier lands in the project's own source, that is the
             // module it names, whatever it is spelled as: a `paths` entry can
             // map a package's name onto a shim.
-            if let Some(target) = graph.target_of(fine.analysed(), *source) {
-                let target_path = graph.path(target);
-                if crate::module::is_source_file(&target_path) && !is_installed(&target_path) {
-                    return export_rule(graph, target, name, path, depth + 1);
-                }
+            if let Some(target) = app_file(graph, fine, *source) {
+                return export_rule(graph, target, name, path, depth + 1);
             }
             let specifier = module.sources.get(*source as usize)?;
             let rule = rule(specifier, name)?;
             rule.strip_identity(path).is_empty().then_some(rule)
         }
     }
+}
+
+/// The file of the app's own source that the import `source` of `fine` lands in,
+/// if it lands in one rather than in a package.
+pub(super) fn app_file(graph: &Graph, fine: &Fine, source: SourceId) -> Option<FileId> {
+    let target = graph.target_of(fine.analysed(), source)?;
+    let path = graph.path(target);
+    (crate::module::is_source_file(&path) && !is_installed(&path)).then_some(target)
 }
 
 /// The rule of the factory `file` exports as `name`, read through `path`. An

@@ -1,0 +1,715 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/cases/immer.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer.cases.tsx)
+  File(src/stores/immer.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/immer.cases.tsx)","File(src/stores/immer.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer.cases.tsx)
+  File(src/stores/immer.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/immer.cases.tsx)","File(src/stores/immer.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/immer.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/immer.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/immer.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/subscribe-with-selector.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/subscribe-with-selector.ts"
+Path (downstream, file granularity):
+  File(src/cases/subscribe-with-selector.cases.tsx)
+  File(src/stores/subscribe-with-selector.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/subscribe-with-selector.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/subscribe-with-selector.ts","path":["File(src/cases/subscribe-with-selector.cases.tsx)","File(src/stores/subscribe-with-selector.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/subscribe-with-selector.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/subscribe-with-selector.ts"
+Path (downstream, file granularity):
+  File(src/cases/subscribe-with-selector.cases.tsx)
+  File(src/stores/subscribe-with-selector.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/subscribe-with-selector.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/subscribe-with-selector.ts","path":["File(src/cases/subscribe-with-selector.cases.tsx)","File(src/stores/subscribe-with-selector.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/subscribe-with-selector.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/subscribe-with-selector.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/subscribe-with-selector.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/subscribe-with-selector.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/subscribe-with-selector.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/subscribe-with-selector.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/subscribe-with-selector.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/subscribe-with-selector.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/combine.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine.ts"
+Path (downstream, file granularity):
+  File(src/cases/combine.cases.tsx)
+  File(src/stores/combine.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine.ts","path":["File(src/cases/combine.cases.tsx)","File(src/stores/combine.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/combine.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine.ts"
+Path (downstream, file granularity):
+  File(src/cases/combine.cases.tsx)
+  File(src/stores/combine.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine.ts","path":["File(src/cases/combine.cases.tsx)","File(src/stores/combine.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/combine.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/combine.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/combine.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/combine.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/nested.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/nested.ts"
+Path (downstream, file granularity):
+  File(src/cases/nested.cases.tsx)
+  File(src/stores/nested.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/nested.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/nested.ts","path":["File(src/cases/nested.cases.tsx)","File(src/stores/nested.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/nested.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/nested.ts"
+Path (downstream, file granularity):
+  File(src/cases/nested.cases.tsx)
+  File(src/stores/nested.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/nested.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/nested.ts","path":["File(src/cases/nested.cases.tsx)","File(src/stores/nested.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/nested.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/nested.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/nested.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/nested.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/nested.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/nested.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/nested.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/nested.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/immer-effect-removed.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-removed.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-effect-removed.cases.tsx)
+  File(src/stores/immer-effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-removed.ts","path":["File(src/cases/immer-effect-removed.cases.tsx)","File(src/stores/immer-effect-removed.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-effect-removed.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-removed.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-effect-removed.cases.tsx)
+  File(src/stores/immer-effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-removed.ts","path":["File(src/cases/immer-effect-removed.cases.tsx)","File(src/stores/immer-effect-removed.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-effect-removed.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-removed.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/immer-effect-removed.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-removed.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/lib/state.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/immer-effect-removed.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-removed.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-effect-removed.cases.tsx)
+  ModuleInit(src/cases/immer-effect-removed.cases.tsx)
+  ModuleInit(src/stores/immer-effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-removed.ts","path":["File(src/cases/immer-effect-removed.cases.tsx)","ModuleInit(src/cases/immer-effect-removed.cases.tsx)","ModuleInit(src/stores/immer-effect-removed.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-removed.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-removed.ts"]}]}]}
+
+== src/cases/immer-effect-removed.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-removed.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-effect-removed.cases.tsx)
+  ModuleInit(src/cases/immer-effect-removed.cases.tsx)
+  ModuleInit(src/stores/immer-effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-removed.ts","path":["File(src/cases/immer-effect-removed.cases.tsx)","ModuleInit(src/cases/immer-effect-removed.cases.tsx)","ModuleInit(src/stores/immer-effect-removed.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-removed.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-removed.ts"]}]}]}
+
+== src/cases/immer-effect-added.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-added.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-effect-added.cases.tsx)
+  File(src/stores/immer-effect-added.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-added.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-added.ts","path":["File(src/cases/immer-effect-added.cases.tsx)","File(src/stores/immer-effect-added.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-effect-added.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-added.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-effect-added.cases.tsx)
+  File(src/stores/immer-effect-added.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-added.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-added.ts","path":["File(src/cases/immer-effect-added.cases.tsx)","File(src/stores/immer-effect-added.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-effect-added.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-added.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/stores/immer-effect-added.ts)
+  Decl(src/stores/immer-effect-added.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-added.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-added.ts","path":["File(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/stores/immer-effect-added.ts)","Decl(src/stores/immer-effect-added.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]}]}]}
+
+== src/cases/immer-effect-added.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-added.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/stores/immer-effect-added.ts)
+  Decl(src/stores/immer-effect-added.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-added.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-added.ts","path":["File(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/stores/immer-effect-added.ts)","Decl(src/stores/immer-effect-added.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]}]}]}
+
+== src/cases/immer-effect-added.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-added.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/stores/immer-effect-added.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-added.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-added.ts","path":["File(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/stores/immer-effect-added.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]}]}]}
+
+== src/cases/immer-effect-added.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-effect-added.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/cases/immer-effect-added.cases.tsx)
+  ModuleInit(src/stores/immer-effect-added.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-effect-added.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-effect-added.ts","path":["File(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/cases/immer-effect-added.cases.tsx)","ModuleInit(src/stores/immer-effect-added.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-effect-added.ts"]}]}]}
+
+== src/cases/immer-creator-runs.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-creator-runs.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-creator-runs.cases.tsx)
+  File(src/stores/immer-creator-runs.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-creator-runs.ts","path":["File(src/cases/immer-creator-runs.cases.tsx)","File(src/stores/immer-creator-runs.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-creator-runs.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-creator-runs.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-creator-runs.cases.tsx)
+  File(src/stores/immer-creator-runs.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-creator-runs.ts","path":["File(src/cases/immer-creator-runs.cases.tsx)","File(src/stores/immer-creator-runs.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-creator-runs.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/stores/immer-creator-runs.ts)
+  Decl(src/stores/immer-creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-creator-runs.ts","path":["File(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/stores/immer-creator-runs.ts)","Decl(src/stores/immer-creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]}]}]}
+
+== src/cases/immer-creator-runs.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/stores/immer-creator-runs.ts)
+  Decl(src/stores/immer-creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-creator-runs.ts","path":["File(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/stores/immer-creator-runs.ts)","Decl(src/stores/immer-creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]}]}]}
+
+== src/cases/immer-creator-runs.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/stores/immer-creator-runs.ts)
+  Decl(src/stores/immer-creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-creator-runs.ts","path":["File(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/stores/immer-creator-runs.ts)","Decl(src/stores/immer-creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]}]}]}
+
+== src/cases/immer-creator-runs.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/cases/immer-creator-runs.cases.tsx)
+  ModuleInit(src/stores/immer-creator-runs.ts)
+  Decl(src/stores/immer-creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-creator-runs.ts","path":["File(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/cases/immer-creator-runs.cases.tsx)","ModuleInit(src/stores/immer-creator-runs.ts)","Decl(src/stores/immer-creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-creator-runs.ts"]}]}]}
+
+== src/cases/combine-state-runs.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine-state-runs.ts"
+Path (downstream, file granularity):
+  File(src/cases/combine-state-runs.cases.tsx)
+  File(src/stores/combine-state-runs.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine-state-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine-state-runs.ts","path":["File(src/cases/combine-state-runs.cases.tsx)","File(src/stores/combine-state-runs.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/combine-state-runs.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine-state-runs.ts"
+Path (downstream, file granularity):
+  File(src/cases/combine-state-runs.cases.tsx)
+  File(src/stores/combine-state-runs.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine-state-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine-state-runs.ts","path":["File(src/cases/combine-state-runs.cases.tsx)","File(src/stores/combine-state-runs.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/combine-state-runs.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine-state-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/stores/combine-state-runs.ts)
+  Decl(src/stores/combine-state-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine-state-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine-state-runs.ts","path":["File(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/stores/combine-state-runs.ts)","Decl(src/stores/combine-state-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]}]}]}
+
+== src/cases/combine-state-runs.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine-state-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/stores/combine-state-runs.ts)
+  Decl(src/stores/combine-state-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine-state-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine-state-runs.ts","path":["File(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/stores/combine-state-runs.ts)","Decl(src/stores/combine-state-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]}]}]}
+
+== src/cases/combine-state-runs.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine-state-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/stores/combine-state-runs.ts)
+  Decl(src/stores/combine-state-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine-state-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine-state-runs.ts","path":["File(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/stores/combine-state-runs.ts)","Decl(src/stores/combine-state-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]}]}]}
+
+== src/cases/combine-state-runs.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/combine-state-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/cases/combine-state-runs.cases.tsx)
+  ModuleInit(src/stores/combine-state-runs.ts)
+  Decl(src/stores/combine-state-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/combine-state-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/combine-state-runs.ts","path":["File(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/cases/combine-state-runs.cases.tsx)","ModuleInit(src/stores/combine-state-runs.ts)","Decl(src/stores/combine-state-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts"]}]}]}
+
+== src/cases/devtools.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/devtools.ts"
+Path (downstream, file granularity):
+  File(src/cases/devtools.cases.tsx)
+  File(src/stores/devtools.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/devtools.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/devtools.ts","path":["File(src/cases/devtools.cases.tsx)","File(src/stores/devtools.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/devtools.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/devtools.ts"
+Path (downstream, file granularity):
+  File(src/cases/devtools.cases.tsx)
+  File(src/stores/devtools.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/devtools.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/devtools.ts","path":["File(src/cases/devtools.cases.tsx)","File(src/stores/devtools.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/devtools.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/devtools.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/devtools.cases.tsx)
+  ModuleInit(src/cases/devtools.cases.tsx)
+  ModuleInit(src/stores/devtools.ts)
+  Decl(src/stores/devtools.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/devtools.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/devtools.ts","path":["File(src/cases/devtools.cases.tsx)","ModuleInit(src/cases/devtools.cases.tsx)","ModuleInit(src/stores/devtools.ts)","Decl(src/stores/devtools.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]}]}]}
+
+== src/cases/devtools.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/devtools.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/devtools.cases.tsx)
+  ModuleInit(src/cases/devtools.cases.tsx)
+  ModuleInit(src/stores/devtools.ts)
+  Decl(src/stores/devtools.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/devtools.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/devtools.ts","path":["File(src/cases/devtools.cases.tsx)","ModuleInit(src/cases/devtools.cases.tsx)","ModuleInit(src/stores/devtools.ts)","Decl(src/stores/devtools.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]}]}]}
+
+== src/cases/devtools.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/devtools.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/devtools.cases.tsx)
+  ModuleInit(src/cases/devtools.cases.tsx)
+  ModuleInit(src/stores/devtools.ts)
+  Decl(src/stores/devtools.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/devtools.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/devtools.ts","path":["File(src/cases/devtools.cases.tsx)","ModuleInit(src/cases/devtools.cases.tsx)","ModuleInit(src/stores/devtools.ts)","Decl(src/stores/devtools.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]}]}]}
+
+== src/cases/devtools.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/devtools.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/devtools.cases.tsx)
+  ModuleInit(src/cases/devtools.cases.tsx)
+  ModuleInit(src/stores/devtools.ts)
+  Decl(src/stores/devtools.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/devtools.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/devtools.ts","path":["File(src/cases/devtools.cases.tsx)","ModuleInit(src/cases/devtools.cases.tsx)","ModuleInit(src/stores/devtools.ts)","Decl(src/stores/devtools.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/devtools.ts"]}]}]}
+
+== src/cases/immer-persist.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-persist.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-persist.cases.tsx)
+  File(src/stores/immer-persist.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-persist.ts","path":["File(src/cases/immer-persist.cases.tsx)","File(src/stores/immer-persist.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-persist.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-persist.ts"
+Path (downstream, file granularity):
+  File(src/cases/immer-persist.cases.tsx)
+  File(src/stores/immer-persist.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-persist.ts","path":["File(src/cases/immer-persist.cases.tsx)","File(src/stores/immer-persist.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/immer-persist.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/stores/immer-persist.ts)
+  Decl(src/stores/immer-persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-persist.ts","path":["File(src/cases/immer-persist.cases.tsx)","ModuleInit(src/cases/immer-persist.cases.tsx)","ModuleInit(src/stores/immer-persist.ts)","Decl(src/stores/immer-persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]}]}]}
+
+== src/cases/immer-persist.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/stores/immer-persist.ts)
+  Decl(src/stores/immer-persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-persist.ts","path":["File(src/cases/immer-persist.cases.tsx)","ModuleInit(src/cases/immer-persist.cases.tsx)","ModuleInit(src/stores/immer-persist.ts)","Decl(src/stores/immer-persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]}]}]}
+
+== src/cases/immer-persist.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/stores/immer-persist.ts)
+  Decl(src/stores/immer-persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-persist.ts","path":["File(src/cases/immer-persist.cases.tsx)","ModuleInit(src/cases/immer-persist.cases.tsx)","ModuleInit(src/stores/immer-persist.ts)","Decl(src/stores/immer-persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]}]}]}
+
+== src/cases/immer-persist.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer-persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/cases/immer-persist.cases.tsx)
+  ModuleInit(src/stores/immer-persist.ts)
+  Decl(src/stores/immer-persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/immer-persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer-persist.ts","path":["File(src/cases/immer-persist.cases.tsx)","ModuleInit(src/cases/immer-persist.cases.tsx)","ModuleInit(src/stores/immer-persist.ts)","Decl(src/stores/immer-persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/immer-persist.ts"]}]}]}
+
+== src/cases/own-middleware.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/own-middleware.ts"
+Path (downstream, file granularity):
+  File(src/cases/own-middleware.cases.tsx)
+  File(src/stores/own-middleware.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/own-middleware.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/own-middleware.ts","path":["File(src/cases/own-middleware.cases.tsx)","File(src/stores/own-middleware.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/own-middleware.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/own-middleware.ts"
+Path (downstream, file granularity):
+  File(src/cases/own-middleware.cases.tsx)
+  File(src/stores/own-middleware.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/own-middleware.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/own-middleware.ts","path":["File(src/cases/own-middleware.cases.tsx)","File(src/stores/own-middleware.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/own-middleware.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/own-middleware.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/stores/own-middleware.ts)
+  Decl(src/stores/own-middleware.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/own-middleware.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/own-middleware.ts","path":["File(src/cases/own-middleware.cases.tsx)","ModuleInit(src/cases/own-middleware.cases.tsx)","ModuleInit(src/stores/own-middleware.ts)","Decl(src/stores/own-middleware.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/own-middleware.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/own-middleware.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/stores/own-middleware.ts)
+  Decl(src/stores/own-middleware.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/own-middleware.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/own-middleware.ts","path":["File(src/cases/own-middleware.cases.tsx)","ModuleInit(src/cases/own-middleware.cases.tsx)","ModuleInit(src/stores/own-middleware.ts)","Decl(src/stores/own-middleware.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/own-middleware.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/own-middleware.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/stores/own-middleware.ts)
+  Decl(src/stores/own-middleware.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/own-middleware.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/own-middleware.ts","path":["File(src/cases/own-middleware.cases.tsx)","ModuleInit(src/cases/own-middleware.cases.tsx)","ModuleInit(src/stores/own-middleware.ts)","Decl(src/stores/own-middleware.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/own-middleware.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/own-middleware.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/cases/own-middleware.cases.tsx)
+  ModuleInit(src/stores/own-middleware.ts)
+  Decl(src/stores/own-middleware.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/own-middleware.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/own-middleware.ts","path":["File(src/cases/own-middleware.cases.tsx)","ModuleInit(src/cases/own-middleware.cases.tsx)","ModuleInit(src/stores/own-middleware.ts)","Decl(src/stores/own-middleware.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, file granularity):
+  File(src/cases/stores.cases.tsx)
+  File(src/stores/immer.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/stores.cases.tsx)","File(src/stores/immer.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/stores.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, file granularity):
+  File(src/cases/stores.cases.tsx)
+  File(src/stores/immer.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/stores.cases.tsx)","File(src/stores/immer.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/stores.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/immer.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/combine-state-runs.ts","src/stores/combine.ts","src/stores/devtools.ts","src/stores/immer-persist.ts","src/stores/nested.ts","src/stores/subscribe-with-selector.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts","src/stores/immer-creator-runs.ts","src/stores/immer-effect-added.ts","src/stores/immer-effect-removed.ts","src/stores/immer-persist.ts","src/stores/immer.ts","src/stores/nested.ts","src/stores/own-middleware.ts"]}]}]}
+
+== src/inline/cases/immer.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/immer.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/immer.cases.tsx)
+  File(src/inline/stores/immer.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/immer.ts","path":["File(src/inline/cases/immer.cases.tsx)","File(src/inline/stores/immer.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/inline/cases/immer.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/immer.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/immer.cases.tsx)
+  File(src/inline/stores/immer.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/immer.ts","path":["File(src/inline/cases/immer.cases.tsx)","File(src/inline/stores/immer.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/inline/cases/immer.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/immer.cases.tsx)
+  Decl(src/inline/cases/immer.cases.tsx, Title)
+  Export(src/inline/stores/immer.ts, TITLE)
+  ModuleInit(src/inline/stores/immer.ts)
+  Decl(src/inline/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/immer.ts","path":["File(src/inline/cases/immer.cases.tsx)","Decl(src/inline/cases/immer.cases.tsx, Title)","Export(src/inline/stores/immer.ts, TITLE)","ModuleInit(src/inline/stores/immer.ts)","Decl(src/inline/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]}]}]}
+
+== src/inline/cases/immer.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/immer.cases.tsx)
+  Decl(src/inline/cases/immer.cases.tsx, Title)
+  Export(src/inline/stores/immer.ts, TITLE)
+  ModuleInit(src/inline/stores/immer.ts)
+  Decl(src/inline/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/immer.ts","path":["File(src/inline/cases/immer.cases.tsx)","Decl(src/inline/cases/immer.cases.tsx, Title)","Export(src/inline/stores/immer.ts, TITLE)","ModuleInit(src/inline/stores/immer.ts)","Decl(src/inline/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]}]}]}
+
+== src/inline/cases/immer.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/immer.cases.tsx)
+  Decl(src/inline/cases/immer.cases.tsx, Title)
+  Export(src/inline/stores/immer.ts, TITLE)
+  ModuleInit(src/inline/stores/immer.ts)
+  Decl(src/inline/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/immer.ts","path":["File(src/inline/cases/immer.cases.tsx)","Decl(src/inline/cases/immer.cases.tsx, Title)","Export(src/inline/stores/immer.ts, TITLE)","ModuleInit(src/inline/stores/immer.ts)","Decl(src/inline/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]}]}]}
+
+== src/inline/cases/immer.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/immer.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/immer.cases.tsx)
+  Decl(src/inline/cases/immer.cases.tsx, Title)
+  Export(src/inline/stores/immer.ts, TITLE)
+  ModuleInit(src/inline/stores/immer.ts)
+  Decl(src/inline/stores/immer.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/immer.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/immer.ts","path":["File(src/inline/cases/immer.cases.tsx)","Decl(src/inline/cases/immer.cases.tsx, Title)","Export(src/inline/stores/immer.ts, TITLE)","ModuleInit(src/inline/stores/immer.ts)","Decl(src/inline/stores/immer.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]},{"specifier":"zustand/middleware/immer","kind":"missing-package","in_repo":false,"from":["src/inline/stores/immer.ts"]}]}]}

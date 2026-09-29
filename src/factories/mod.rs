@@ -17,7 +17,9 @@
 //! `create(createState)` calls `createState` for the store's initial state, so
 //! creating a store runs whatever the creator's body runs. Its rule names that
 //! argument, and initialisation reaches only the frame where the module proves that
-//! calling it there runs nothing; see [`Creation::Calls`].
+//! calling it there runs nothing; see [`Creation::Calls`]. A middleware that only
+//! wraps the creator, such as `create(immer(creator))`, is looked through; see
+//! [`rules::WRAPPERS`].
 //!
 //! A factory is matched however an app reaches it: imported directly, through a
 //! namespace, through `withTypes<…>()`, which types it and returns it, and through
@@ -53,7 +55,17 @@ impl Graph {
         let fine = self.view(file).fine()?;
         let call = fine.module().decls.get(decl as usize)?.factory.as_ref()?;
         let rule = resolve::callee_rule(self, &fine, &call.callee, 0)?;
-        Some(Made { rule, fine, decl })
+        let wrappers_are_zustands = call
+            .args
+            .iter()
+            .flat_map(|argument| &argument.wrappers)
+            .all(|&source| resolve::app_file(self, &fine, source).is_none());
+        Some(Made {
+            rule,
+            fine,
+            decl,
+            wrappers_are_zustands,
+        })
     }
 }
 
@@ -66,6 +78,9 @@ pub struct Made {
     rule: &'static Rule,
     fine: Fine,
     decl: DeclId,
+    /// Whether every middleware an argument is proven quiet through is Zustand's,
+    /// rather than a file of the app its import lands in.
+    wrappers_are_zustands: bool,
 }
 
 impl Made {
@@ -82,17 +97,27 @@ impl Made {
     /// local-helper proof clears when called there. One the call does not pass
     /// would be called all the same, and calling nothing throws.
     ///
+    /// A Zustand middleware around such a function, as in `create(immer(creator))`,
+    /// is looked through where it is Zustand's own: where its import lands in a
+    /// file of the app, the function called is that file's.
+    ///
     /// With `inline_requires`, reading an import evaluates the module it names, so
     /// an argument that may read one is not quiet either. Initialisation then
     /// reaches the whole declaration, and what it reads is followed as any read is.
+    /// Calling a middleware reads its import, so a store wrapped in one is never
+    /// made quietly there.
     pub fn creates_quietly(&self, inline_requires: bool) -> bool {
         match self.creation() {
             Creation::Frame => true,
-            Creation::Calls(called) => called.iter().all(|&index| {
-                self.call().args.get(index).is_some_and(|argument| {
-                    argument.quiet_when_called && !(inline_requires && argument.reads_imports)
-                })
-            }),
+            Creation::Calls(called) => {
+                self.wrappers_are_zustands
+                    && called.iter().all(|&index| {
+                        self.call().args.get(index).is_some_and(|argument| {
+                            argument.quiet_when_called
+                                && !(inline_requires && argument.reads_imports)
+                        })
+                    })
+            }
             Creation::Whole => false,
         }
     }
@@ -448,6 +473,41 @@ export const t = createAsyncThunk(
 
         let other = "import { create } from 'another-library';\nexport const t = create(() => ({ count: 0 }));\n";
         assert!(store(other).is_none());
+    }
+
+    #[test]
+    fn a_store_wrapped_in_a_quiet_middleware_is_created_quietly_where_imports_load_up_front() {
+        let made = store(
+            "import { create } from 'zustand';\nimport { immer } from 'zustand/middleware/immer';\nexport const t = create(immer((set) => ({ count: 0 })));\n",
+        )
+        .expect("made by the factory");
+        assert!(made.creates_quietly(false));
+        // The middleware is called as the store is made, as the factory is, so
+        // initialisation reaches it with the frame.
+        assert_eq!(made.frame().imports.len(), 2);
+        // Calling it reads its import, which evaluates the module it names where
+        // imports are deferred to first use.
+        assert!(!made.creates_quietly(true));
+    }
+
+    #[test]
+    fn a_middleware_from_a_file_of_the_app_is_not_zustands() {
+        let files = [
+            (
+                "tsconfig.json",
+                "{ \"compilerOptions\": { \"paths\": { \"zustand/middleware\": [\"./shims/middleware.ts\"] } } }\n",
+            ),
+            (
+                "shims/middleware.ts",
+                "export function combine(initial: object, f: () => object) { register(); return f; }\n",
+            ),
+            (
+                "slice.ts",
+                "import { create } from 'zustand';\nimport { combine } from 'zustand/middleware';\nexport const t = create(combine({ count: 0 }, () => ({})));\n",
+            ),
+        ];
+        let made = made(&files, "t").expect("made by the factory");
+        assert!(!made.creates_quietly(false));
     }
 
     const CREATOR: &str = "(set) => ({ count: 0 })";

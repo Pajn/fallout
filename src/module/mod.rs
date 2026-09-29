@@ -146,6 +146,10 @@ pub struct Argument {
     /// module it names, which is not quiet. Which reads would happen when is not
     /// told apart, so one inside a function the argument only creates counts too.
     pub reads_imports: bool,
+    /// The imports of the middleware `quiet_when_called` looks through, such as
+    /// `immer` in `create(immer(creator))`. Each is Zustand's only where it does not
+    /// land in a file of the app, which is the graph's to tell.
+    pub wrappers: Vec<SourceId>,
 }
 
 /// One property of an object literal declaration, and what reading it depends on.

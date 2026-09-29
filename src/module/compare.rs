@@ -725,6 +725,30 @@ mod tests {
     }
 
     #[test]
+    fn a_wrapped_creator_that_loses_or_gains_an_effect_changes_initialisation() {
+        let store = |creator: &str| {
+            format!(
+                "import {{ create }} from 'zustand';\nimport {{ immer }} from 'zustand/middleware/immer';\nexport const store = create(immer({creator}));\n"
+            )
+        };
+        let loud = store("() => ({ id: register() })");
+        let quiet = store("() => ({ id: 0 })");
+        for (before, after) in [(&loud, &quiet), (&quiet, &loud)] {
+            let comparison = compared(before, after).expect("comparable");
+            assert!(comparison.init_differs, "{before} -> {after}");
+        }
+        let comparison = compared(&quiet, &store("() => ({ id: 1 })")).expect("comparable");
+        assert!(!comparison.init_differs);
+
+        // So does a middleware whose effects are not proven, taken out. One put in
+        // makes the store initialisation in the current version, which reaches it
+        // there.
+        let persisted = "import { create } from 'zustand';\nimport { immer } from 'zustand/middleware/immer';\nimport { persist } from 'zustand/middleware';\nexport const store = create(immer(persist(() => ({ id: 0 }), { name: 'id' })));\n";
+        let comparison = compared(persisted, &quiet).expect("comparable");
+        assert!(comparison.init_differs);
+    }
+
+    #[test]
     fn a_creator_that_starts_or_stops_reading_an_import_changes_initialisation() {
         // With inline requires, reading an import evaluates its module, so a
         // creator that starts or stops reading one changes what making the store

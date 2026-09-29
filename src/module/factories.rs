@@ -29,7 +29,7 @@ use super::decls::{DeclDraft, ImportBinding};
 use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
 use super::refs::{SharedEdges, narrowed, unwritten_member_read};
-use super::side_effects::SideEffects;
+use super::side_effects::{SideEffects, Wrapped};
 use super::{Argument, Callee, Decl, DeclId, Deps, FactoryCall, ImportTarget, Span, Step};
 use crate::factories::rules::{is_identity_call, is_identity_method};
 
@@ -52,9 +52,10 @@ struct Pending {
     decl: DeclId,
     callee: Callee,
     args: Vec<Span>,
-    /// Whether calling each argument where the call is written runs nothing. See
+    /// Whether calling each argument where the call is written runs nothing, with
+    /// the middleware that proof looks through. See
     /// [`super::Argument::quiet_when_called`].
-    quiet: Vec<bool>,
+    quiet: Vec<Option<Vec<Wrapped>>>,
     /// The top-level statement the call is written in.
     statement: usize,
     /// Inside the parentheses: from the end of the callee, and of any type
@@ -156,7 +157,7 @@ pub(crate) fn find<'a>(
                 break;
             };
             args.push(span_of(argument.span()));
-            quiet.push(!effects.runs_when_called(expression, call.span.start));
+            quiet.push(effects.called_quietly(expression, call.span.start));
         }
         if args.len() != call.arguments.len() {
             continue;
@@ -407,23 +408,23 @@ pub(crate) fn attach(
                 continue;
             };
             let call = &candidates.calls[index];
-            let deps = match call.args.iter().position(|span| span.contains(at)) {
-                Some(argument) => &mut args[index][argument],
-                None => &mut frames[index],
-            };
-            if let Some(target) = target_decl
-                && target != call.decl
-            {
-                match object.zip(unwritten_member_read(nodes, node_id)) {
-                    Some((object, read)) => push_unique(&mut deps.member_refs, (object.decl, read)),
-                    None => push_unique(&mut deps.refs, target),
+            for deps in attributed(call, &mut args[index], &mut frames[index], at) {
+                if let Some(target) = target_decl
+                    && target != call.decl
+                {
+                    match object.zip(unwritten_member_read(nodes, node_id)) {
+                        Some((object, read)) => {
+                            push_unique(&mut deps.member_refs, (object.decl, read))
+                        }
+                        None => push_unique(&mut deps.refs, target),
+                    }
                 }
-            }
-            if let Some(binding) = target_import {
-                push_unique(
-                    &mut deps.imports,
-                    narrowed(nodes, node_id, &binding.reference),
-                );
+                if let Some(binding) = target_import {
+                    push_unique(
+                        &mut deps.imports,
+                        narrowed(nodes, node_id, &binding.reference),
+                    );
+                }
             }
         }
     }
@@ -436,11 +437,9 @@ pub(crate) fn attach(
             continue;
         };
         let call = &candidates.calls[index];
-        let deps = match call.args.iter().position(|span| span.contains(*at)) {
-            Some(argument) => &mut args[index][argument],
-            None => &mut frames[index],
-        };
-        push_unique(&mut deps.imports, import.clone());
+        for deps in attributed(call, &mut args[index], &mut frames[index], *at) {
+            push_unique(&mut deps.imports, import.clone());
+        }
     }
 
     for ((call, args), mut frame) in candidates.calls.into_iter().zip(args).zip(frames) {
@@ -480,11 +479,16 @@ pub(crate) fn attach(
             .into_iter()
             .zip(args)
             .zip(call.quiet)
-            .map(|((span, deps), quiet_when_called)| Argument {
+            .map(|((span, deps), quiet)| Argument {
                 span,
                 reads_imports: reads_imports(decls, &deps),
                 deps,
-                quiet_when_called,
+                quiet_when_called: quiet.is_some(),
+                wrappers: quiet
+                    .into_iter()
+                    .flatten()
+                    .map(|wrapped| wrapped.source)
+                    .collect(),
             })
             .collect();
         decls[call.decl as usize].factory = Some(FactoryCall {
@@ -495,6 +499,30 @@ pub(crate) fn attach(
             missing: call.missing,
         });
     }
+}
+
+/// What a reference written at `at`, in the statement of `call`, is attributed to:
+/// the argument it is in, or the frame outside every argument. A middleware's callee
+/// is in an argument, but it runs as the store is made, as the factory does, so a
+/// reference in one is the frame's too.
+fn attributed<'d>(
+    call: &Pending,
+    args: &'d mut [Deps],
+    frame: &'d mut Deps,
+    at: u32,
+) -> Vec<&'d mut Deps> {
+    let Some(argument) = call.args.iter().position(|span| span.contains(at)) else {
+        return vec![frame];
+    };
+    let wrapper = call.quiet[argument]
+        .iter()
+        .flatten()
+        .any(|wrapped| wrapped.callee.contains(at));
+    let mut deps = vec![&mut args[argument]];
+    if wrapper {
+        deps.push(frame);
+    }
+    deps
 }
 
 /// Whether code that depends on `deps` may read an imported binding: `deps` names
@@ -732,5 +760,158 @@ mod tests {
         ] {
             assert!(!creator_is_quiet(source), "{source}");
         }
+    }
+
+    const MIDDLEWARE: &str = "import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+import { combine, devtools, persist, subscribeWithSelector } from 'zustand/middleware';\n";
+
+    /// Of the store `store` in `source`, whether evaluating the call's arguments runs
+    /// nothing, which leaves the call to the graph, and whether calling its first
+    /// argument is proven to run nothing.
+    fn wrapped(source: &str) -> (bool, bool) {
+        let module = module(source);
+        let store = module.decl_named("store").expect(source);
+        let deferred =
+            module.conditional_init.contains(&store) && !module.init_decls.contains(&store);
+        let quiet = module.decls[store as usize]
+            .factory
+            .as_ref()
+            .is_some_and(|call| call.args[0].quiet_when_called);
+        (deferred, quiet)
+    }
+
+    #[test]
+    fn a_creator_wrapped_in_a_quiet_middleware_is_as_quiet_as_what_it_wraps() {
+        for store in [
+            "export const store = create(immer((set) => ({ count: 0, inc: () => set((s) => { s.count += 1; }) })));",
+            "export const store = create(subscribeWithSelector((set) => ({ count: 0, reset: () => set({ count: 0 }) })));",
+            "export const store = create(combine({ count: 0, label: 'Count' }, (set) => ({ inc: () => set((s) => ({ count: s.count + 1 })) })));",
+            // Nested, and in the curried form.
+            "export const store = create<{ count: number }>()(immer(subscribeWithSelector((set) => ({ count: 0 }))));",
+            "export const store = create(immer(combine({ count: 0 }, (set) => ({ reset: () => set({ count: 0 }) }))));",
+            "export const store = create(combine({ count: 0 }, immer((set) => ({ reset: () => set({ count: 0 }) }))));",
+            "export const store = create(combine({ count: 0 }, combine({ step: 1 }, () => ({ label: 'Count' }))));",
+            "export const store = create(subscribeWithSelector(function (set) { return { count: 0, set }; }));",
+        ] {
+            let source = format!("{MIDDLEWARE}{store}\n");
+            assert_eq!(wrapped(&source), (true, true), "{store}");
+        }
+        // Through a namespace, and around `createStore`.
+        for source in [
+            "import { create } from 'zustand';\nimport * as middleware from 'zustand/middleware';\nexport const store = create(middleware.combine({ count: 0 }, () => ({ label: 'Count' })));\n",
+            "import { createStore } from 'zustand/vanilla';\nimport { immer } from 'zustand/middleware/immer';\nexport const store = createStore(immer(() => ({ count: 0 })));\n",
+        ] {
+            assert_eq!(wrapped(source), (true, true), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_quiet_middleware_around_a_creator_that_runs_something_is_not_quiet() {
+        for (store, deferred) in [
+            // Evaluating the middleware's call runs nothing, but calling what it
+            // returns calls the creator.
+            (
+                "export const store = create(immer(() => ({ id: register() })));",
+                true,
+            ),
+            (
+                "export const store = create(subscribeWithSelector((set) => { set({ count: 1 }); return { count: 0 }; }));",
+                true,
+            ),
+            (
+                "export const store = create(combine({ count: 0 }, () => ({ id: register() })));",
+                true,
+            ),
+            (
+                "export const store = create(immer(subscribeWithSelector(() => ({ id: register() }))));",
+                true,
+            ),
+            // `combine` evaluates its initial state as it is called, and merges it
+            // into the store's with `Object.assign`, which runs every getter of it
+            // and of what the creator returns.
+            (
+                "export const store = create(combine({ id: register() }, () => ({})));",
+                false,
+            ),
+            (
+                "export const store = create(combine({ get id() { return register(); } }, () => ({})));",
+                true,
+            ),
+            (
+                "export const store = create(combine({ count: 0 }, () => ({ get id() { return register(); } })));",
+                true,
+            ),
+            (
+                "export const store = create(combine({ count: 0 }, immer(() => ({ get id() { return register(); } }))));",
+                true,
+            ),
+            (
+                "export const store = create(combine({ count: 0 }, (set) => { if (set) return other; return {}; }));",
+                true,
+            ),
+            // What it would merge is not written out where the proof can read it.
+            (
+                "const initial = { count: 0 };\nexport const store = create(combine(initial, () => ({})));",
+                true,
+            ),
+            (
+                "export const store = create(combine({ ...defaults }, () => ({})));",
+                true,
+            ),
+            // Middleware whose effects are not proven, anywhere in the chain.
+            (
+                "export const store = create(immer(persist(() => ({ count: 0 }), { name: 'count' })));",
+                false,
+            ),
+            (
+                "export const store = create(devtools(immer(() => ({ count: 0 }))));",
+                false,
+            ),
+            (
+                "function logged(f) { register(); return f; }\nexport const store = create(immer(logged(() => ({ count: 0 }))));",
+                false,
+            ),
+            // Arguments no middleware here takes.
+            (
+                "export const store = create(immer(() => ({ count: 0 }), { name: 'count' }));",
+                true,
+            ),
+            // Spreading iterates, which runs code nobody here can see.
+            ("export const store = create(immer(...creators));", false),
+            (
+                "export const store = create(combine(() => ({ count: 0 })));",
+                true,
+            ),
+        ] {
+            let source = format!("{MIDDLEWARE}{store}\n");
+            assert_eq!(wrapped(&source), (deferred, false), "{store}");
+        }
+    }
+
+    #[test]
+    fn a_middleware_is_known_by_the_import_it_is_and_not_by_its_name() {
+        for source in [
+            // A function of the file, whether or not calling it is proven to run
+            // nothing.
+            "import { create } from 'zustand';\nfunction immer(f) { register(); return f; }\nexport const store = create(immer(() => ({ count: 0 })));\n",
+            "import { create } from 'zustand';\nconst combine = (initial, f) => f;\nexport const store = create(combine({ count: 0 }, () => ({})));\n",
+            // A global nobody imported.
+            "import { create } from 'zustand';\nexport const store = create(subscribeWithSelector(() => ({ count: 0 })));\n",
+            // Imported from a module that does not export it.
+            "import { create } from 'zustand';\nimport { immer } from 'zustand/middleware';\nexport const store = create(immer(() => ({ count: 0 })));\n",
+            "import { create } from 'zustand';\nimport { combine } from 'zustand';\nexport const store = create(combine({ count: 0 }, () => ({})));\n",
+            "import { create } from 'zustand';\nimport { immer } from 'another-library';\nexport const store = create(immer(() => ({ count: 0 })));\n",
+            // Another export of the right module under the middleware's name.
+            "import { create } from 'zustand';\nimport { persist as immer } from 'zustand/middleware/immer';\nexport const store = create(immer(() => ({ count: 0 })));\n",
+        ] {
+            assert!(!wrapped(source).1, "{source}");
+        }
+        // A parameter that shares a middleware's name is the parameter, and calling
+        // it is not proven.
+        let source = format!(
+            "{MIDDLEWARE}export const store = create((immer) => ({{ state: immer(() => ({{}})) }}));\n"
+        );
+        assert!(!wrapped(&source).1);
     }
 }
