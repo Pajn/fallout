@@ -10,12 +10,12 @@
 //!
 //! Whatever cannot be attributed to one property is a use of the whole object: a
 //! method call, which hands the method the object as `this`; passing the object on;
-//! a computed key; `__proto__`. A `const` alias of the object or of one property is
-//! followed to its own uses, which are credited to the declarations they are written
-//! in, since that is where the write happens. An alias that is exported, is not a
-//! `const`, destructures, or is nested too deep is taken as writing the whole of
-//! what it aliases, and each of its own uses as a use of the whole of it, credited
-//! where that use is written.
+//! a computed key; `__proto__`. A `const` alias of the object or of one property, or
+//! a `let` that nothing reassigns, is followed to its own uses, which are credited to
+//! the declarations they are written in, since that is where the write happens. An
+//! alias that is exported, is reassigned, destructures, or is nested too deep is
+//! taken as writing the whole of what it aliases, and each of its own uses as a use
+//! of the whole of it, credited where that use is written.
 //!
 //! A collection the file makes itself, a `const` bound to `new Map()` or to an
 //! array literal, is used as a whole too, and its aliases are followed the same
@@ -119,12 +119,21 @@ impl Collection {
         }
     }
 
+    /// Whether the built-in property `name` holds how many values the collection
+    /// holds, a number.
+    fn counts_in(self, name: &str) -> bool {
+        matches!(
+            (self, name),
+            (Collection::Array, "length") | (Collection::Map | Collection::Set, "size")
+        )
+    }
+
     /// What calling `name` hands back and whether it takes a callback, where the
     /// built-in method of that name reads the collection and changes none of it.
     /// What it hands back is a primitive, which holds nothing of the collection's
     /// however it is used, or may be or hold an object the collection holds,
     /// through which a caller could change what every other reader of it sees.
-    /// `size` and `length` are properties, which are read in place already.
+    /// `size` and `length` are properties, which hold a number; see [`Self::counts_in`].
     pub(crate) fn read_method(self, name: &str) -> Option<(Held, Callback)> {
         use Collection::*;
         use Held::{Primitive, Stored};
@@ -493,6 +502,17 @@ fn reference_accesses(
             _ => whole(true),
         };
     }
+    // What a collection whose type the file shows holds in `length` or `size` is a
+    // number, which holds nothing of it wherever it goes. Writing it still writes
+    // the collection.
+    if let Mode::Collection(collection) = mode
+        && property
+            .as_deref()
+            .is_some_and(|name| collection.counts_in(name))
+        && !member_written(nodes, member)
+    {
+        return whole(false);
+    }
     // Anything else is done to the property's value, however deep the chain goes:
     // `state.list.push(x)` writes `list`. A collection is one value, however it is
     // reached into, so what is done with an element read off it counts as done to
@@ -544,8 +564,9 @@ fn credit_alias(ctx: &Ctx<'_>, value: NodeId, own: u32, depth: usize) -> Vec<(u3
 }
 
 /// The accesses made through a `const` alias declared by the declarator above
-/// `value`, or `None` where the alias cannot be followed: it is exported, it can
-/// be reassigned, it destructures, or aliases have nested too deep.
+/// `value`, or a `let` that nothing reassigns, or `None` where the alias cannot be
+/// followed: it is exported, it is reassigned, it destructures, or aliases have
+/// nested too deep.
 fn followed_alias(
     ctx: &Ctx<'_>,
     value: NodeId,
@@ -567,16 +588,25 @@ fn followed_alias(
     let AstKind::VariableDeclaration(variable) = nodes.kind(declaration) else {
         return None;
     };
-    if variable.kind != VariableDeclarationKind::Const
-        || matches!(
-            nodes.parent_kind(declaration),
-            AstKind::ExportDeclaration(_)
-        )
-    {
+    if !matches!(
+        variable.kind,
+        VariableDeclarationKind::Const | VariableDeclarationKind::Let
+    ) || matches!(
+        nodes.parent_kind(declaration),
+        AstKind::ExportDeclaration(_)
+    ) {
         return None;
     }
     let symbol = alias.symbol_id.get()?;
     let scoping = ctx.semantic.scoping();
+    // A `let` holds what it was declared with only while nothing reassigns it.
+    if scoping
+        .get_resolved_reference_ids(symbol)
+        .iter()
+        .any(|id| scoping.get_reference(*id).is_write())
+    {
+        return None;
+    }
     let mut uses = Vec::new();
     for reference_id in scoping.get_resolved_reference_ids(symbol) {
         let node_id = scoping.get_reference(*reference_id).node_id();
@@ -754,7 +784,7 @@ mod tests {
 
         let source = format!(
             "{STATE}export const write = () => {{ state.theme = 'dark'; }};
-            export const read = () => state.volume;"
+            export const read = () => state.volume > 0;"
         );
         assert_eq!(
             writers(&source, "state"),
@@ -777,6 +807,7 @@ mod tests {
             "export const write = () => { state.list.push(1); };",
             "export const write = () => { delete state.theme; };",
             "export const write = () => { const view = state; view.theme = 'dark'; };",
+            "export const write = () => { let view = state; view.theme = 'dark'; };",
             "export const write = () => { const list = state.list; list.push(1); };",
             "export const write = () => { const a = state; const b = a; b.theme = 'dark'; };",
         ] {
@@ -825,7 +856,7 @@ mod tests {
             "state[key] = 1;",
             "state.__proto__ = null;",
             // An alias that cannot be followed.
-            "let view = state; view.theme = 'dark';",
+            "let view = state; view = other; view.theme = 'dark';",
             "const { theme } = state;",
         ] {
             let source = format!(
@@ -896,11 +927,11 @@ mod tests {
     fn a_write_through_an_alias_that_cannot_be_followed_still_reaches_readers() {
         for (alias, writer) in [
             ("export let view = state;", "view.volume = 2;"),
-            ("let view = state;", "view.volume = 2;"),
+            ("let view = state; view = other;", "view.volume = 2;"),
             ("export const view = state;", "view.volume = 2;"),
             ("const { list } = state;", "list.push(1);"),
             ("export let volume = state.list;", "volume.push(1);"),
-            ("let a = state; let b = a;", "b.volume = 2;"),
+            ("let a = state; let b = a; b = other;", "b.volume = 2;"),
             (
                 "const a = state; const b = a; const c = b; const d = c; const e = d;",
                 "e.volume = 2;",
@@ -1071,6 +1102,33 @@ mod tests {
     }
 
     #[test]
+    fn the_size_of_a_collection_made_in_the_file_is_a_number_wherever_it_goes() {
+        // The file shows the type, so what `length` and `size` hold is a number,
+        // which holds nothing of the collection however it is used.
+        for (binding, body) in [
+            (ARRAY, "V.length"),
+            (ARRAY, "{ return V.length; }"),
+            (ARRAY, "register(V.length)"),
+            (MAP, "V.size"),
+            (SET, "[V.size]"),
+        ] {
+            assert!(!peek_writes(binding, body), "{body}");
+        }
+        // Writing it still writes the collection, and what an element holds is not
+        // known to be a number.
+        for (binding, body) in [
+            (ARRAY, "{ V.length = 0; }"),
+            (ARRAY, "{ V.length++; }"),
+            (ARRAY, "V[0].length"),
+            (ARRAY, "V.at(0).length"),
+            (MAP, "V.get(k).size"),
+            (WEAK_MAP, "V.size"),
+        ] {
+            assert!(peek_writes(binding, body), "{body}");
+        }
+    }
+
+    #[test]
     fn what_a_read_method_hands_out_is_a_read_only_where_it_is_used_in_place() {
         for body in [
             "V.get(k) === x",
@@ -1083,6 +1141,7 @@ mod tests {
             "!V.get(k)",
             "{ const { name } = V.get(k); return name === x; }",
             "{ const item = V.get(k); return item.count > 0; }",
+            "{ let item = V.get(k); return item.count > 0; }",
             "<p>{V.get(k).name}</p>",
             "<>{V.get(k)}</>",
         ] {
@@ -1112,7 +1171,7 @@ mod tests {
             "{ delete V.get(k).count; }",
             "{ const item = V.get(k); register(item); }",
             "{ const item = V.get(k); item.count = 1; }",
-            "{ let item = V.get(k); return item === x; }",
+            "{ let item = V.get(k); item = other; return item === x; }",
             "{ const { item } = V.get(k); item.count = 1; }",
             "{ const { ...rest } = V.get(k); return rest === x; }",
             // Handed to a component as a prop, or as its children.
@@ -1267,10 +1326,18 @@ mod tests {
                 "{ delete V.a.b; }",
                 "V.items.push(1)",
                 "V.a.b.c()",
+                // Returned, since the caller is free to change it.
+                "V.a.b",
+                "V.items.length",
             ] {
                 assert!(peek_writes(binding, body), "{binding} {body}");
             }
-            for body in ["V.items.length", "V.a.b", "V.a.b === x", "`${V.a.b}`"] {
+            for body in [
+                "V.items.length > 0",
+                "{ V.a.b; }",
+                "V.a.b === x",
+                "`${V.a.b}`",
+            ] {
                 assert!(!peek_writes(binding, body), "{binding} {body}");
             }
         }
@@ -1385,7 +1452,7 @@ mod tests {
     }
 
     #[test]
-    fn a_local_const_alias_of_a_collection_is_followed_to_its_uses() {
+    fn a_local_alias_of_a_collection_is_followed_to_its_uses() {
         assert!(!peek_writes(
             MAP,
             "{ const alias = V; return alias.has(k); }"
@@ -1399,7 +1466,11 @@ mod tests {
             MAP,
             "{ const alias = V; return alias.get(k); }"
         ));
-        assert!(peek_writes(MAP, "{ let alias = V; return alias.has(k); }"));
+        assert!(!peek_writes(MAP, "{ let alias = V; return alias.has(k); }"));
+        assert!(peek_writes(
+            MAP,
+            "{ let alias = V; alias = other; return alias.has(k); }"
+        ));
         // A write through an alias declared elsewhere is credited where it is made.
         let source = format!(
             "{MAP}\nconst alias = V;\nexport const peek = (k: any) => alias.set(k, 1);\nexport const read = () => V.has(1);\n"

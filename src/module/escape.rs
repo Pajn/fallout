@@ -110,31 +110,14 @@ pub(crate) struct Policy {
     returns: Option<OxcSpan>,
     /// How a binding declared to hold the value is followed.
     aliases: Aliases,
-    /// A position the lists below do not know, for anything but a binding's value
-    /// used bare, which escapes there. Temporary: the soundness PR takes every
-    /// such position as an escape.
-    legacy_unknown: Fate,
-    /// Whether a binding's value used bare is judged by its direct parent alone,
-    /// with no climb through wrappers: `(v).x` and `v!.x` escape, and `o[v]`, where
-    /// it is the key, is judged as a member read off it. Temporary: the soundness
-    /// PR climbs through wrappers from a bare value as from anything else.
-    legacy_bare_parent: bool,
-    /// Whether to climb through the operators that yield an operand as they found
-    /// it: both operands of `||` and `??`, the right of `&&`, the branches of `?:`
-    /// and the last expression of a comma. Temporary: the soundness PR turns it
-    /// on for every policy.
-    follow_value_ops: bool,
 }
 
 /// How a binding declared to hold a value, `const v = value`, is followed.
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum Aliases {
-    /// Not followed: the declaration is a position the policy does not know.
-    /// Temporary: the soundness PR follows a local `const` for every policy.
-    Unfollowed,
     /// A local `const` that holds the value, or takes it apart one level, is
     /// followed to its own uses here, and must leave it in place for the
-    /// declaration to.
+    /// declaration to. So is a `let` that nothing reassigns.
     Local,
     /// Followed by the caller's adapter, which credits each use to the
     /// declaration it is written in.
@@ -153,39 +136,35 @@ pub(crate) type Credit = for<'a> fn(&Ctx<'a>, NodeId, u32, usize) -> Vec<(u32, F
 impl Policy {
     /// What a Zustand store's `getState` or a collection's read method hands out,
     /// and what a listener or callback is called with: it may be used as a value
-    /// where it stands, and a local `const` that holds it, or takes it apart one
-    /// level, is followed to its own uses. Nothing else is known to leave it be.
+    /// where it stands, and a local `const` or `let` that holds it, or takes it
+    /// apart one level, is followed to its own uses. Nothing else is known to
+    /// leave it be.
     pub(crate) const HANDED_OUT: Policy = Policy {
         arithmetic: Fate::InPlace,
         test: Fate::InPlace,
         discard: Fate::InPlace,
         returns: None,
         aliases: Aliases::Local,
-        legacy_unknown: Fate::Escapes,
-        legacy_bare_parent: false,
-        follow_value_ops: false,
     };
 
     /// A binding read as one value, such as a reassigned `let` or a call's result,
     /// and what is read off it. The value itself escapes wherever it is not
     /// checked, called, constructed, rendered where it stands or read from, so
-    /// arithmetic on it, testing it and dropping it count as escapes, and so does a
-    /// binding declared to hold it. What is read off it is in place anywhere this
-    /// does not know, a binding declared to hold it included.
+    /// arithmetic on it, testing it and dropping it count as escapes. A local
+    /// `const` or `let` that holds it, or takes it apart one level, is followed to
+    /// its own uses. What is read off it is in place where it is only tested,
+    /// dropped or put through arithmetic.
     pub(crate) const WHOLE: Policy = Policy {
         arithmetic: Fate::Escapes,
         test: Fate::Escapes,
         discard: Fate::Escapes,
         returns: None,
-        aliases: Aliases::Unfollowed,
-        legacy_unknown: Fate::InPlace,
-        legacy_bare_parent: true,
-        follow_value_ops: false,
+        aliases: Aliases::Local,
     };
 
     /// A property read off an object shared property by property or read only for
-    /// its members, or an element read off a collection the file makes. Anything
-    /// this does not know leaves it in place. A binding declared to hold it is
+    /// its members, or an element read off a collection the file makes. It may be
+    /// used as a value where it stands, and a binding declared to hold it is
     /// followed by `credit`.
     pub(crate) const fn parts(credit: Credit) -> Policy {
         Policy {
@@ -194,9 +173,6 @@ impl Policy {
             discard: Fate::InPlace,
             returns: None,
             aliases: Aliases::Credited(credit),
-            legacy_unknown: Fate::InPlace,
-            legacy_bare_parent: false,
-            follow_value_ops: false,
         }
     }
 
@@ -235,7 +211,7 @@ pub(crate) fn uses(
     if held == Held::Primitive {
         return vec![(at, Fate::InPlace)];
     }
-    let landing = climb(nodes, value, held, policy);
+    let landing = climb(nodes, value, held);
     if let Aliases::Credited(credit) = policy.aliases
         && let AstKind::VariableDeclarator(declarator) = nodes.parent_kind(landing.top)
         && declarator
@@ -277,29 +253,11 @@ pub(crate) fn stays(
         .all(|(_, fate)| fate.in_place())
 }
 
-/// Climbs from `value` out through wrappers, member reads off it and optional
-/// chaining, and, where the policy says, through the operators that yield an
-/// operand as they found it.
-fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -> Landing {
+/// Climbs from `value` out through wrappers, member reads off it, optional
+/// chaining and the operators that yield an operand as they found it.
+fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held) -> Landing {
     let mut current = value;
     let mut steps = 0;
-    if held == Held::Whole && policy.legacy_bare_parent {
-        match nodes.parent_kind(value) {
-            AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
-                current = nodes.parent_id(value);
-                held = held.read_off();
-                steps = 1;
-            }
-            _ => {
-                return Landing {
-                    top: value,
-                    span: nodes.get_node(value).kind().span(),
-                    held,
-                    steps,
-                };
-            }
-        }
-    }
     loop {
         let (outer, span) = through_wrappers(nodes, current);
         match nodes.parent_kind(outer) {
@@ -312,15 +270,14 @@ fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -
                 steps += 1;
             }
             AstKind::ChainExpression(_) => {}
+            // What these yield is the operand as it was, so where it goes the
+            // operand goes: both operands of `||` and `??`, the right of `&&`, the
+            // branches of `?:` and the last expression of a comma.
             AstKind::LogicalExpression(logical)
-                if policy.follow_value_ops
-                    && (logical.operator != LogicalOperator::And
-                        || logical.right.span() == span) => {}
-            AstKind::ConditionalExpression(conditional)
-                if policy.follow_value_ops && conditional.test.span() != span => {}
+                if logical.operator != LogicalOperator::And || logical.right.span() == span => {}
+            AstKind::ConditionalExpression(conditional) if conditional.test.span() != span => {}
             AstKind::SequenceExpression(sequence)
-                if policy.follow_value_ops
-                    && sequence.expressions.last().map(GetSpan::span) == Some(span) => {}
+                if sequence.expressions.last().map(GetSpan::span) == Some(span) => {}
             _ => {
                 return Landing {
                     top: outer,
@@ -344,11 +301,18 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         steps,
     } = *landing;
     let parent = nodes.parent_id(top);
-    // A knob of the policy speaks for the value itself. Anything read off it is a
-    // part, which these positions leave in place.
-    let own = |fate: Fate| if steps == 0 { fate } else { Fate::InPlace };
     // A binding's value used bare, as opposed to anything read off it or handed out.
     let bare = held == Held::Whole;
+    // A knob of the policy speaks for the value itself. Anything read off it is a
+    // part, which these positions leave in place, whether it is read off here or
+    // held by an alias.
+    let own = |fate: Fate| {
+        if steps == 0 && bare {
+            fate
+        } else {
+            Fate::InPlace
+        }
+    };
     match nodes.parent_kind(top) {
         // The state itself is never rendered in place, since it holds the actions.
         AstKind::JSXExpressionContainer(_) => {
@@ -393,6 +357,32 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         }
         AstKind::IfStatement(test) if test.test.span() == span => own(policy.test),
         AstKind::ConditionalExpression(test) if test.test.span() == span => own(policy.test),
+        // The left of `&&` is yielded only where it is falsy, and a falsy value is
+        // a primitive, which holds nothing of what it came from, so it is only
+        // tested there.
+        AstKind::LogicalExpression(logical)
+            if logical.operator == LogicalOperator::And && logical.left.span() == span =>
+        {
+            own(policy.test)
+        }
+        AstKind::WhileStatement(test) if test.test.span() == span => own(policy.test),
+        AstKind::DoWhileStatement(test) if test.test.span() == span => own(policy.test),
+        AstKind::ForStatement(test)
+            if test.test.as_ref().is_some_and(|test| test.span() == span) =>
+        {
+            own(policy.test)
+        }
+        // A `switch` compares its discriminant with each case's test by `===`,
+        // which checks both as a comparison written out does.
+        AstKind::SwitchStatement(switch) if switch.discriminant.span() == span => Fate::InPlace,
+        AstKind::SwitchCase(case) if case.test.as_ref().is_some_and(|test| test.span() == span) => {
+            Fate::InPlace
+        }
+        // A computed key is converted to a property key, which a `toString` it may
+        // run is taken to leave as it was, as a comparison's is.
+        AstKind::ComputedMemberExpression(member) if member.expression.span() == span => {
+            Fate::InPlace
+        }
         AstKind::ExpressionStatement(_) => own(policy.discard),
         // A template's values go to its tag, where it has one.
         AstKind::TemplateLiteral(_)
@@ -415,16 +405,21 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
                     .as_ref()
                     .is_some_and(|init| init.span() == span) =>
         {
+            // A `let` is followed as a `const` is: a reassignment is a write of the
+            // binding, which `bindings_stay` does not take as leaving it in place.
             let declaration = nodes.parent_id(parent);
-            let local_const = matches!(
+            let local = matches!(
                 nodes.kind(declaration),
                 AstKind::VariableDeclaration(variable)
-                    if variable.kind == VariableDeclarationKind::Const
+                    if matches!(
+                        variable.kind,
+                        VariableDeclarationKind::Const | VariableDeclarationKind::Let
+                    )
             ) && !matches!(
                 nodes.parent_kind(declaration),
                 AstKind::ExportDeclaration(_)
             );
-            if local_const && bindings_stay(ctx, &declarator.id, held, policy, depth) {
+            if local && bindings_stay(ctx, &declarator.id, held, policy, depth) {
                 Fate::InPlace
             } else {
                 Fate::Escapes
@@ -454,7 +449,7 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         // however little the syntax looks like one.
         AstKind::JSXOpeningElement(_) | AstKind::JSXClosingElement(_) if bare => Fate::InPlace,
         // `#x in v` asks of a private field what `in` asks of a property.
-        AstKind::PrivateInExpression(_) if bare => Fate::InPlace,
+        AstKind::PrivateInExpression(_) => Fate::InPlace,
         AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => {
             if steps > 0 {
                 Fate::Writes
@@ -479,13 +474,14 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         | AstKind::AssignmentTargetWithDefault(_)
         | AstKind::JSXOpeningElement(_)
         | AstKind::JSXClosingElement(_) => Fate::Writes,
-        AstKind::CallExpression(_)
-        | AstKind::NewExpression(_)
-        | AstKind::SpreadElement(_)
-        | AstKind::ForInStatement(_)
-        | AstKind::ForOfStatement(_) => Fate::Escapes,
-        _ if bare => Fate::Escapes,
-        _ => policy.legacy_unknown,
+        // Anywhere else the value is handed to code that could change it: passed
+        // to a call or a constructor, returned, which an arrow's expression body
+        // does too, put in an array or object literal, awaited, which calls a
+        // `then` it may have with it as `this`, yielded, thrown, exported as
+        // default, spread, iterated, or held in a binding this does not follow.
+        // A number read off a part may be anything else to code that does not know
+        // what the part is.
+        _ => Fate::Escapes,
     }
 }
 
@@ -607,20 +603,17 @@ pub(crate) fn method_fate<'a>(
     Some((name, if reads { Fate::InPlace } else { Fate::Escapes }))
 }
 
-/// Whether a call is given a single listener, written out in place, that does
-/// nothing with the state it is called with but use it in place. What else its
-/// body does is judged where it is written, so a listener that sets the store
-/// through the store's own binding is a write there.
+/// Whether a call is given a single listener, an arrow written out in place, that
+/// does nothing with the state it is called with but use it in place. What else
+/// its body does is judged where it is written, so a listener that sets the store
+/// through the store's own binding is a write there. A `function` is not one,
+/// since its `arguments` also hold what it is called with, as for a collection's
+/// callback.
 fn listener_stays(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> bool {
-    let [listener] = call.arguments.as_slice() else {
+    let [Argument::ArrowFunctionExpression(listener)] = call.arguments.as_slice() else {
         return false;
     };
-    let params = match listener {
-        Argument::ArrowFunctionExpression(function) => &function.params,
-        Argument::FunctionExpression(function) => &function.params,
-        _ => return false,
-    };
-    params_stay(ctx, params, Held::State, None)
+    params_stay(ctx, &listener.params, Held::State, None)
 }
 
 /// The method this reference is called with directly, `value.name(…)`, with the
@@ -700,8 +693,6 @@ mod tests {
     #[derive(Copy, Clone, Debug)]
     enum Cell {
         Is(Fate),
-        /// Read as in place, although the value leaves the expression.
-        KnownUnderReport,
         /// The template is not valid code for this column.
         Invalid,
     }
@@ -710,15 +701,6 @@ mod tests {
     const E: Cell = Cell::Is(Fate::Escapes);
     const W: Cell = Cell::Is(Fate::Writes);
     const NA: Cell = Cell::Invalid;
-
-    /// Marks a known under-report: a use read as in place although the value
-    /// leaves the expression. It is asserted as in place as it stands. Escapes after
-    /// the soundness PR.
-    macro_rules! known_under_report {
-        () => {
-            Cell::KnownUnderReport
-        };
-    }
 
     /// The columns: what `@` stands for in each, and how the reference to `S` in it
     /// is read.
@@ -796,12 +778,10 @@ mod tests {
     }
 
     /// One row per template, with `@` where the value is used, and one cell per
-    /// column. `U` is short for [`known_under_report!`].
+    /// column.
     macro_rules! characterise {
-        (@cell U) => { known_under_report!() };
-        (@cell $cell:ident) => { $cell };
         ($($template:literal => [$($cell:ident),*];)*) => {
-            &[$(($template, [$(characterise!(@cell $cell)),*])),*]
+            &[$(($template, [$($cell),*])),*]
         };
     }
 
@@ -830,9 +810,12 @@ mod tests {
         "`${@}`;"                                    => [E,  I,  I,  I,  I,  I,  I,  I ];
         "if (@) go();"                               => [E,  I,  I,  I,  I,  I,  I,  I ];
         "@ ? 1 : 2;"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "while (@) go();"                            => [E,  I,  I,  I,  I,  E,  E,  E ];
-        "switch (@) {}"                              => [E,  I,  I,  I,  I,  E,  E,  E ];
-        "class K { #x; m() { if (#x in @) go(); } }" => [I,  I,  I,  I,  I,  E,  E,  E ];
+        "while (@) go();"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "do go(); while (@);"                        => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "for (; @; ) go();"                          => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "switch (@) {}"                              => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "switch (o) { case @: }"                     => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "class K { #x; m() { if (#x in @) go(); } }" => [I,  I,  I,  I,  I,  I,  I,  I ];
         // Read from where it stands.
         "@.x;"                                       => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@.x.y;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
@@ -840,10 +823,11 @@ mod tests {
         "@.length;"                                  => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@?.x;"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@[k];"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
-        "(@).x;"                                     => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "(@ as any).x;"                              => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "@!.x;"                                      => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "o[@];"                                      => [I,  I,  I,  I,  I,  E,  E,  E ];
+        "(@).x;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "(@ as any).x;"                              => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "@!.x;"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "o[@];"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "o[@] = 1;"                                  => [I,  I,  I,  I,  I,  I,  I,  I ];
         // Called, constructed, or handed to a call.
         "@();"                                       => [I,  W,  W,  I,  W,  E,  E,  W ];
         "new @();"                                   => [I,  E,  E,  E,  E,  E,  E,  E ];
@@ -853,7 +837,7 @@ mod tests {
         "f(@);"                                      => [E,  E,  E,  E,  E,  E,  E,  E ];
         "f(@.x);"                                    => [E,  E,  E,  E,  E,  E,  E,  E ];
         "new C(@);"                                  => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "tag`${@}`;"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "tag`${@}`;"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "@`x`;"                                      => [E,  W,  W,  I,  W,  E,  E,  W ];
         "@.x`y`;"                                    => [W,  W,  W,  W,  W,  W,  W,  W ];
         // Written.
@@ -873,40 +857,49 @@ mod tests {
         "[...@];"                                    => [E,  E,  E,  E,  E,  E,  E,  E ];
         "({ ...@ });"                                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Returned, thrown, awaited or yielded.
-        "return @;"                                  => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return @.x;"                                => [U,  U,  U,  U,  U,  E,  E,  E ];
-        "const g = () => @;"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "const g = () => @.x;"                       => [U,  U,  U,  U,  U,  E,  E,  E ];
-        "throw @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "await @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "yield @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "return @;"                                  => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return @.x;"                                => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return @.length;"                           => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return @.x === 1;"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "const g = () => @;"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const g = () => @.x;"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "throw @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "await @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "yield @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Passed through an operator that yields one of its operands.
-        "f(o && @);"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f(o || @);"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f(o ?? @);"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f(c ? @ : d);"                              => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f((0, @));"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return c ? @ : d;"                          => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return o && @;"                             => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "f(o && @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(o || @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(o ?? @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(c ? @ : d);"                              => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f((0, @));"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return c ? @ : d;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return o && @;"                             => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(@ && o);"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "(o || @) === 1;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "return <li>{o && @}</li>;"                  => [I,  I,  I,  I,  I,  I,  E,  I ];
+        "return <Foo>{o && @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return <Foo>{c ? @ : d}</Foo>;"             => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return <Foo>{o ?? @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Held in a literal.
-        "f({ a: @ });"                               => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f([@]);"                                    => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return { a: @ };"                           => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return [@];"                                => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "f({ a: @ });"                               => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f([@]);"                                    => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return { a: @ };"                           => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return [@];"                                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Held in a binding, or a class field or default of one.
-        "const v = @; f(v);"                         => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const v = @; return v;"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const v = @; v.x;"                          => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "const v = @; v.x = 1;"                      => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const v = @; v.x();"                        => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const { x } = @; f(x);"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const { x } = @; x + 1;"                    => [E,  I,  E,  E,  E,  I,  I,  I ];
-        "const { x } = @; x.y = 1;"                  => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "let v = @; v.x;"                            => [E,  I,  E,  E,  E,  E,  E,  E ];
-        "export const v = @;"                        => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "class K { x = @; }"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "function g(x = @) {}"                       => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "export default @;"                          => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "const v = @; f(v);"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const v = @; return v;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const v = @; v.x;"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "const v = @; v.x = 1;"                      => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const v = @; v.x();"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const { x } = @; f(x);"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const { x } = @; x + 1;"                    => [I,  I,  E,  E,  E,  I,  I,  I ];
+        "const { x } = @; x.y = 1;"                  => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "let v = @; v.x;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "let v = @; v = o; v.x;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "export const v = @;"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "class K { x = @; }"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "function g(x = @) {}"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "export default @;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Rendered, or handed to a component.
         "return <li>{@}</li>;"                       => [I,  I,  I,  I,  I,  I,  E,  I ];
         "return <>{@}</>;"                           => [I,  I,  I,  I,  I,  I,  E,  I ];
@@ -916,7 +909,7 @@ mod tests {
         "return <Foo>{@.x}</Foo>;"                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <Foo value={@} />;"                  => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <div onClick={@} />;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "return <Foo {...@} />;"                     => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "return <Foo {...@} />;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <@ />;"                              => [I,  E,  E,  E,  NA, NA, NA, NA];
     };
 
@@ -928,7 +921,6 @@ mod tests {
                 let found = in_place(template, column);
                 let expected = match cell {
                     Cell::Is(fate) => Some(*fate == Fate::InPlace),
-                    Cell::KnownUnderReport => Some(true),
                     Cell::Invalid => None,
                 };
                 if found != expected {
@@ -942,9 +934,8 @@ mod tests {
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
-    /// What the state a store hands out, standing in for `S` in `body`, meets under
-    /// `policy`.
-    fn state_fate(body: &str, policy: &Policy) -> Fate {
+    /// What the state a store hands out, standing in for `S` in `body`, meets.
+    fn state_fate(body: &str) -> Fate {
         let source = format!("let S: any;\nfunction a() {{\n{body}\n}}\n");
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, &source, SourceType::tsx()).parse();
@@ -965,18 +956,14 @@ mod tests {
             panic!("expected one reference to S: {source}");
         };
         let node = scoping.get_reference(reference).node_id();
-        let [(_, fate)] = super::uses(&ctx, node, Held::State, policy, 0)[..] else {
+        let [(_, fate)] = super::uses(&ctx, node, Held::State, &Policy::HANDED_OUT, 0)[..] else {
             panic!("expected one use: {source}");
         };
         fate
     }
 
     #[test]
-    fn an_operand_an_operator_yields_is_followed_only_where_the_policy_says() {
-        let following = Policy {
-            follow_value_ops: true,
-            ..Policy::HANDED_OUT
-        };
+    fn an_operand_an_operator_yields_goes_where_the_operator_puts_it() {
         for body in [
             "(o || S) === 1;",
             "(o ?? S) === 1;",
@@ -984,19 +971,25 @@ mod tests {
             "(o && S) === 1;",
             "(c ? S : d) === 1;",
             "(0, S) === 1;",
+            // The left of `&&` is only tested, since what it yields is falsy.
+            "(S && o) === 1;",
+            "f(S && o);",
         ] {
-            assert_eq!(
-                state_fate(body, &Policy::HANDED_OUT),
-                Fate::Escapes,
-                "{body}"
-            );
-            assert_eq!(state_fate(body, &following), Fate::InPlace, "{body}");
+            assert_eq!(state_fate(body), Fate::InPlace, "{body}");
         }
-        // The left of `&&` is yielded only where it is falsy, and a comma yields its
-        // last expression alone, so neither is followed.
-        for body in ["(S && o) === 1;", "(S, 0) === 1;", "f(o || S);"] {
-            assert_eq!(state_fate(body, &following), Fate::Escapes, "{body}");
+        for body in [
+            "f(o || S);",
+            "f(S ?? o);",
+            "f(o && S);",
+            "f(c ? S : d);",
+            "f((0, S));",
+            "return c ? o : (0, S);",
+        ] {
+            assert_eq!(state_fate(body), Fate::Escapes, "{body}");
         }
+        // A comma yields its last expression alone, and what it drops is a
+        // position nothing lists, so it is taken to escape.
+        assert_eq!(state_fate("(S, 0) === 1;"), Fate::Escapes);
     }
 
     /// How a reference touches a binding read as one value, for the tests below.
@@ -1073,8 +1066,11 @@ mod tests {
 
     #[test]
     fn a_property_read_that_stays_in_the_expression_is_a_read() {
-        assert_eq!(uses_of_s("export const a = () => S.x;"), [Use::Read]);
-        assert_eq!(uses_of_s("export const a = () => S[\"y\"];"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => { S.x; };"), [Use::Read]);
+        assert_eq!(
+            uses_of_s("export const a = () => { S[\"y\"]; };"),
+            [Use::Read]
+        );
         assert_eq!(uses_of_s("export const a = () => S.x + 1;"), [Use::Read]);
     }
 
@@ -1206,7 +1202,7 @@ mod tests {
             "(S.a as any).b",
             "{ if (S.a.b === 1) go(); }",
         ] {
-            let source = format!("export const a = () => {body};");
+            let source = format!("export const a = () => {{ {body}; }};");
             assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
         }
     }
@@ -1227,14 +1223,19 @@ mod tests {
             [Use::Mutate]
         );
         assert_eq!(uses_of_s("export const a = () => [...S];"), [Use::Mutate]);
-        // Returning the binding hands it to the caller.
+        // Returning the binding, or anything read off it, hands it to the caller.
         assert_eq!(uses_of_s("export const a = () => S;"), [Use::Mutate]);
+        assert_eq!(uses_of_s("export const a = () => S.x;"), [Use::Mutate]);
+        assert_eq!(
+            uses_of_s("export const a = () => { return S.items.length; };"),
+            [Use::Mutate]
+        );
     }
 
     #[test]
     fn each_reference_is_read_on_its_own() {
         assert_eq!(
-            uses_of_s("export const a = () => { other(S); return S.y };"),
+            uses_of_s("export const a = () => { other(S); return S.y === 1 };"),
             [Use::Mutate, Use::Read]
         );
     }

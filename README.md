@@ -129,32 +129,46 @@ could change what the binding holds, because that is how an edit to one travels 
 other without either naming it. Calling it, constructing with it, rendering it as
 `<S />`, asking `typeof`, and reading a property in place cannot change it, so
 declarations that only do those stay apart. Nor can checking it with `in`,
-`instanceof` or a comparison (`===`, `!=`, `<`, `>=` and the rest), on either side:
+`instanceof` or a comparison (`===`, `!=`, `<`, `>=` and the rest), on either side,
+or in a `switch` or one of its `case`s, or using it as a computed key, `o[state]`:
 that reads the value and does not write it. What a check can run, a proxy trap,
 `Symbol.hasInstance`, `valueOf` or `toString`, is taken to run nothing, as it is
-below. Everything else — passing it to a function, returning it, writing through it,
-spreading it, arithmetic on it, or naming a member of it as an element, which is how
-a React context is written — counts as a write. So does calling a method on it,
-except a method that reads a [Zustand store](#zustand) or a collection whose type the
-file shows. What a property holds is part of the value, so a write or a method call
-anywhere down a member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
+below. Everything else — passing it to a function, returning it, putting it in an
+array or object literal, `await`ing it, which calls a `then` it may have, `yield`ing
+it, throwing it, `export default` of it, writing through it, spreading it, arithmetic
+on it, or naming a member of it as an element, which is how a React context is
+written — counts as a write. So does calling a method on it, except a method that
+reads a [Zustand store](#zustand) or a collection whose type the file shows. What a
+property holds is part of the value, so a write or a method call anywhere down a
+member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
 `delete state.a.b` and `state.items.push(x)` write `state` as `state.a = 1` does,
-while `state.items.length` still reads it in place. Passing the value, or anything
-read off it, to a component, as a child or as any prop but `key`, passes it on, since
-the component could change it: `<List items={state.items} />` writes `state`, and so
-does `<button onClick={state.handler}>`, which calls what it is handed. Rendered as
-the child of an element such as `<li>` or of a fragment, or used as a `key`, it is
-read in place. The same holds for an object shared property by property, one read
-only for its members, and a collection whose type the file shows.
+while `state.items.length > 0` still reads it in place. What is read off it is handed
+on like the value itself, so returning a part, as the getter
+`() => state.volume` does, or its `length`, which is not known to be a number, writes
+it too; only a collection whose type the file shows is known to hold a number in
+`length` or `size`. `||`, `??`, `?:`, the right of `&&` and a comma yield an operand
+as it was, so the operand goes where the result goes: `f(flag && state.items)` writes
+`state`, and `(o || state.count) === 1` reads it. The left of `&&` is yielded only
+when falsy, a primitive, so it is only tested. Parentheses, `!`, `as` and `satisfies`
+leave the value as it was. A local `const` alias, or a `let` one that nothing
+reassigns, is followed to its own uses. Passing the value, or anything read off it,
+to a component, as a child or as any prop but `key`, passes it on, since the
+component could change it: `<List items={state.items} />`, `<Foo {...state.items} />`
+and `<Foo>{flag && state.items}</Foo>` write `state`, and so does
+`<button onClick={state.handler}>`, which calls what it is handed. Rendered as the
+child of an element such as `<li>` or of a fragment, or used as a `key`, it is read
+in place. The same holds for an object shared property by property, one read only
+for its members, and a collection whose type the file shows.
 
 A collection's type is shown only by a module-scope `const` that nothing reassigns,
 initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or
 `new WeakSet(…)` of the globals, not a class of the file or an import of the same
 name, or with an array literal such as `[]` or `[a, b]`. Called directly on it, or on
-a local `const` alias of it, these methods read it and change none of it:
+a local `const` alias of it or a `let` one that nothing reassigns, these methods read
+it and change none of it:
 
 - `Map` and `WeakMap`: `get` and `has`, and on a `Map` also `forEach`, `keys`,
-  `values` and `entries`. `size` is a property, read in place like any other.
+  `values` and `entries`.
 - `Set` and `WeakSet`: `has`, and on a `Set` also `forEach`, `keys`, `values` and
   `entries`.
 - Arrays: `at`, `concat`, `entries`, `every`, `filter`, `find`, `findIndex`,
@@ -162,14 +176,17 @@ a local `const` alias of it, these methods read it and change none of it:
   `join`, `keys`, `lastIndexOf`, `map`, `reduce`, `reduceRight`, `slice`, `some`,
   `toReversed`, `toSorted`, `toSpliced`, `values`, `with` and `toString`.
 
+A `Map`'s or a `Set`'s `size` and an array's `length` are properties holding a number,
+read wherever they go.
+
 A method that returns a boolean, a number or a string, such as `has`, `includes`,
 `indexOf`, `some` or `join`, is a read however its result is used. One whose result
 can be, or hold, an object the collection holds — `get`, `find`, `at`, `filter`,
 `map`, `slice`, `reduce`, an iterator from `keys`, `values` or `entries`, and the
 rest — is a read only where that result is used in place: compared, put through
 arithmetic or into an untagged template, tested, rendered as the child of an element
-such as `<li>` or of a fragment, used as a `key`, or read through a local `const` or
-destructuring used the same way. Returning it, passing it on, storing it, spreading
+such as `<li>` or of a fragment, used as a `key`, or read through a local `const`, a
+`let` that nothing reassigns, or destructuring used the same way. Returning it, passing it on, storing it, spreading
 it, iterating it with `for…of`, handing it to a component, or calling a method on it
 writes the collection, since the code it reaches could change what the collection
 holds. A callback, as `forEach`, `map` and `find` take, must be an arrow written out
@@ -194,11 +211,12 @@ reassigns and which has no getter, setter or prototype-setting `__proto__: value
 shared property by property instead. A write to `state.theme` reaches the declarations
 that use `state.theme`, and not one that only reads `state.volume`. A write is found
 however deep the chain goes, so `state.items.push(x)` writes `items`. A `const` alias
-of the object or of one property is followed to its own uses, and a write through it
-counts as a write in the declaration where it is written. Anything that cannot be
-pinned to one property uses the whole object and meets every property: calling a
-method on it, passing it anywhere, a computed key, `__proto__`, an exported or
-reassignable alias, destructuring it, and aliases nested more than four deep. A write
+of the object or of one property, or a `let` one that nothing reassigns, is followed
+to its own uses, and a write through it counts as a write in the declaration where it
+is written. Anything that cannot be pinned to one property uses the whole object and
+meets every property: calling a method on it, passing it anywhere, a computed key,
+`__proto__`, an exported or reassigned alias, destructuring it, and aliases nested
+more than four deep. A write
 through one of those aliases still counts in the declaration where it is written.
 
 A read from another module of a value its own file exports and writes reaches the
@@ -527,9 +545,9 @@ other declarations that read it are linked to it. That holds only where what is
 done with what they hand out reads it too: a property of the state used in place as
 a value, compared, put through arithmetic or into a string, tested, rendered as the
 child of an element such as `<li>` or of a fragment, or used as a `key`, the state
-destructured into a local `const` whose bindings are used the same way, or a
-listener written out in place, given alone, that does the same with the state it is
-called with. Nothing taken from the state may leave the expression it is read in,
+destructured into a local `const`, or a `let` that nothing reassigns, whose
+bindings are used the same way, or a listener written out in place as an arrow,
+given alone, that does the same with the state it is called with. Nothing taken from the state may leave the expression it is read in,
 since which properties are actions cannot be told: returning one, as in
 `() => useCounter.getState().count`, passing it on, storing it or spreading it
 writes the store, as `() => useCounter.getState().inc` would hand out an action for
@@ -539,9 +557,10 @@ on too, since the component may call it:
 prop but `key`, even one of an element such as `<button onClick={…}>`, which calls
 what it is handed. So do `setState()`, an action called on what `getState()`
 returns, as in `useCounter.getState().inc()`, the state handed to other code, a
-listener that is not written out in place, and every other method, Zustand 4's
-`destroy()` among them. What a listener's body does to
-the store through the store's own name is its declaration's, so a listener that
+listener that is not written out in place, a `function` listener, whose `arguments`
+hold the state whatever its parameters say, and every other method, Zustand 4's
+`destroy()` among them. What a listener's body does to the store through the
+store's own name is its declaration's, so a listener that
 calls `setState()` still makes one a writer. The methods are recognised on a store
 that one of the factories above is found to have made, however the app reaches the
 factory; the same names on any other value, a store made by an app's own `create`

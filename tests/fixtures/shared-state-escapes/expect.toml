@@ -1,0 +1,162 @@
+# Uses of a shared value that let it escape, each in a module of its own, with a
+# page that only reads the value and an edit to the declaration that lets it go.
+# Every escape here was once read as in place, so the edit did not reach the
+# page. Each declaration is now a writer of what it lets go, and the page is
+# affected.
+
+# `ItemsView` hands `state.items` to a component through `&&`, which yields the
+# array whenever `flag` is set, and `hasItems` reads the array's length.
+[[anchor]]
+path = "src/pages/JsxOperatorPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/JsxOperatorPage.tsx)",
+    "Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)",
+    "Export(src/state/jsx-operator.tsx, hasItems)",
+    "Decl(src/state/jsx-operator.tsx, hasItems)",
+    "Decl(src/state/jsx-operator.tsx, ItemsView)",
+]
+
+# `CountView` renders `state.count` through `&&` as the child of an `<li>`, which
+# only renders it, so it reads the count, and the edit to it does not reach a
+# page that reads the count too.
+[[anchor]]
+path = "src/pages/JsxOperatorReadPage.tsx"
+affected = false
+
+# `state` is a `let` that `reset` reassigns, so it is read as one value. `add`
+# pushes onto `state.items` through a local `const` that holds it, and
+# `hasItems` reads the array's length.
+[[anchor]]
+path = "src/pages/MemberAliasPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/MemberAliasPage.tsx)",
+    "Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)",
+    "Export(src/state/member-alias.ts, hasItems)",
+    "Decl(src/state/member-alias.ts, hasItems)",
+    "Decl(src/state/member-alias.ts, add)",
+]
+
+# `state` is a reassigned `let`, read as one value. `items` returns `state.items`,
+# and whoever calls it can change the array `hasItems` reads the length of.
+[[anchor]]
+path = "src/pages/ReturnMemberPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ReturnMemberPage.tsx)",
+    "Decl(src/pages/ReturnMemberPage.tsx, ReturnMemberPage)",
+    "Export(src/state/return-member.ts, hasItems)",
+    "Decl(src/state/return-member.ts, hasItems)",
+    "Decl(src/state/return-member.ts, items)",
+]
+
+# `state` is shared property by property. `items` returns `state.items` from an
+# arrow's expression body, and whoever calls it can change the array.
+[[anchor]]
+path = "src/pages/ReturnPropertyPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ReturnPropertyPage.tsx)",
+    "Decl(src/pages/ReturnPropertyPage.tsx, ReturnPropertyPage)",
+    "Export(src/state/return-property.ts, hasItems)",
+    "Decl(src/state/return-property.ts, hasItems)",
+    "Decl(src/state/return-property.ts, items)",
+]
+
+# `send` passes `state.items` to `sink` inside an object literal, and `sink` can
+# change the array `hasItems` reads the length of.
+[[anchor]]
+path = "src/pages/LiteralPassedPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LiteralPassedPage.tsx)",
+    "Decl(src/pages/LiteralPassedPage.tsx, LiteralPassedPage)",
+    "Export(src/state/literal-passed.ts, hasItems)",
+    "Decl(src/state/literal-passed.ts, hasItems)",
+    "Decl(src/state/literal-passed.ts, send)",
+]
+
+# `lists` returns `state.items` inside an array literal, and whoever calls it can
+# change the array.
+[[anchor]]
+path = "src/pages/LiteralReturnedPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LiteralReturnedPage.tsx)",
+    "Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)",
+    "Export(src/state/literal-returned.ts, hasItems)",
+    "Decl(src/state/literal-returned.ts, hasItems)",
+    "Decl(src/state/literal-returned.ts, lists)",
+]
+
+# `settle` awaits `state.items`, which calls a `then` it may have with the array
+# as `this`.
+[[anchor]]
+path = "src/pages/AwaitPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/AwaitPage.tsx)",
+    "Decl(src/pages/AwaitPage.tsx, AwaitPage)",
+    "Export(src/state/await.ts, hasItems)",
+    "Decl(src/state/await.ts, hasItems)",
+    "Decl(src/state/await.ts, settle)",
+]
+
+# `each` yields `state.items` to whoever drives the generator, who can change
+# the array.
+[[anchor]]
+path = "src/pages/YieldPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/YieldPage.tsx)",
+    "Decl(src/pages/YieldPage.tsx, YieldPage)",
+    "Export(src/state/yield.ts, hasItems)",
+    "Decl(src/state/yield.ts, hasItems)",
+    "Decl(src/state/yield.ts, each)",
+]
+
+# The default export is `state.items` itself, which every importer can change.
+[[anchor]]
+path = "src/pages/ExportDefaultPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ExportDefaultPage.tsx)",
+    "Decl(src/pages/ExportDefaultPage.tsx, ExportDefaultPage)",
+    "Export(src/state/export-default.ts, hasItems)",
+    "Decl(src/state/export-default.ts, hasItems)",
+    "Decl(src/state/export-default.ts, default)",
+]
+
+# `Spread` spreads `state.items` into a component's props, which hands the
+# component what the array holds.
+[[anchor]]
+path = "src/pages/JsxSpreadPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/JsxSpreadPage.tsx)",
+    "Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)",
+    "Export(src/state/jsx-spread.tsx, hasItems)",
+    "Decl(src/state/jsx-spread.tsx, hasItems)",
+    "Decl(src/state/jsx-spread.tsx, Spread)",
+]
