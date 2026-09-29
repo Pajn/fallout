@@ -134,7 +134,7 @@ pub(crate) enum Aliases {
     Unfollowed,
     /// A local `const` that holds the value, or takes it apart one level, is
     /// followed to its own uses here, and must leave it in place for the
-    /// declaration to.
+    /// declaration to. So is a `let` that nothing reassigns.
     Local,
     /// Followed by the caller's adapter, which credits each use to the
     /// declaration it is written in.
@@ -153,8 +153,9 @@ pub(crate) type Credit = for<'a> fn(&Ctx<'a>, NodeId, u32, usize) -> Vec<(u32, F
 impl Policy {
     /// What a Zustand store's `getState` or a collection's read method hands out,
     /// and what a listener or callback is called with: it may be used as a value
-    /// where it stands, and a local `const` that holds it, or takes it apart one
-    /// level, is followed to its own uses. Nothing else is known to leave it be.
+    /// where it stands, and a local `const` or `let` that holds it, or takes it
+    /// apart one level, is followed to its own uses. Nothing else is known to
+    /// leave it be.
     pub(crate) const HANDED_OUT: Policy = Policy {
         arithmetic: Fate::InPlace,
         test: Fate::InPlace,
@@ -393,6 +394,24 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         }
         AstKind::IfStatement(test) if test.test.span() == span => own(policy.test),
         AstKind::ConditionalExpression(test) if test.test.span() == span => own(policy.test),
+        AstKind::WhileStatement(test) if test.test.span() == span => own(policy.test),
+        AstKind::DoWhileStatement(test) if test.test.span() == span => own(policy.test),
+        AstKind::ForStatement(test)
+            if test.test.as_ref().is_some_and(|test| test.span() == span) =>
+        {
+            own(policy.test)
+        }
+        // A `switch` compares its discriminant with each case's test by `===`,
+        // which checks both as a comparison written out does.
+        AstKind::SwitchStatement(switch) if switch.discriminant.span() == span => Fate::InPlace,
+        AstKind::SwitchCase(case) if case.test.as_ref().is_some_and(|test| test.span() == span) => {
+            Fate::InPlace
+        }
+        // A computed key is converted to a property key, which a `toString` it may
+        // run is taken to leave as it was, as a comparison's is.
+        AstKind::ComputedMemberExpression(member) if member.expression.span() == span => {
+            Fate::InPlace
+        }
         AstKind::ExpressionStatement(_) => own(policy.discard),
         // A template's values go to its tag, where it has one.
         AstKind::TemplateLiteral(_)
@@ -415,16 +434,21 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
                     .as_ref()
                     .is_some_and(|init| init.span() == span) =>
         {
+            // A `let` is followed as a `const` is: a reassignment is a write of the
+            // binding, which `bindings_stay` does not take as leaving it in place.
             let declaration = nodes.parent_id(parent);
-            let local_const = matches!(
+            let local = matches!(
                 nodes.kind(declaration),
                 AstKind::VariableDeclaration(variable)
-                    if variable.kind == VariableDeclarationKind::Const
+                    if matches!(
+                        variable.kind,
+                        VariableDeclarationKind::Const | VariableDeclarationKind::Let
+                    )
             ) && !matches!(
                 nodes.parent_kind(declaration),
                 AstKind::ExportDeclaration(_)
             );
-            if local_const && bindings_stay(ctx, &declarator.id, held, policy, depth) {
+            if local && bindings_stay(ctx, &declarator.id, held, policy, depth) {
                 Fate::InPlace
             } else {
                 Fate::Escapes
@@ -454,7 +478,7 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         // however little the syntax looks like one.
         AstKind::JSXOpeningElement(_) | AstKind::JSXClosingElement(_) if bare => Fate::InPlace,
         // `#x in v` asks of a private field what `in` asks of a property.
-        AstKind::PrivateInExpression(_) if bare => Fate::InPlace,
+        AstKind::PrivateInExpression(_) => Fate::InPlace,
         AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => {
             if steps > 0 {
                 Fate::Writes
@@ -830,9 +854,12 @@ mod tests {
         "`${@}`;"                                    => [E,  I,  I,  I,  I,  I,  I,  I ];
         "if (@) go();"                               => [E,  I,  I,  I,  I,  I,  I,  I ];
         "@ ? 1 : 2;"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "while (@) go();"                            => [E,  I,  I,  I,  I,  E,  E,  E ];
-        "switch (@) {}"                              => [E,  I,  I,  I,  I,  E,  E,  E ];
-        "class K { #x; m() { if (#x in @) go(); } }" => [I,  I,  I,  I,  I,  E,  E,  E ];
+        "while (@) go();"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "do go(); while (@);"                        => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "for (; @; ) go();"                          => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "switch (@) {}"                              => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "switch (o) { case @: }"                     => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "class K { #x; m() { if (#x in @) go(); } }" => [I,  I,  I,  I,  I,  I,  I,  I ];
         // Read from where it stands.
         "@.x;"                                       => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@.x.y;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
@@ -843,7 +870,8 @@ mod tests {
         "(@).x;"                                     => [E,  I,  I,  I,  I,  I,  I,  I ];
         "(@ as any).x;"                              => [E,  I,  I,  I,  I,  I,  I,  I ];
         "@!.x;"                                      => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "o[@];"                                      => [I,  I,  I,  I,  I,  E,  E,  E ];
+        "o[@];"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "o[@] = 1;"                                  => [W,  I,  I,  I,  I,  I,  I,  I ];
         // Called, constructed, or handed to a call.
         "@();"                                       => [I,  W,  W,  I,  W,  E,  E,  W ];
         "new @();"                                   => [I,  E,  E,  E,  E,  E,  E,  E ];
@@ -902,7 +930,8 @@ mod tests {
         "const { x } = @; f(x);"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
         "const { x } = @; x + 1;"                    => [E,  I,  E,  E,  E,  I,  I,  I ];
         "const { x } = @; x.y = 1;"                  => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "let v = @; v.x;"                            => [E,  I,  E,  E,  E,  E,  E,  E ];
+        "let v = @; v.x;"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "let v = @; v = o; v.x;"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
         "export const v = @;"                        => [E,  U,  E,  E,  E,  E,  E,  E ];
         "class K { x = @; }"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
         "function g(x = @) {}"                       => [E,  U,  U,  U,  U,  E,  E,  E ];

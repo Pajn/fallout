@@ -10,12 +10,12 @@
 //!
 //! Whatever cannot be attributed to one property is a use of the whole object: a
 //! method call, which hands the method the object as `this`; passing the object on;
-//! a computed key; `__proto__`. A `const` alias of the object or of one property is
-//! followed to its own uses, which are credited to the declarations they are written
-//! in, since that is where the write happens. An alias that is exported, is not a
-//! `const`, destructures, or is nested too deep is taken as writing the whole of
-//! what it aliases, and each of its own uses as a use of the whole of it, credited
-//! where that use is written.
+//! a computed key; `__proto__`. A `const` alias of the object or of one property, or
+//! a `let` that nothing reassigns, is followed to its own uses, which are credited to
+//! the declarations they are written in, since that is where the write happens. An
+//! alias that is exported, is reassigned, destructures, or is nested too deep is
+//! taken as writing the whole of what it aliases, and each of its own uses as a use
+//! of the whole of it, credited where that use is written.
 //!
 //! A collection the file makes itself, a `const` bound to `new Map()` or to an
 //! array literal, is used as a whole too, and its aliases are followed the same
@@ -544,8 +544,9 @@ fn credit_alias(ctx: &Ctx<'_>, value: NodeId, own: u32, depth: usize) -> Vec<(u3
 }
 
 /// The accesses made through a `const` alias declared by the declarator above
-/// `value`, or `None` where the alias cannot be followed: it is exported, it can
-/// be reassigned, it destructures, or aliases have nested too deep.
+/// `value`, or a `let` that nothing reassigns, or `None` where the alias cannot be
+/// followed: it is exported, it is reassigned, it destructures, or aliases have
+/// nested too deep.
 fn followed_alias(
     ctx: &Ctx<'_>,
     value: NodeId,
@@ -567,16 +568,25 @@ fn followed_alias(
     let AstKind::VariableDeclaration(variable) = nodes.kind(declaration) else {
         return None;
     };
-    if variable.kind != VariableDeclarationKind::Const
-        || matches!(
-            nodes.parent_kind(declaration),
-            AstKind::ExportDeclaration(_)
-        )
-    {
+    if !matches!(
+        variable.kind,
+        VariableDeclarationKind::Const | VariableDeclarationKind::Let
+    ) || matches!(
+        nodes.parent_kind(declaration),
+        AstKind::ExportDeclaration(_)
+    ) {
         return None;
     }
     let symbol = alias.symbol_id.get()?;
     let scoping = ctx.semantic.scoping();
+    // A `let` holds what it was declared with only while nothing reassigns it.
+    if scoping
+        .get_resolved_reference_ids(symbol)
+        .iter()
+        .any(|id| scoping.get_reference(*id).is_write())
+    {
+        return None;
+    }
     let mut uses = Vec::new();
     for reference_id in scoping.get_resolved_reference_ids(symbol) {
         let node_id = scoping.get_reference(*reference_id).node_id();
@@ -777,6 +787,7 @@ mod tests {
             "export const write = () => { state.list.push(1); };",
             "export const write = () => { delete state.theme; };",
             "export const write = () => { const view = state; view.theme = 'dark'; };",
+            "export const write = () => { let view = state; view.theme = 'dark'; };",
             "export const write = () => { const list = state.list; list.push(1); };",
             "export const write = () => { const a = state; const b = a; b.theme = 'dark'; };",
         ] {
@@ -825,7 +836,7 @@ mod tests {
             "state[key] = 1;",
             "state.__proto__ = null;",
             // An alias that cannot be followed.
-            "let view = state; view.theme = 'dark';",
+            "let view = state; view = other; view.theme = 'dark';",
             "const { theme } = state;",
         ] {
             let source = format!(
@@ -896,11 +907,11 @@ mod tests {
     fn a_write_through_an_alias_that_cannot_be_followed_still_reaches_readers() {
         for (alias, writer) in [
             ("export let view = state;", "view.volume = 2;"),
-            ("let view = state;", "view.volume = 2;"),
+            ("let view = state; view = other;", "view.volume = 2;"),
             ("export const view = state;", "view.volume = 2;"),
             ("const { list } = state;", "list.push(1);"),
             ("export let volume = state.list;", "volume.push(1);"),
-            ("let a = state; let b = a;", "b.volume = 2;"),
+            ("let a = state; let b = a; b = other;", "b.volume = 2;"),
             (
                 "const a = state; const b = a; const c = b; const d = c; const e = d;",
                 "e.volume = 2;",
@@ -1083,6 +1094,7 @@ mod tests {
             "!V.get(k)",
             "{ const { name } = V.get(k); return name === x; }",
             "{ const item = V.get(k); return item.count > 0; }",
+            "{ let item = V.get(k); return item.count > 0; }",
             "<p>{V.get(k).name}</p>",
             "<>{V.get(k)}</>",
         ] {
@@ -1112,7 +1124,7 @@ mod tests {
             "{ delete V.get(k).count; }",
             "{ const item = V.get(k); register(item); }",
             "{ const item = V.get(k); item.count = 1; }",
-            "{ let item = V.get(k); return item === x; }",
+            "{ let item = V.get(k); item = other; return item === x; }",
             "{ const { item } = V.get(k); item.count = 1; }",
             "{ const { ...rest } = V.get(k); return rest === x; }",
             // Handed to a component as a prop, or as its children.
@@ -1385,7 +1397,7 @@ mod tests {
     }
 
     #[test]
-    fn a_local_const_alias_of_a_collection_is_followed_to_its_uses() {
+    fn a_local_alias_of_a_collection_is_followed_to_its_uses() {
         assert!(!peek_writes(
             MAP,
             "{ const alias = V; return alias.has(k); }"
@@ -1399,7 +1411,11 @@ mod tests {
             MAP,
             "{ const alias = V; return alias.get(k); }"
         ));
-        assert!(peek_writes(MAP, "{ let alias = V; return alias.has(k); }"));
+        assert!(!peek_writes(MAP, "{ let alias = V; return alias.has(k); }"));
+        assert!(peek_writes(
+            MAP,
+            "{ let alias = V; alias = other; return alias.has(k); }"
+        ));
         // A write through an alias declared elsewhere is credited where it is made.
         let source = format!(
             "{MAP}\nconst alias = V;\nexport const peek = (k: any) => alias.set(k, 1);\nexport const read = () => V.has(1);\n"

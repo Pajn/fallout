@@ -129,7 +129,8 @@ could change what the binding holds, because that is how an edit to one travels 
 other without either naming it. Calling it, constructing with it, rendering it as
 `<S />`, asking `typeof`, and reading a property in place cannot change it, so
 declarations that only do those stay apart. Nor can checking it with `in`,
-`instanceof` or a comparison (`===`, `!=`, `<`, `>=` and the rest), on either side:
+`instanceof` or a comparison (`===`, `!=`, `<`, `>=` and the rest), on either side,
+or in a `switch` or one of its `case`s, or using it as a computed key, `o[state]`:
 that reads the value and does not write it. What a check can run, a proxy trap,
 `Symbol.hasInstance`, `valueOf` or `toString`, is taken to run nothing, as it is
 below. Everything else — passing it to a function, returning it, writing through it,
@@ -151,7 +152,8 @@ A collection's type is shown only by a module-scope `const` that nothing reassig
 initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or
 `new WeakSet(…)` of the globals, not a class of the file or an import of the same
 name, or with an array literal such as `[]` or `[a, b]`. Called directly on it, or on
-a local `const` alias of it, these methods read it and change none of it:
+a local `const` alias of it or a `let` one that nothing reassigns, these methods read
+it and change none of it:
 
 - `Map` and `WeakMap`: `get` and `has`, and on a `Map` also `forEach`, `keys`,
   `values` and `entries`. `size` is a property, read in place like any other.
@@ -168,8 +170,8 @@ can be, or hold, an object the collection holds — `get`, `find`, `at`, `filter
 `map`, `slice`, `reduce`, an iterator from `keys`, `values` or `entries`, and the
 rest — is a read only where that result is used in place: compared, put through
 arithmetic or into an untagged template, tested, rendered as the child of an element
-such as `<li>` or of a fragment, used as a `key`, or read through a local `const` or
-destructuring used the same way. Returning it, passing it on, storing it, spreading
+such as `<li>` or of a fragment, used as a `key`, or read through a local `const`, a
+`let` that nothing reassigns, or destructuring used the same way. Returning it, passing it on, storing it, spreading
 it, iterating it with `for…of`, handing it to a component, or calling a method on it
 writes the collection, since the code it reaches could change what the collection
 holds. A callback, as `forEach`, `map` and `find` take, must be an arrow written out
@@ -194,11 +196,12 @@ reassigns and which has no getter, setter or prototype-setting `__proto__: value
 shared property by property instead. A write to `state.theme` reaches the declarations
 that use `state.theme`, and not one that only reads `state.volume`. A write is found
 however deep the chain goes, so `state.items.push(x)` writes `items`. A `const` alias
-of the object or of one property is followed to its own uses, and a write through it
-counts as a write in the declaration where it is written. Anything that cannot be
-pinned to one property uses the whole object and meets every property: calling a
-method on it, passing it anywhere, a computed key, `__proto__`, an exported or
-reassignable alias, destructuring it, and aliases nested more than four deep. A write
+of the object or of one property, or a `let` one that nothing reassigns, is followed
+to its own uses, and a write through it counts as a write in the declaration where it
+is written. Anything that cannot be pinned to one property uses the whole object and
+meets every property: calling a method on it, passing it anywhere, a computed key,
+`__proto__`, an exported or reassigned alias, destructuring it, and aliases nested
+more than four deep. A write
 through one of those aliases still counts in the declaration where it is written.
 
 A read from another module of a value its own file exports and writes reaches the
@@ -527,7 +530,8 @@ other declarations that read it are linked to it. That holds only where what is
 done with what they hand out reads it too: a property of the state used in place as
 a value, compared, put through arithmetic or into a string, tested, rendered as the
 child of an element such as `<li>` or of a fragment, or used as a `key`, the state
-destructured into a local `const` whose bindings are used the same way, or a
+destructured into a local `const`, or a `let` that nothing reassigns, whose
+bindings are used the same way, or a
 listener written out in place, given alone, that does the same with the state it is
 called with. Nothing taken from the state may leave the expression it is read in,
 since which properties are actions cannot be told: returning one, as in
