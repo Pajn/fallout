@@ -10,7 +10,6 @@ use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 
-use crate::factories::Creation;
 use crate::module::Reading;
 use crate::module::{
     DeclId, ExportTarget, FineModule, ImportRef, ImportTarget, LineTable, Member, ModuleAnalysis,
@@ -513,11 +512,12 @@ impl Graph {
             // makes the callee one is initialisation's to reach: an edit that turns a
             // wrapper with an effect into the factory changes what loading this module
             // does. The call's arguments are what a factory whose creation reaches only
-            // the frame leaves alone. A name that is `withTypes` of a factory reads
-            // nothing but it, so it is reached whole.
+            // the frame leaves alone, and so is a function it calls that is proven to
+            // run nothing there. A name that is `withTypes` of a factory reads nothing
+            // but it, so it is reached whole.
             for &decl in &module.conditional_init {
                 match self.made_by(file, decl) {
-                    Some(made) if made.creation() == Creation::Frame => {
+                    Some(made) if made.creates_quietly() => {
                         let frame = made.frame();
                         edges.extend(self.reference_edges(
                             fine,

@@ -13,6 +13,12 @@
 //! only on the arguments it lists. Reading any other property of the result, calling the
 //! result, or using it as a whole depends on every argument.
 //!
+//! Some factories call what they are given while they build. Zustand's
+//! `create(createState)` calls `createState` for the store's initial state, so
+//! creating a store runs whatever the creator's body runs. Its rule names that
+//! argument, and initialisation reaches only the frame where the module proves that
+//! calling it there runs nothing; see [`Creation::Calls`].
+//!
 //! A factory is matched however an app reaches it: imported directly, through a
 //! namespace, through `withTypes<…>()`, which types it and returns it, and through
 //! a module of the app's own that exports any of those. The last is the usual
@@ -68,6 +74,26 @@ impl Made {
         self.rule.creation
     }
 
+    /// Whether creating the value runs nothing but the factory, so that module
+    /// initialisation reaches the frame and no argument.
+    ///
+    /// A factory that calls some of its arguments as it creates the value does so
+    /// only where each of them is a function written out in place that the
+    /// local-helper proof clears when called there. One the call does not pass
+    /// would be called all the same, and calling nothing throws.
+    pub fn creates_quietly(&self) -> bool {
+        match self.creation() {
+            Creation::Frame => true,
+            Creation::Calls(called) => called.iter().all(|&index| {
+                self.call()
+                    .args
+                    .get(index)
+                    .is_some_and(|argument| argument.quiet_when_called)
+            }),
+            Creation::Whole => false,
+        }
+    }
+
     /// What the declaration depends on outside every argument: the callee, and the
     /// call around the arguments.
     pub fn frame(&self) -> &Deps {
@@ -82,9 +108,10 @@ impl Made {
         let args = self.rule.member(name)?;
         let mut deps = call.frame.clone();
         for &index in args {
-            let Some((_, argument)) = call.args.get(index) else {
+            let Some(argument) = call.args.get(index) else {
                 continue;
             };
+            let argument = &argument.deps;
             deps.refs.extend(argument.refs.iter().copied());
             deps.member_refs
                 .extend(argument.member_refs.iter().cloned());
@@ -115,7 +142,7 @@ impl Made {
             .filter(move |(_, args)| {
                 framing
                     || args.iter().any(|&index| match call.args.get(index) {
-                        Some((span, _)) => span.intersects(start, end),
+                        Some(argument) => argument.span.intersects(start, end),
                         None => call.missing.intersects(start, end),
                     })
             })
@@ -126,7 +153,11 @@ impl Made {
     /// around them.
     pub fn reads(&self, reads: impl Fn(&[ImportRef]) -> bool) -> bool {
         let call = self.call();
-        reads(&call.frame.imports) || call.args.iter().any(|(_, deps)| reads(&deps.imports))
+        reads(&call.frame.imports)
+            || call
+                .args
+                .iter()
+                .any(|argument| reads(&argument.deps.imports))
     }
 
     fn decl(&self) -> &Decl {
@@ -366,5 +397,40 @@ export const t = createAsyncThunk(
             made.touched_members(after, after + 1).collect::<Vec<_>>(),
             ["rejected"]
         );
+    }
+
+    /// What made `t` in `slice.ts`, where `slice.ts` is `source`.
+    fn store(source: &str) -> Option<Made> {
+        made(&[("slice.ts", source)], "t")
+    }
+
+    #[test]
+    fn a_store_is_created_quietly_only_where_its_creator_is_proven_to_run_nothing() {
+        let quiet = store(
+            "import { create } from 'zustand';\nexport const t = create((set) => ({ count: 0, inc: () => set({ count: 1 }) }));\n",
+        )
+        .expect("made by the factory");
+        assert_eq!(quiet.creation(), Creation::Calls(&[0]));
+        assert!(quiet.creates_quietly());
+        // Every use of a store can read all of it, so nothing is read apart.
+        assert_eq!(quiet.member_names().count(), 0);
+        assert!(quiet.member("getState").is_none());
+
+        let loud = store(
+            "import { create } from 'zustand';\nexport const t = create(() => ({ id: register() }));\n",
+        )
+        .expect("made by the factory");
+        assert!(!loud.creates_quietly());
+
+        // A thunk's payload creator is not called as the thunk is made, whatever
+        // it runs.
+        let thunk = store(
+            "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk('a/b', () => register());\n",
+        )
+        .expect("made by the factory");
+        assert!(thunk.creates_quietly());
+
+        let other = "import { create } from 'another-library';\nexport const t = create(() => ({ count: 0 }));\n";
+        assert!(store(other).is_none());
     }
 }

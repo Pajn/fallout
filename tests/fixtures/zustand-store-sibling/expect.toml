@@ -1,0 +1,18 @@
+# A Zustand store beside a constant. Creating the store calls its state creator
+# once, and this one only builds an object of state and actions, so loading the
+# module runs nothing observable. An edit to the initial state reaches a case that
+# uses the store, and not one that only reads the constant beside it.
+[[anchor]]
+path = "src/cases/counter-title.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/counter-button.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/counter-button.cases.tsx)",
+    "Decl(src/cases/counter-button.cases.tsx, CounterButton)",
+    "Export(src/store/counter.ts, useCounter)",
+]

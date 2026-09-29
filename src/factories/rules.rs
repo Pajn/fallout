@@ -46,16 +46,18 @@ impl Identity {
 
 /// What creating a factory's value reaches, and so what module initialisation
 /// depends on when a module creates one at the top level.
-///
-/// A factory that calls one of its arguments while creating the value would be a
-/// variant of its own here, naming those arguments, so that initialisation reaches
-/// them along with the frame and still leaves the rest alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Creation {
     /// Creating the value calls the factory and nothing it is given. Initialisation
     /// reaches the call's frame, the callee and the call around the arguments, and
     /// none of the arguments.
     Frame,
+    /// Creating the value calls the arguments at these positions, once each, with
+    /// values of the factory's own, and nothing else it is given. Where each of them
+    /// is proven to run nothing and not to throw when called there, initialisation
+    /// reaches the frame, as for [`Creation::Frame`]. Otherwise what the call runs is
+    /// anybody's guess, and it reaches the whole declaration.
+    Calls(&'static [usize]),
     /// Creating the value may run anything the call names, so initialisation
     /// reaches the whole declaration, as it does for a call of no known factory.
     Whole,
@@ -104,25 +106,40 @@ pub fn is_identity_method(name: &str) -> bool {
     })
 }
 
-/// `createAsyncThunk(type, payloadCreator, options)` returns a thunk action creator
-/// with `pending`, `fulfilled` and `rejected` action creators, a `settled` matcher,
-/// and its `typePrefix`, built from `type`. `rejected` also serialises the error it
-/// is given with `options.serializeError`, so it reads the options too. The payload
-/// creator only runs when the thunk is dispatched, and the rest of the options with
-/// it.
-pub const RULES: &[Rule] = &[Rule {
-    sources: &["@reduxjs/toolkit", "@reduxjs/toolkit/react"],
-    export: "createAsyncThunk",
-    members: &[
-        ("pending", &[0]),
-        ("fulfilled", &[0]),
-        ("rejected", &[0, 2]),
-        ("settled", &[0]),
-        ("typePrefix", &[0]),
-    ],
-    creation: Creation::Frame,
-    identity: &[Identity::Method("withTypes")],
-}];
+pub const RULES: &[Rule] = &[
+    // `createAsyncThunk(type, payloadCreator, options)` returns a thunk action
+    // creator with `pending`, `fulfilled` and `rejected` action creators, a
+    // `settled` matcher, and its `typePrefix`, built from `type`. `rejected` also
+    // serialises the error it is given with `options.serializeError`, so it reads
+    // the options too. The payload creator only runs when the thunk is dispatched,
+    // and the rest of the options with it.
+    Rule {
+        sources: &["@reduxjs/toolkit", "@reduxjs/toolkit/react"],
+        export: "createAsyncThunk",
+        members: &[
+            ("pending", &[0]),
+            ("fulfilled", &[0]),
+            ("rejected", &[0, 2]),
+            ("settled", &[0]),
+            ("typePrefix", &[0]),
+        ],
+        creation: Creation::Frame,
+        identity: &[Identity::Method("withTypes")],
+    },
+    // Zustand's `create(createState)` makes a store and returns a hook bound to it.
+    // Making the store calls `createState(set, get, api)` there and then for the
+    // initial state, and does nothing else anyone outside the store can see. The
+    // store holds that state and the functions it was built with, and every way of
+    // using it — calling the hook, `getState()`, `setState()` — can read any of it,
+    // so no property is read apart.
+    Rule {
+        sources: &["zustand"],
+        export: "create",
+        members: &[],
+        creation: Creation::Calls(&[0]),
+        identity: &[],
+    },
+];
 
 /// The rule for `source#export`, if there is one.
 pub fn rule(source: &str, export: &str) -> Option<&'static Rule> {

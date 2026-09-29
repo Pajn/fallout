@@ -112,8 +112,7 @@ pub struct Deps {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FactoryCall {
     pub callee: Callee,
-    /// Each argument's span, and what it depends on.
-    pub args: Vec<(Span, Deps)>,
+    pub args: Vec<Argument>,
     /// What the declaration depends on outside every argument: the callee, a type
     /// annotation, every edge of the shared-state rule, and anything no reference
     /// accounts for, such as an import or `require` inside an argument.
@@ -125,6 +124,21 @@ pub struct FactoryCall {
     /// one and its trailing comma, if it has one, up to the closing parenthesis.
     /// Removing that argument leaves its mark here.
     pub missing: Span,
+}
+
+/// One argument of a [`FactoryCall`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Argument {
+    pub span: Span,
+    /// What it depends on.
+    pub deps: Deps,
+    /// Whether calling it once, where the call is written, with arguments nobody
+    /// here knows anything about, is proven to run nothing and not to throw: a
+    /// function written out in place, whose body the local-helper proof clears.
+    ///
+    /// Evaluating a function runs nothing, whatever its body does, so this is the
+    /// question for a factory that calls what it is given while creating its value.
+    pub quiet_when_called: bool,
 }
 
 /// One property of an object literal declaration, and what reading it depends on.
