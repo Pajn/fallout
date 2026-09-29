@@ -446,4 +446,43 @@ export const t = createAsyncThunk(
         let other = "import { create } from 'another-library';\nexport const t = create(() => ({ count: 0 }));\n";
         assert!(store(other).is_none());
     }
+
+    const CREATOR: &str = "(set) => ({ count: 0 })";
+
+    #[test]
+    fn a_store_is_made_by_create_called_first_with_no_arguments() {
+        for source in [
+            format!(
+                "import {{ create }} from 'zustand';\nexport const t = create<{{ count: number }}>()({CREATOR});\n"
+            ),
+            format!(
+                "import * as z from 'zustand';\nexport const t = z.create<{{ count: number }}>()({CREATOR});\n"
+            ),
+            format!(
+                "import {{ create }} from 'zustand';\nconst typed = create<{{ count: number }}>();\nexport const t = typed({CREATOR});\n"
+            ),
+        ] {
+            let made = store(&source).unwrap_or_else(|| panic!("{source}"));
+            assert!(made.creates_quietly(), "{source}");
+        }
+    }
+
+    #[test]
+    fn only_a_rules_own_identity_forms_return_its_factory() {
+        for source in [
+            // Twice with no arguments makes a store with no creator.
+            format!("import {{ create }} from 'zustand';\nexport const t = create()()({CREATOR});\n"),
+            // `withTypes` is RTK's, and Zustand's `create` has none.
+            format!("import {{ create }} from 'zustand';\nexport const t = create.withTypes<{{ count: number }}>()({CREATOR});\n"),
+            format!("import {{ create }} from 'zustand';\nconst typed = create.withTypes<{{ count: number }}>();\nexport const t = typed({CREATOR});\n"),
+            // A call on something read off the factory.
+            format!("import {{ create }} from 'zustand';\nexport const t = create.other()({CREATOR});\n"),
+            // RTK's factory called with no arguments is not RTK's factory.
+            "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk()('a/b', async () => 1);\n".to_string(),
+            // A function of this file called with no arguments is not an import.
+            format!("import {{ create }} from 'zustand';\nconst make = () => create;\nexport const t = make()({CREATOR});\n"),
+        ] {
+            assert!(store(&source).is_none(), "{source}");
+        }
+    }
 }

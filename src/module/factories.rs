@@ -7,7 +7,8 @@
 //! this records what the graph needs to decide it:
 //!
 //! - which declarations are another name for an import or a declaration here,
-//!   `const f = X` and `const f = X.withTypes<T>()`;
+//!   `const f = X`, `const f = X.withTypes<T>()` and, for an import `X`,
+//!   `const f = X<T>()`;
 //! - which are the result of calling one, `const t = f(…)`, with what each argument
 //!   depends on kept apart, and whether calling it there would run anything, for a
 //!   factory that calls what it is given;
@@ -30,7 +31,7 @@ use super::parse::{Ctx, span_of};
 use super::refs::{SharedEdges, narrowed, unwritten_member_read};
 use super::side_effects::SideEffects;
 use super::{Argument, Callee, Decl, DeclId, Deps, FactoryCall, ImportTarget, Span, Step};
-use crate::factories::rules::is_identity_method;
+use crate::factories::rules::{is_identity_call, is_identity_method};
 
 /// What [`find`] found, before any reference is linked.
 #[derive(Default)]
@@ -38,7 +39,7 @@ pub(crate) struct Candidates {
     /// The binding of each call whose result may be read by property.
     pub by_symbol: Vec<(SymbolId, DeclId)>,
     /// Statements whose initialiser runs nothing but one call, whether that call is
-    /// a factory's or `withTypes` of one.
+    /// a factory's or an identity form of one, such as `withTypes`.
     pub conditional: AHashSet<usize>,
     calls: Vec<Pending>,
     derived: Vec<(DeclId, Callee)>,
@@ -116,7 +117,8 @@ pub(crate) fn find<'a>(
         let (Some(decl), Some(callee)) = (decl_of(index, id), callee_of(ctx, init, &names)) else {
             continue;
         };
-        // `X.withTypes<T>()` is a call, and runs nothing if `X` is a factory.
+        // `X.withTypes<T>()` and `X<T>()` are calls, and run nothing if `X` is a
+        // factory whose rule declares them.
         if matches!(init.get_inner_expression(), Expression::CallExpression(_)) {
             candidates.conditional.insert(index);
         }
@@ -249,9 +251,10 @@ impl<'d> Names<'d> {
 /// them and which returns the factory itself.
 ///
 /// Whether such a call returns what it was called on is the matched rule's to say,
-/// so it is kept as a step for the graph. Only a call with no arguments to a method
-/// some rule declares an identity form is read at all: any other call's result is
-/// a value no rule speaks for, and calling it is plain initialisation.
+/// so it is kept as a step for the graph. Only a call with no arguments is read at
+/// all, and only where some rule declares such a call an identity form: to a method
+/// of that name, or, for Zustand's `create<T>()`, to an import itself. Any other call's
+/// result is a value no rule speaks for, and calling it is plain initialisation.
 fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<Callee> {
     match expr.get_inner_expression() {
         Expression::Identifier(identifier) => {
@@ -292,14 +295,20 @@ fn callee_of(ctx: &Ctx<'_>, expr: &Expression<'_>, names: &Names<'_>) -> Option<
             Some(callee)
         }
         Expression::CallExpression(call) if call.arguments.is_empty() => {
-            let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression()
-            else {
-                return None;
+            let method = match call.callee.get_inner_expression() {
+                Expression::StaticMemberExpression(member) => {
+                    is_identity_method(&member.property.name)
+                }
+                _ => false,
             };
-            if !is_identity_method(&member.property.name) {
+            let mut callee = callee_of(ctx, &call.callee, names)?;
+            // Called with no arguments, it is the import itself that may be the
+            // factory. A function this file declares is plain initialisation to
+            // call, as it is with arguments, and so is anything read off an import.
+            let imported = matches!(&callee, Callee::Import { path, .. } if path.is_empty());
+            if !method && !(is_identity_call() && imported) {
                 return None;
             }
-            let mut callee = callee_of(ctx, &call.callee, names)?;
             callee.path_mut().push(Step::Call);
             Some(callee)
         }

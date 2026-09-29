@@ -50,7 +50,8 @@ pub struct Decl {
     pub interior: Span,
     /// What this declaration's value is another name for: `const f = X` and
     /// `const f = X.withTypes<T>()`, where `X` is an import or a declaration here
-    /// and `withTypes` is a method some rule declares an identity form.
+    /// and `withTypes` is a method some rule declares an identity form, and
+    /// `const f = X<T>()`, where `X` is an import.
     pub derived: Option<Callee>,
     /// The call this declaration's value is the result of, `const t = f(...)`,
     /// with what each argument depends on. The graph decides whether `f` is a

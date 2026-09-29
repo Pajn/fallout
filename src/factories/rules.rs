@@ -28,6 +28,12 @@ pub enum Identity {
     /// `.name()`, called with no arguments, whatever its type arguments: RTK's
     /// `createAsyncThunk.withTypes<T>()`, which only types the factory.
     Method(&'static str),
+    /// The factory itself called with no arguments, whatever its type arguments,
+    /// and only once: Zustand's `create<T>()`, which returns the factory so that
+    /// the state's type can be given while the creator's is still inferred. What
+    /// that returns, called with no arguments in turn, makes a store with no
+    /// creator, and is no factory.
+    Curried,
 }
 
 impl Identity {
@@ -39,6 +45,7 @@ impl Identity {
             {
                 Some(rest)
             }
+            (Identity::Curried, [rest @ .., Step::Call]) => Some(rest),
             _ => None,
         }
     }
@@ -88,7 +95,14 @@ impl Rule {
     /// Only this rule's forms are taken: the same call on another factory may
     /// return something else entirely.
     pub fn strip_identity<'p>(&self, mut path: &'p [Step]) -> &'p [Step] {
-        while let Some(rest) = self.identity.iter().find_map(|form| form.strip(path)) {
+        let mut curried = false;
+        while let Some((form, rest)) = self
+            .identity
+            .iter()
+            .filter(|form| !(curried && **form == Identity::Curried))
+            .find_map(|form| Some((form, form.strip(path)?)))
+        {
+            curried |= *form == Identity::Curried;
             path = rest;
         }
         path
@@ -104,6 +118,14 @@ pub fn is_identity_method(name: &str) -> bool {
             .iter()
             .any(|form| matches!(form, Identity::Method(method) if *method == name))
     })
+}
+
+/// Whether some rule declares calling its factory with no arguments an identity
+/// form, which the parse-time half asks before keeping any such call as a step.
+pub fn is_identity_call() -> bool {
+    RULES
+        .iter()
+        .any(|rule| rule.identity.contains(&Identity::Curried))
 }
 
 pub const RULES: &[Rule] = &[
@@ -137,7 +159,7 @@ pub const RULES: &[Rule] = &[
         export: "create",
         members: &[],
         creation: Creation::Calls(&[0]),
-        identity: &[],
+        identity: &[Identity::Curried],
     },
 ];
 
@@ -188,5 +210,26 @@ mod tests {
 
         assert!(is_identity_method("withTypes"));
         assert!(!is_identity_method("other"));
+    }
+
+    #[test]
+    fn zustands_create_is_itself_once_called_with_no_arguments() {
+        let create = rule("zustand", "create").unwrap();
+        assert!(create.strip_identity(&[Step::Call]).is_empty());
+
+        for path in [
+            // Called with no arguments twice, it makes a store with no creator.
+            vec![Step::Call, Step::Call],
+            // `withTypes` is RTK's, and Zustand's `create` has no such method.
+            vec![prop("withTypes"), Step::Call],
+            vec![prop("other"), Step::Call],
+        ] {
+            assert!(!create.strip_identity(&path).is_empty(), "{path:?}");
+        }
+
+        // Nor is RTK's factory itself when called with no arguments.
+        let rtk = rule("@reduxjs/toolkit", "createAsyncThunk").unwrap();
+        assert_eq!(rtk.strip_identity(&[Step::Call]), [Step::Call]);
+        assert!(is_identity_call());
     }
 }

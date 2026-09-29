@@ -1,0 +1,19 @@
+# The same store, written the way Zustand's TypeScript guide writes it:
+# `create<State>()(creator)`. Called with no arguments, `create` returns itself, so
+# that the state type can be given while the creator's is still inferred. The call
+# after it is the one that makes the store, and it calls the creator as `create`
+# would.
+[[anchor]]
+path = "src/cases/counter-title.cases.tsx"
+affected = false
+
+[[anchor]]
+path = "src/cases/counter-button.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/counter-button.cases.tsx)",
+    "Decl(src/cases/counter-button.cases.tsx, CounterButton)",
+    "Export(src/store/counter.ts, useCounter)",
+]
