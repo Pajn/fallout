@@ -10,6 +10,7 @@ use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
 
 use super::decls::{DeclDraft, ImportBinding, RequireCall, source_id};
+use super::escape;
 use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
 use super::shared::{self, Access};
@@ -514,7 +515,7 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
         // `<li>{s}</li>` renders the value where it stands; `<Foo value={s} />`
         // and `<Foo>{s}</Foo>` hand it to a component, which could change it.
         AstKind::JSXExpressionContainer(_) => {
-            in_place(shared::rendered_in_place(nodes, nodes.parent_id(node_id)))
+            in_place(escape::rendered_in_place(nodes, nodes.parent_id(node_id)))
         }
         // `s.x` is a read where the value it yields stays in the expression.
         AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
@@ -535,7 +536,7 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
 fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
     let mut current = member;
     loop {
-        let (outer, span) = shared::through_wrappers(nodes, current);
+        let (outer, span) = escape::through_wrappers(nodes, current);
         match nodes.parent_kind(outer) {
             AstKind::StaticMemberExpression(next) if next.object.span() == span => {
                 current = nodes.parent_id(outer);
@@ -547,7 +548,7 @@ fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
             _ => break,
         }
     }
-    let (top, span) = shared::through_wrappers(nodes, current);
+    let (top, span) = escape::through_wrappers(nodes, current);
     match nodes.parent_kind(top) {
         AstKind::AssignmentExpression(_)
         | AstKind::UpdateExpression(_)
@@ -565,7 +566,7 @@ fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
         // A tag is called with what it was read off as `this`, as a method is.
         AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => Use::Mutate,
         AstKind::JSXExpressionContainer(_) => {
-            in_place(shared::rendered_in_place(nodes, nodes.parent_id(top)))
+            in_place(escape::rendered_in_place(nodes, nodes.parent_id(top)))
         }
         _ => Use::Read,
     }

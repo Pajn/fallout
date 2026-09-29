@@ -29,6 +29,7 @@ use oxc_ast::ast::*;
 use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
 
+use super::escape::{rendered_in_place, through_wrappers};
 use super::members::object_literal;
 use super::parse::Ctx;
 use super::refs::{Use, classify};
@@ -1030,45 +1031,6 @@ fn binding_reads(
                 })
         }
         _ => false,
-    }
-}
-
-/// Whether a value in the JSX expression container at `container` is only
-/// rendered where it stands, rather than handed to code that could change it.
-///
-/// A component is handed its children as a prop, free to call them or change what
-/// they hold, as it is handed every other prop. An element of the platform's own,
-/// such as `<li>`, or a fragment, only renders its children. React takes `key` for
-/// itself, as a string, and hands it to no component. Any other prop is handed on,
-/// even by an element of the platform's own, which may call it as a handler.
-pub(crate) fn rendered_in_place(nodes: &AstNodes<'_>, container: NodeId) -> bool {
-    match nodes.parent_kind(container) {
-        AstKind::JSXElement(element) => {
-            matches!(element.opening_element.name, JSXElementName::Identifier(_))
-        }
-        AstKind::JSXFragment(_) => true,
-        AstKind::JSXAttribute(attribute) => attribute.is_key(),
-        _ => false,
-    }
-}
-
-/// Walks out through parentheses and type-only wrappers, which leave the value as
-/// it was, returning the outermost node standing for it and its span.
-pub(crate) fn through_wrappers(nodes: &AstNodes<'_>, node_id: NodeId) -> (NodeId, OxcSpan) {
-    let mut current = node_id;
-    let mut span = nodes.get_node(node_id).kind().span();
-    loop {
-        match nodes.parent_kind(current) {
-            AstKind::ParenthesizedExpression(_)
-            | AstKind::TSNonNullExpression(_)
-            | AstKind::TSAsExpression(_)
-            | AstKind::TSSatisfiesExpression(_)
-            | AstKind::TSTypeAssertion(_) => {
-                current = nodes.parent_id(current);
-                span = nodes.get_node(current).kind().span();
-            }
-            _ => return (current, span),
-        }
     }
 }
 
