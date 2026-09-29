@@ -128,9 +128,13 @@ that is not a `const` bound to a primitive literal stay connected when one of th
 could change what the binding holds, because that is how an edit to one travels to the
 other without either naming it. Calling it, constructing with it, rendering it as
 `<S />`, asking `typeof`, and reading a property in place cannot change it, so
-declarations that only do those stay apart. Everything else — passing it to a
-function, returning it, writing through it, spreading it, or naming a member of it as
-an element, which is how a React context is written — counts as a write.
+declarations that only do those stay apart. Nor can checking it with `in`,
+`instanceof` or a comparison (`===`, `!=`, `<`, `>=` and the rest), on either side:
+that reads the value and does not write it. What a check can run, a proxy trap,
+`Symbol.hasInstance`, `valueOf` or `toString`, is taken to run nothing, as it is
+below. Everything else — passing it to a function, returning it, writing through it,
+spreading it, arithmetic on it, or naming a member of it as an element, which is how
+a React context is written — counts as a write.
 
 A binding initialised with a plain object literal, frozen or not, which nothing
 reassigns and which has no getter, setter or prototype-setting `__proto__: value`, is
