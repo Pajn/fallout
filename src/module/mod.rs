@@ -140,6 +140,12 @@ pub struct Argument {
     /// Evaluating a function runs nothing, whatever its body does, so this is the
     /// question for a factory that calls what it is given while creating its value.
     pub quiet_when_called: bool,
+    /// Whether calling it may read an imported binding, directly or through a
+    /// declaration of this file it names, such as a helper it calls. Where a
+    /// project defers each import to its first use, reading one evaluates the
+    /// module it names, which is not quiet. Which reads would happen when is not
+    /// told apart, so one inside a function the argument only creates counts too.
+    pub reads_imports: bool,
 }
 
 /// One property of an object literal declaration, and what reading it depends on.

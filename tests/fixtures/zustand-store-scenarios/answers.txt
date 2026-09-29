@@ -791,7 +791,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/shim/store.ts)
   Decl(src/shim/store.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/shim.cases.tsx [symbol] --include-types
 -- --explain: exit 0
@@ -802,7 +802,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/shim/store.ts)
   Decl(src/shim/store.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/shim.cases.tsx [base]
 -- --explain: exit 0
@@ -813,7 +813,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/shim/store.ts)
   Decl(src/shim/store.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/shim.cases.tsx [base] --include-types
 -- --explain: exit 0
@@ -824,7 +824,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/shim/store.ts)
   Decl(src/shim/store.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/stores.cases.tsx [file]
 -- --explain: exit 0
@@ -852,7 +852,7 @@ Path (downstream, symbol granularity):
   Decl(src/cases/stores.cases.tsx, Counts)
   Export(src/stores/alias.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/inline/stores/barrel.ts","src/inline/stores/plain.ts","src/inline/stores/reads-import.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/cases/stores.cases.tsx [symbol] --include-types
 -- --explain: exit 0
@@ -862,7 +862,7 @@ Path (downstream, symbol granularity):
   Decl(src/cases/stores.cases.tsx, Counts)
   Export(src/stores/alias.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/inline/stores/barrel.ts","src/inline/stores/plain.ts","src/inline/stores/reads-import.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/cases/stores.cases.tsx [base]
 -- --explain: exit 0
@@ -872,7 +872,7 @@ Path (downstream, symbol granularity):
   Decl(src/cases/stores.cases.tsx, Counts)
   Export(src/stores/alias.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/inline/stores/barrel.ts","src/inline/stores/plain.ts","src/inline/stores/reads-import.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/cases/stores.cases.tsx [base] --include-types
 -- --explain: exit 0
@@ -882,7 +882,7 @@ Path (downstream, symbol granularity):
   Decl(src/cases/stores.cases.tsx, Counts)
   Export(src/stores/alias.ts, useCounter)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/inline/stores/barrel.ts","src/inline/stores/plain.ts","src/inline/stores/reads-import.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/inline/cases/plain.cases.tsx [file]
 -- --explain: exit 0
@@ -954,9 +954,11 @@ Path (downstream, symbol granularity):
   Decl(src/inline/cases/reads-import.cases.tsx, Title)
   Export(src/inline/stores/reads-import.ts, TITLE)
   ModuleInit(src/inline/stores/reads-import.ts)
-  ModuleInit(src/inline/config.ts)
+  Decl(src/inline/stores/reads-import.ts, useCounter)
+  Export(src/inline/config.ts, DEFAULT_STEP)
+  Decl(src/inline/config.ts, DEFAULT_STEP)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","Decl(src/inline/stores/reads-import.ts, useCounter)","Export(src/inline/config.ts, DEFAULT_STEP)","Decl(src/inline/config.ts, DEFAULT_STEP)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
 
 == src/inline/cases/reads-import.cases.tsx [symbol] --include-types
 -- --explain: exit 0
@@ -966,9 +968,11 @@ Path (downstream, symbol granularity):
   Decl(src/inline/cases/reads-import.cases.tsx, Title)
   Export(src/inline/stores/reads-import.ts, TITLE)
   ModuleInit(src/inline/stores/reads-import.ts)
-  ModuleInit(src/inline/config.ts)
+  Decl(src/inline/stores/reads-import.ts, useCounter)
+  Export(src/inline/config.ts, DEFAULT_STEP)
+  Decl(src/inline/config.ts, DEFAULT_STEP)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","Decl(src/inline/stores/reads-import.ts, useCounter)","Export(src/inline/config.ts, DEFAULT_STEP)","Decl(src/inline/config.ts, DEFAULT_STEP)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
 
 == src/inline/cases/reads-import.cases.tsx [base]
 -- --explain: exit 0
@@ -978,9 +982,11 @@ Path (downstream, symbol granularity):
   Decl(src/inline/cases/reads-import.cases.tsx, Title)
   Export(src/inline/stores/reads-import.ts, TITLE)
   ModuleInit(src/inline/stores/reads-import.ts)
+  Decl(src/inline/stores/reads-import.ts, useCounter)
+  Export(src/inline/config.ts, DEFAULT_STEP)
   ModuleInit(src/inline/config.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","Decl(src/inline/stores/reads-import.ts, useCounter)","Export(src/inline/config.ts, DEFAULT_STEP)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
 
 == src/inline/cases/reads-import.cases.tsx [base] --include-types
 -- --explain: exit 0
@@ -990,64 +996,90 @@ Path (downstream, symbol granularity):
   Decl(src/inline/cases/reads-import.cases.tsx, Title)
   Export(src/inline/stores/reads-import.ts, TITLE)
   ModuleInit(src/inline/stores/reads-import.ts)
+  Decl(src/inline/stores/reads-import.ts, useCounter)
+  Export(src/inline/config.ts, DEFAULT_STEP)
   ModuleInit(src/inline/config.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","Decl(src/inline/stores/reads-import.ts, useCounter)","Export(src/inline/config.ts, DEFAULT_STEP)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
 
-== src/inline/cases/stores.cases.tsx [file]
+== src/inline/cases/barrel.cases.tsx [file]
 -- --explain: exit 0
-Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Impact detected on target anchor via: "src/inline/config.ts"
 Path (downstream, file granularity):
-  File(src/inline/cases/stores.cases.tsx)
-  File(src/inline/stores/plain.ts)
+  File(src/inline/cases/barrel.cases.tsx)
+  File(src/inline/stores/barrel.ts)
+  File(src/inline/theme.ts)
+  File(src/inline/config.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","File(src/inline/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+{"anchors":[{"anchor":"src/inline/cases/barrel.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/barrel.cases.tsx)","File(src/inline/stores/barrel.ts)","File(src/inline/theme.ts)","File(src/inline/config.ts)"],"granularity":"file","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/barrel.ts"]}]}]}
 
-== src/inline/cases/stores.cases.tsx [file] --include-types
+== src/inline/cases/barrel.cases.tsx [file] --include-types
 -- --explain: exit 0
-Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Impact detected on target anchor via: "src/inline/config.ts"
 Path (downstream, file granularity):
-  File(src/inline/cases/stores.cases.tsx)
-  File(src/inline/stores/plain.ts)
+  File(src/inline/cases/barrel.cases.tsx)
+  File(src/inline/stores/barrel.ts)
+  File(src/inline/theme.ts)
+  File(src/inline/config.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","File(src/inline/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+{"anchors":[{"anchor":"src/inline/cases/barrel.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/barrel.cases.tsx)","File(src/inline/stores/barrel.ts)","File(src/inline/theme.ts)","File(src/inline/config.ts)"],"granularity":"file","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/barrel.ts"]}]}]}
 
-== src/inline/cases/stores.cases.tsx [symbol]
+== src/inline/cases/barrel.cases.tsx [symbol]
 -- --explain: exit 0
-Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Impact detected on target anchor via: "src/inline/config.ts"
 Path (downstream, symbol granularity):
-  File(src/inline/cases/stores.cases.tsx)
-  Decl(src/inline/cases/stores.cases.tsx, Counts)
-  Export(src/inline/stores/plain.ts, useCounter)
+  File(src/inline/cases/barrel.cases.tsx)
+  Decl(src/inline/cases/barrel.cases.tsx, Title)
+  Export(src/inline/stores/barrel.ts, TITLE)
+  ModuleInit(src/inline/stores/barrel.ts)
+  Decl(src/inline/stores/barrel.ts, useCounter)
+  Export(src/inline/theme.ts, DEFAULT_STEP)
+  Export(src/inline/config.ts, DEFAULT_STEP)
+  Decl(src/inline/config.ts, DEFAULT_STEP)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/barrel.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/barrel.cases.tsx)","Decl(src/inline/cases/barrel.cases.tsx, Title)","Export(src/inline/stores/barrel.ts, TITLE)","ModuleInit(src/inline/stores/barrel.ts)","Decl(src/inline/stores/barrel.ts, useCounter)","Export(src/inline/theme.ts, DEFAULT_STEP)","Export(src/inline/config.ts, DEFAULT_STEP)","Decl(src/inline/config.ts, DEFAULT_STEP)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/barrel.ts"]}]}]}
 
-== src/inline/cases/stores.cases.tsx [symbol] --include-types
+== src/inline/cases/barrel.cases.tsx [symbol] --include-types
 -- --explain: exit 0
-Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Impact detected on target anchor via: "src/inline/config.ts"
 Path (downstream, symbol granularity):
-  File(src/inline/cases/stores.cases.tsx)
-  Decl(src/inline/cases/stores.cases.tsx, Counts)
-  Export(src/inline/stores/plain.ts, useCounter)
+  File(src/inline/cases/barrel.cases.tsx)
+  Decl(src/inline/cases/barrel.cases.tsx, Title)
+  Export(src/inline/stores/barrel.ts, TITLE)
+  ModuleInit(src/inline/stores/barrel.ts)
+  Decl(src/inline/stores/barrel.ts, useCounter)
+  Export(src/inline/theme.ts, DEFAULT_STEP)
+  Export(src/inline/config.ts, DEFAULT_STEP)
+  Decl(src/inline/config.ts, DEFAULT_STEP)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/barrel.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/barrel.cases.tsx)","Decl(src/inline/cases/barrel.cases.tsx, Title)","Export(src/inline/stores/barrel.ts, TITLE)","ModuleInit(src/inline/stores/barrel.ts)","Decl(src/inline/stores/barrel.ts, useCounter)","Export(src/inline/theme.ts, DEFAULT_STEP)","Export(src/inline/config.ts, DEFAULT_STEP)","Decl(src/inline/config.ts, DEFAULT_STEP)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/barrel.ts"]}]}]}
 
-== src/inline/cases/stores.cases.tsx [base]
+== src/inline/cases/barrel.cases.tsx [base]
 -- --explain: exit 0
-Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Impact detected on target anchor via: "src/inline/config.ts"
 Path (downstream, symbol granularity):
-  File(src/inline/cases/stores.cases.tsx)
-  Decl(src/inline/cases/stores.cases.tsx, Counts)
-  Export(src/inline/stores/plain.ts, useCounter)
+  File(src/inline/cases/barrel.cases.tsx)
+  Decl(src/inline/cases/barrel.cases.tsx, Title)
+  Export(src/inline/stores/barrel.ts, TITLE)
+  ModuleInit(src/inline/stores/barrel.ts)
+  Decl(src/inline/stores/barrel.ts, useCounter)
+  Export(src/inline/theme.ts, DEFAULT_STEP)
+  Export(src/inline/config.ts, DEFAULT_STEP)
+  ModuleInit(src/inline/config.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/barrel.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/barrel.cases.tsx)","Decl(src/inline/cases/barrel.cases.tsx, Title)","Export(src/inline/stores/barrel.ts, TITLE)","ModuleInit(src/inline/stores/barrel.ts)","Decl(src/inline/stores/barrel.ts, useCounter)","Export(src/inline/theme.ts, DEFAULT_STEP)","Export(src/inline/config.ts, DEFAULT_STEP)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/barrel.ts"]}]}]}
 
-== src/inline/cases/stores.cases.tsx [base] --include-types
+== src/inline/cases/barrel.cases.tsx [base] --include-types
 -- --explain: exit 0
-Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Impact detected on target anchor via: "src/inline/config.ts"
 Path (downstream, symbol granularity):
-  File(src/inline/cases/stores.cases.tsx)
-  Decl(src/inline/cases/stores.cases.tsx, Counts)
-  Export(src/inline/stores/plain.ts, useCounter)
+  File(src/inline/cases/barrel.cases.tsx)
+  Decl(src/inline/cases/barrel.cases.tsx, Title)
+  Export(src/inline/stores/barrel.ts, TITLE)
+  ModuleInit(src/inline/stores/barrel.ts)
+  Decl(src/inline/stores/barrel.ts, useCounter)
+  Export(src/inline/theme.ts, DEFAULT_STEP)
+  Export(src/inline/config.ts, DEFAULT_STEP)
+  ModuleInit(src/inline/config.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+{"anchors":[{"anchor":"src/inline/cases/barrel.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/barrel.cases.tsx)","Decl(src/inline/cases/barrel.cases.tsx, Title)","Export(src/inline/stores/barrel.ts, TITLE)","ModuleInit(src/inline/stores/barrel.ts)","Decl(src/inline/stores/barrel.ts, useCounter)","Export(src/inline/theme.ts, DEFAULT_STEP)","Export(src/inline/config.ts, DEFAULT_STEP)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/barrel.ts"]}]}]}

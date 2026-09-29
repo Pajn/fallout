@@ -15,6 +15,9 @@ import { useCounter as useSlices } from "../stores/slices";
 import { counterStore } from "../stores/vanilla";
 import { useCounter as useWithTypes } from "../stores/with-types-not-identity";
 import { useCounter as useShim } from "../shim/store";
+import { useCounter as useInlineBarrel } from "../inline/stores/barrel";
+import { useCounter as useInlinePlain } from "../inline/stores/plain";
+import { useCounter as useInlineReadsImport } from "../inline/stores/reads-import";
 
 export const Counts = () => (
   <ul>
@@ -34,5 +37,8 @@ export const Counts = () => (
     <li>{useSlices((state) => state.count)}</li>
     <li>{useWithTypes((state) => state.count)}</li>
     <li>{useShim().count}</li>
+    <li>{useInlinePlain((state) => state.count)}</li>
+    <li>{useInlineReadsImport((state) => state.count)}</li>
+    <li>{useInlineBarrel((state) => state.count)}</li>
   </ul>
 );

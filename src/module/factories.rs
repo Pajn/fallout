@@ -482,6 +482,7 @@ pub(crate) fn attach(
             .zip(call.quiet)
             .map(|((span, deps), quiet_when_called)| Argument {
                 span,
+                reads_imports: reads_imports(decls, &deps),
                 deps,
                 quiet_when_called,
             })
@@ -494,6 +495,32 @@ pub(crate) fn attach(
             missing: call.missing,
         });
     }
+}
+
+/// Whether code that depends on `deps` may read an imported binding: `deps` names
+/// one, or a declaration of this file does that `deps` reaches, followed as far as
+/// the declarations go.
+fn reads_imports(decls: &[Decl], deps: &Deps) -> bool {
+    if !deps.imports.is_empty() {
+        return true;
+    }
+    let objects = deps.member_refs.iter().map(|(object, _)| object);
+    let mut queue: Vec<DeclId> = deps.refs.iter().chain(objects).copied().collect();
+    let mut seen: AHashSet<DeclId> = AHashSet::default();
+    while let Some(decl) = queue.pop() {
+        if !seen.insert(decl) {
+            continue;
+        }
+        let Some(entry) = decls.get(decl as usize) else {
+            continue;
+        };
+        if !entry.imports.is_empty() {
+            return true;
+        }
+        let objects = entry.member_refs.iter().map(|(object, _)| object);
+        queue.extend(entry.refs.iter().chain(objects).copied());
+    }
+    false
 }
 
 fn push_unique<T: PartialEq>(list: &mut Vec<T>, value: T) {

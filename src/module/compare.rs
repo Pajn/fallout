@@ -386,7 +386,14 @@ enum Evaluation {
     /// Whether it did anything is a question about another module, and, for a
     /// factory that calls some of its arguments as it creates its value, about
     /// whether calling each of them runs anything. `quiet` holds the positions of
-    /// the arguments proven to run nothing when called.
+    /// the arguments proven to run nothing when called, and `reading` those of them
+    /// that may read an import.
+    ///
+    /// Reading an import evaluates its module where a project defers imports to
+    /// their first use, and whether this one does is the anchor's to say, not the
+    /// file's. So a quiet creator that starts or stops reading one changes what
+    /// loading the module does either way, which over-reports only where imports are
+    /// not deferred.
     ///
     /// Only those positions are kept, and not a flag for every argument, so that an
     /// argument added or removed that no factory could call quietly — a string, an
@@ -394,6 +401,7 @@ enum Evaluation {
     Call {
         head: String,
         quiet: Vec<usize>,
+        reading: Vec<usize>,
     },
 }
 
@@ -422,17 +430,20 @@ fn evaluation(module: &FineModule, statement: &Keyed<'_>, source: &str) -> Evalu
         .factory
         .as_ref()
         .map_or(statement.span.end, |call| call.interior.start);
-    let quiet = decl.factory.as_ref().map_or_else(Vec::new, |call| {
-        call.args
-            .iter()
-            .enumerate()
-            .filter(|(_, argument)| argument.quiet_when_called)
-            .map(|(index, _)| index)
-            .collect()
-    });
+    let positions = |keep: fn(&super::Argument) -> bool| {
+        decl.factory.as_ref().map_or_else(Vec::new, |call| {
+            call.args
+                .iter()
+                .enumerate()
+                .filter(|(_, argument)| keep(argument))
+                .map(|(index, _)| index)
+                .collect()
+        })
+    };
     Evaluation::Call {
         head: lines(&source[statement.span.start as usize..head as usize]),
-        quiet,
+        quiet: positions(|argument| argument.quiet_when_called),
+        reading: positions(|argument| argument.quiet_when_called && argument.reads_imports),
     }
 }
 
@@ -681,6 +692,24 @@ mod tests {
         let comparison = compared(&quiet, &quieter).expect("comparable");
         assert!(!comparison.init_differs);
         assert_eq!(comparison.changed.len(), 1);
+    }
+
+    #[test]
+    fn a_creator_that_starts_or_stops_reading_an_import_changes_initialisation() {
+        // With inline requires, reading an import evaluates its module, so a
+        // creator that starts or stops reading one changes what making the store
+        // loads. Which way the project bundles is not this file's to know, so the
+        // comparison counts it either way.
+        let store = |value: &str| {
+            format!(
+                "import {{ create }} from 'zustand';\nimport {{ a }} from './a';\nexport const store = create(() => ({{ value: {value} }}));\n"
+            )
+        };
+        let (reads, reads_nothing) = (store("a"), store("0"));
+        for (before, after) in [(&reads, &reads_nothing), (&reads_nothing, &reads)] {
+            let comparison = compared(before, after).expect("comparable");
+            assert!(comparison.init_differs, "{before} -> {after}");
+        }
     }
 
     #[test]

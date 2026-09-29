@@ -81,30 +81,20 @@ impl Made {
     /// only where each of them is a function written out in place that the
     /// local-helper proof clears when called there. One the call does not pass
     /// would be called all the same, and calling nothing throws.
-    pub fn creates_quietly(&self) -> bool {
+    ///
+    /// With `inline_requires`, reading an import evaluates the module it names, so
+    /// an argument that may read one is not quiet either. Initialisation then
+    /// reaches the whole declaration, and what it reads is followed as any read is.
+    pub fn creates_quietly(&self, inline_requires: bool) -> bool {
         match self.creation() {
             Creation::Frame => true,
             Creation::Calls(called) => called.iter().all(|&index| {
-                self.call()
-                    .args
-                    .get(index)
-                    .is_some_and(|argument| argument.quiet_when_called)
+                self.call().args.get(index).is_some_and(|argument| {
+                    argument.quiet_when_called && !(inline_requires && argument.reads_imports)
+                })
             }),
             Creation::Whole => false,
         }
-    }
-
-    /// What each argument that creating the value calls depends on.
-    pub fn called(&self) -> impl Iterator<Item = &Deps> {
-        let called: &[usize] = match self.creation() {
-            Creation::Calls(called) => called,
-            Creation::Frame | Creation::Whole => &[],
-        };
-        let args = &self.call().args;
-        called
-            .iter()
-            .filter_map(|&index| args.get(index))
-            .map(|argument| &argument.deps)
     }
 
     /// What the declaration depends on outside every argument: the callee, and the
@@ -424,7 +414,7 @@ export const t = createAsyncThunk(
         )
         .expect("made by the factory");
         assert_eq!(quiet.creation(), Creation::Calls(&[0]));
-        assert!(quiet.creates_quietly());
+        assert!(quiet.creates_quietly(false));
         // Every use of a store can read all of it, so nothing is read apart.
         assert_eq!(quiet.member_names().count(), 0);
         assert!(quiet.member("getState").is_none());
@@ -433,7 +423,20 @@ export const t = createAsyncThunk(
             "import { create } from 'zustand';\nexport const t = create(() => ({ id: register() }));\n",
         )
         .expect("made by the factory");
-        assert!(!loud.creates_quietly());
+        assert!(!loud.creates_quietly(false));
+
+        // Where imports are deferred to first use, reading one evaluates its module,
+        // whether the creator reads it or a helper it calls does. A creator that
+        // reads none is quiet either way.
+        assert!(quiet.creates_quietly(true));
+        for source in [
+            "import { create } from 'zustand';\nimport { base } from './tokens';\nexport const t = create(() => ({ base }));\n",
+            "import { create } from 'zustand';\nimport { base } from './tokens';\nfunction initial() { return { base }; }\nexport const t = create(() => initial());\n",
+        ] {
+            let made = store(source).expect("made by the factory");
+            assert!(made.creates_quietly(false), "{source}");
+            assert!(!made.creates_quietly(true), "{source}");
+        }
 
         // A thunk's payload creator is not called as the thunk is made, whatever
         // it runs.
@@ -441,7 +444,7 @@ export const t = createAsyncThunk(
             "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk('a/b', () => register());\n",
         )
         .expect("made by the factory");
-        assert!(thunk.creates_quietly());
+        assert!(thunk.creates_quietly(false));
 
         let other = "import { create } from 'another-library';\nexport const t = create(() => ({ count: 0 }));\n";
         assert!(store(other).is_none());
@@ -463,7 +466,7 @@ export const t = createAsyncThunk(
             ),
         ] {
             let made = store(&source).unwrap_or_else(|| panic!("{source}"));
-            assert!(made.creates_quietly(), "{source}");
+            assert!(made.creates_quietly(false), "{source}");
         }
     }
 
@@ -485,7 +488,7 @@ export const t = createAsyncThunk(
                 let source = format!("{import}\n{call}\n");
                 let made = store(&source).unwrap_or_else(|| panic!("{source}"));
                 assert_eq!(made.creation(), Creation::Calls(&[0]), "{source}");
-                assert!(made.creates_quietly(), "{source}");
+                assert!(made.creates_quietly(false), "{source}");
             }
         }
         // The equality function is kept for the hook, and is not called as the store
@@ -493,7 +496,7 @@ export const t = createAsyncThunk(
         let source = format!(
             "import {{ createWithEqualityFn }} from 'zustand/traditional';\nexport const t = createWithEqualityFn({CREATOR}, (a, b) => register(a, b));\n"
         );
-        assert!(store(&source).expect("made").creates_quietly());
+        assert!(store(&source).expect("made").creates_quietly(false));
 
         // A default Zustand does not export is no factory.
         let source = format!(

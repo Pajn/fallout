@@ -430,8 +430,9 @@ actions do, but calling one or reading through one is not proven, and what the
 creator reads must already be declared where the store is made. Where the proof
 holds, initialisation reaches only the call around the creator, and an edit inside
 the creator reaches only what uses the store. With [inline
-requires](#inline-requires), initialisation also reaches every module the creator
-may read, since reading one of its names is what evaluates it.
+requires](#inline-requires), reading an import evaluates the module it names, so a
+creator that may read one, directly or through a function of its file, is not proven
+either, and its store stays initialisation.
 
 Recognised are `create` from `zustand` and `zustand/react`, `createStore` from
 `zustand` and `zustand/vanilla`, `createWithEqualityFn` from `zustand/traditional`,

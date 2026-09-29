@@ -1,8 +1,7 @@
 # Zustand stores, one per scenario, each in a module of its own beside a constant
 # `TITLE`, with a case of its own that reads only that constant. Every store's
 # initial state is edited, and no case reads more than one store's module, so each
-# title case answers for its own scenario alone. The two cases that use the stores
-# read every store of their app.
+# title case answers for its own scenario alone. One case uses every store.
 #
 # `src/shim` has a tsconfig that maps `zustand` to a file of the app, and
 # `src/inline` is an app bundled with inline requires.
@@ -157,8 +156,9 @@ symbol = [
     "Decl(src/stores/with-types-not-identity.ts, useCounter)",
 ]
 
-# `zustand` mapped by `src/shim/tsconfig.json` to a file of the app, whose `create`
-# records every store it makes. The name is Zustand's and the function is not.
+# `zustand` mapped by `src/shim/tsconfig.json` to `src/lib/state.ts`, whose own
+# `create` records every store it makes. The name is Zustand's and the function is
+# not.
 [[anchor]]
 path = "src/cases/shim.cases.tsx"
 affected = true
@@ -193,7 +193,9 @@ affected = false
 
 # A creator reads `DEFAULT_STEP` when its store is made, which is when the store's
 # module is evaluated, so a case that reads only the constant beside the store
-# evaluates the config module too. A top-level call added there reaches that case,
+# evaluates the config module too. A creator that reads an import is therefore
+# not quiet here, and making the store is initialisation, whose reads are followed
+# as any are. A top-level call added to the config module reaches that case,
 # although nothing it reads depends on the store.
 [[anchor]]
 path = "src/inline/cases/reads-import.cases.tsx"
@@ -205,17 +207,26 @@ symbol = [
     "Decl(src/inline/cases/reads-import.cases.tsx, Title)",
     "Export(src/inline/stores/reads-import.ts, TITLE)",
     "ModuleInit(src/inline/stores/reads-import.ts)",
-    "ModuleInit(src/inline/config.ts)",
+    "Decl(src/inline/stores/reads-import.ts, useCounter)",
+    "Export(src/inline/config.ts, DEFAULT_STEP)",
+    "Decl(src/inline/config.ts, DEFAULT_STEP)",
 ]
 
-# A case that uses both of that app's stores is reached by the edits.
+# The same read, through `theme.ts`, which re-exports `DEFAULT_STEP` from the config
+# module. The re-export is followed to the config module, whose top-level call
+# reaches the case beside this store too.
 [[anchor]]
-path = "src/inline/cases/stores.cases.tsx"
+path = "src/inline/cases/barrel.cases.tsx"
 affected = true
 
 [anchor.explain]
 symbol = [
-    "File(src/inline/cases/stores.cases.tsx)",
-    "Decl(src/inline/cases/stores.cases.tsx, Counts)",
-    "Export(src/inline/stores/plain.ts, useCounter)",
+    "File(src/inline/cases/barrel.cases.tsx)",
+    "Decl(src/inline/cases/barrel.cases.tsx, Title)",
+    "Export(src/inline/stores/barrel.ts, TITLE)",
+    "ModuleInit(src/inline/stores/barrel.ts)",
+    "Decl(src/inline/stores/barrel.ts, useCounter)",
+    "Export(src/inline/theme.ts, DEFAULT_STEP)",
+    "Export(src/inline/config.ts, DEFAULT_STEP)",
+    "Decl(src/inline/config.ts, DEFAULT_STEP)",
 ]
