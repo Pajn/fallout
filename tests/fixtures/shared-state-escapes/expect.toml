@@ -41,3 +41,33 @@ symbol = [
     "Decl(src/state/member-alias.ts, hasItems)",
     "Decl(src/state/member-alias.ts, add)",
 ]
+
+# `state` is a reassigned `let`, read as one value. `items` returns `state.items`,
+# and whoever calls it can change the array `hasItems` reads the length of.
+[[anchor]]
+path = "src/pages/ReturnMemberPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ReturnMemberPage.tsx)",
+    "Decl(src/pages/ReturnMemberPage.tsx, ReturnMemberPage)",
+    "Export(src/state/return-member.ts, hasItems)",
+    "Decl(src/state/return-member.ts, hasItems)",
+    "Decl(src/state/return-member.ts, items)",
+]
+
+# `state` is shared property by property. `items` returns `state.items` from an
+# arrow's expression body, and whoever calls it can change the array.
+[[anchor]]
+path = "src/pages/ReturnPropertyPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ReturnPropertyPage.tsx)",
+    "Decl(src/pages/ReturnPropertyPage.tsx, ReturnPropertyPage)",
+    "Export(src/state/return-property.ts, hasItems)",
+    "Decl(src/state/return-property.ts, hasItems)",
+    "Decl(src/state/return-property.ts, items)",
+]

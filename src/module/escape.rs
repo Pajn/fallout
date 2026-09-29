@@ -420,6 +420,10 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::ArrowFunctionExpression(arrow) if policy.returns == Some(arrow.span) => {
             Fate::InPlace
         }
+        // Anywhere else, what is returned is handed to the caller, which is free to
+        // change it. A number read off a part may be anything else to a caller
+        // that does not know what the part is.
+        AstKind::ArrowFunctionExpression(_) | AstKind::ReturnStatement(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -895,10 +899,12 @@ mod tests {
         "[...@];"                                    => [E,  E,  E,  E,  E,  E,  E,  E ];
         "({ ...@ });"                                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Returned, thrown, awaited or yielded.
-        "return @;"                                  => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return @.x;"                                => [U,  U,  U,  U,  U,  E,  E,  E ];
-        "const g = () => @;"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "const g = () => @.x;"                       => [U,  U,  U,  U,  U,  E,  E,  E ];
+        "return @;"                                  => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return @.x;"                                => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return @.length;"                           => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return @.x === 1;"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "const g = () => @;"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const g = () => @.x;"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
         "throw @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
         "await @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
         "yield @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
@@ -908,8 +914,8 @@ mod tests {
         "f(o ?? @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "f(c ? @ : d);"                              => [E,  E,  E,  E,  E,  E,  E,  E ];
         "f((0, @));"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "return c ? @ : d;"                          => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "return o && @;"                             => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "return c ? @ : d;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return o && @;"                             => [E,  E,  E,  E,  E,  E,  E,  E ];
         "(o || @) === 1;"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
         "return <li>{o && @}</li>;"                  => [E,  I,  I,  I,  I,  I,  E,  I ];
         "return <Foo>{o && @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
@@ -922,7 +928,7 @@ mod tests {
         "return [@];"                                => [E,  U,  U,  U,  U,  E,  E,  E ];
         // Held in a binding, or a class field or default of one.
         "const v = @; f(v);"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "const v = @; return v;"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
+        "const v = @; return v;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
         "const v = @; v.x;"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
         "const v = @; v.x = 1;"                      => [E,  E,  E,  E,  E,  E,  E,  E ];
         "const v = @; v.x();"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
@@ -1101,8 +1107,11 @@ mod tests {
 
     #[test]
     fn a_property_read_that_stays_in_the_expression_is_a_read() {
-        assert_eq!(uses_of_s("export const a = () => S.x;"), [Use::Read]);
-        assert_eq!(uses_of_s("export const a = () => S[\"y\"];"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => { S.x; };"), [Use::Read]);
+        assert_eq!(
+            uses_of_s("export const a = () => { S[\"y\"]; };"),
+            [Use::Read]
+        );
         assert_eq!(uses_of_s("export const a = () => S.x + 1;"), [Use::Read]);
     }
 
@@ -1234,7 +1243,7 @@ mod tests {
             "(S.a as any).b",
             "{ if (S.a.b === 1) go(); }",
         ] {
-            let source = format!("export const a = () => {body};");
+            let source = format!("export const a = () => {{ {body}; }};");
             assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
         }
     }
@@ -1255,14 +1264,19 @@ mod tests {
             [Use::Mutate]
         );
         assert_eq!(uses_of_s("export const a = () => [...S];"), [Use::Mutate]);
-        // Returning the binding hands it to the caller.
+        // Returning the binding, or anything read off it, hands it to the caller.
         assert_eq!(uses_of_s("export const a = () => S;"), [Use::Mutate]);
+        assert_eq!(uses_of_s("export const a = () => S.x;"), [Use::Mutate]);
+        assert_eq!(
+            uses_of_s("export const a = () => { return S.items.length; };"),
+            [Use::Mutate]
+        );
     }
 
     #[test]
     fn each_reference_is_read_on_its_own() {
         assert_eq!(
-            uses_of_s("export const a = () => { other(S); return S.y };"),
+            uses_of_s("export const a = () => { other(S); return S.y === 1 };"),
             [Use::Mutate, Use::Read]
         );
     }

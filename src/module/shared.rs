@@ -119,6 +119,15 @@ impl Collection {
         }
     }
 
+    /// Whether the built-in property `name` holds how many values the collection
+    /// holds, a number.
+    fn counts_in(self, name: &str) -> bool {
+        matches!(
+            (self, name),
+            (Collection::Array, "length") | (Collection::Map | Collection::Set, "size")
+        )
+    }
+
     /// What calling `name` hands back and whether it takes a callback, where the
     /// built-in method of that name reads the collection and changes none of it.
     /// What it hands back is a primitive, which holds nothing of the collection's
@@ -493,6 +502,17 @@ fn reference_accesses(
             _ => whole(true),
         };
     }
+    // What a collection whose type the file shows holds in `length` or `size` is a
+    // number, which holds nothing of it wherever it goes. Writing it still writes
+    // the collection.
+    if let Mode::Collection(collection) = mode
+        && property
+            .as_deref()
+            .is_some_and(|name| collection.counts_in(name))
+        && !member_written(nodes, member)
+    {
+        return whole(false);
+    }
     // Anything else is done to the property's value, however deep the chain goes:
     // `state.list.push(x)` writes `list`. A collection is one value, however it is
     // reached into, so what is done with an element read off it counts as done to
@@ -764,7 +784,7 @@ mod tests {
 
         let source = format!(
             "{STATE}export const write = () => {{ state.theme = 'dark'; }};
-            export const read = () => state.volume;"
+            export const read = () => state.volume > 0;"
         );
         assert_eq!(
             writers(&source, "state"),
@@ -1082,6 +1102,33 @@ mod tests {
     }
 
     #[test]
+    fn the_size_of_a_collection_made_in_the_file_is_a_number_wherever_it_goes() {
+        // The file shows the type, so what `length` and `size` hold is a number,
+        // which holds nothing of the collection however it is used.
+        for (binding, body) in [
+            (ARRAY, "V.length"),
+            (ARRAY, "{ return V.length; }"),
+            (ARRAY, "register(V.length)"),
+            (MAP, "V.size"),
+            (SET, "[V.size]"),
+        ] {
+            assert!(!peek_writes(binding, body), "{body}");
+        }
+        // Writing it still writes the collection, and what an element holds is not
+        // known to be a number.
+        for (binding, body) in [
+            (ARRAY, "{ V.length = 0; }"),
+            (ARRAY, "{ V.length++; }"),
+            (ARRAY, "V[0].length"),
+            (ARRAY, "V.at(0).length"),
+            (MAP, "V.get(k).size"),
+            (WEAK_MAP, "V.size"),
+        ] {
+            assert!(peek_writes(binding, body), "{body}");
+        }
+    }
+
+    #[test]
     fn what_a_read_method_hands_out_is_a_read_only_where_it_is_used_in_place() {
         for body in [
             "V.get(k) === x",
@@ -1279,10 +1326,18 @@ mod tests {
                 "{ delete V.a.b; }",
                 "V.items.push(1)",
                 "V.a.b.c()",
+                // Returned, since the caller is free to change it.
+                "V.a.b",
+                "V.items.length",
             ] {
                 assert!(peek_writes(binding, body), "{binding} {body}");
             }
-            for body in ["V.items.length", "V.a.b", "V.a.b === x", "`${V.a.b}`"] {
+            for body in [
+                "V.items.length > 0",
+                "{ V.a.b; }",
+                "V.a.b === x",
+                "`${V.a.b}`",
+            ] {
                 assert!(!peek_writes(binding, body), "{binding} {body}");
             }
         }
