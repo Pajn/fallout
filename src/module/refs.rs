@@ -10,7 +10,7 @@ use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
 
 use super::decls::{DeclDraft, ImportBinding, RequireCall, source_id};
-use super::escape;
+use super::escape::{self, Held, Policy};
 use super::members::ObjectRef;
 use super::parse::{Ctx, span_of};
 use super::shared::{self, Access};
@@ -170,14 +170,11 @@ pub(crate) fn link(
 /// through `this`. Anything else the whole-value rule counts as a write still is
 /// one: handing a member to other code, `wipe(store.items)`, can change what it
 /// holds.
-pub(crate) fn writes_object(
-    nodes: &AstNodes<'_>,
-    node_id: NodeId,
-    object: Option<&ObjectRef>,
-) -> bool {
-    if classify(nodes, node_id) != Use::Mutate {
+pub(crate) fn writes_object(ctx: &Ctx<'_>, node_id: NodeId, object: Option<&ObjectRef>) -> bool {
+    if classify(ctx, node_id) != Use::Mutate {
         return false;
     }
+    let nodes = ctx.semantic.nodes();
     let Some(object) = object else {
         return true;
     };
@@ -471,7 +468,8 @@ pub(crate) enum Use {
 /// The listed shapes leave the binding as they found it. Everything else — passing
 /// it somewhere, returning it, assigning through it, spreading it — hands the value
 /// to code this declaration does not contain, so it counts as a write.
-pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
+pub(crate) fn classify(ctx: &Ctx<'_>, node_id: NodeId) -> Use {
+    let nodes = ctx.semantic.nodes();
     let span = nodes.get_node(node_id).kind().span();
     match nodes.parent_kind(node_id) {
         // `typeof s` reads nothing that can be written back.
@@ -517,58 +515,19 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
         AstKind::JSXExpressionContainer(_) => {
             in_place(escape::rendered_in_place(nodes, nodes.parent_id(node_id)))
         }
-        // `s.x` is a read where the value it yields stays in the expression.
-        AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
-            chain_use(nodes, nodes.parent_id(node_id))
-        }
+        // `s.x` is a read where the value it yields stays in the expression, followed
+        // to the end of the chain it starts. What a property holds is part of what
+        // the binding holds, so a write anywhere down the chain, `s.a.b = 1`, writes
+        // the binding, and so does a method called on anything read off it,
+        // `s.items.push(1)`, or handing it to other code, a component included, as
+        // in `<List items={s.items} />`. Reading it in place, `s.items.length` or
+        // `<li>{s.name}</li>`, stays a read however deep it goes.
+        AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => in_place(
+            escape::uses(ctx, nodes.parent_id(node_id), Held::Part, &Policy::WHOLE, 0)
+                .iter()
+                .all(|(_, fate)| fate.in_place()),
+        ),
         _ => Use::Mutate,
-    }
-}
-
-/// How a member expression read off a binding is used, followed to the end of the
-/// chain it starts.
-///
-/// What a property holds is part of what the binding holds, so a write anywhere
-/// down the chain, `s.a.b = 1`, writes the binding, and so does a method called on
-/// anything read off it, `s.items.push(1)`, or handing it to other code, a
-/// component included, as in `<List items={s.items} />`. Reading it in place,
-/// `s.items.length` or `<li>{s.name}</li>`, stays a read however deep it goes.
-fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
-    let mut current = member;
-    loop {
-        let (outer, span) = escape::through_wrappers(nodes, current);
-        match nodes.parent_kind(outer) {
-            AstKind::StaticMemberExpression(next) if next.object.span() == span => {
-                current = nodes.parent_id(outer);
-            }
-            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {
-                current = nodes.parent_id(outer);
-            }
-            AstKind::ChainExpression(_) => current = nodes.parent_id(outer),
-            _ => break,
-        }
-    }
-    let (top, span) = escape::through_wrappers(nodes, current);
-    match nodes.parent_kind(top) {
-        AstKind::AssignmentExpression(_)
-        | AstKind::UpdateExpression(_)
-        | AstKind::CallExpression(_)
-        | AstKind::NewExpression(_)
-        | AstKind::SpreadElement(_)
-        | AstKind::AssignmentTargetPropertyIdentifier(_)
-        | AstKind::AssignmentTargetPropertyProperty(_)
-        | AstKind::ArrayAssignmentTarget(_)
-        | AstKind::AssignmentTargetRest(_)
-        | AstKind::AssignmentTargetWithDefault(_)
-        | AstKind::ForInStatement(_)
-        | AstKind::ForOfStatement(_) => Use::Mutate,
-        AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => Use::Mutate,
-        // A tag is called with what it was read off as `this`, as a method is.
-        AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => Use::Mutate,
-        AstKind::JSXExpressionContainer(_) => {
-            in_place(escape::rendered_in_place(nodes, nodes.parent_id(top)))
-        }
-        _ => Use::Read,
     }
 }
 
@@ -1185,6 +1144,10 @@ mod tests {
             .with_build_nodes(true)
             .build(&parsed.program)
             .semantic;
+        let ctx = super::Ctx {
+            semantic: &semantic,
+            statements: Vec::new(),
+        };
         let scoping = semantic.scoping();
 
         let mut found: Vec<(u32, Use)> = Vec::new();
@@ -1195,7 +1158,7 @@ mod tests {
             for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
                 let node_id = scoping.get_reference(*reference_id).node_id();
                 let start = semantic.nodes().get_node(node_id).kind().span().start;
-                found.push((start, classify(semantic.nodes(), node_id)));
+                found.push((start, classify(&ctx, node_id)));
             }
         }
         found.sort_by_key(|(start, _)| *start);

@@ -57,6 +57,10 @@ impl Fate {
 /// What a value holds, which decides what may be done with it in place.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Held {
+    /// Something read off a shared binding's value: a property, or anything read
+    /// off one. What it holds is part of the value, so a change made through it is
+    /// a change to the value.
+    Part,
     /// A Zustand store's state, whose properties may be actions.
     State,
     /// Something read off the state.
@@ -101,6 +105,8 @@ pub(crate) struct Policy {
     /// with what it hands out, the span of that arrow. Anywhere else a return
     /// hands the value on.
     returns: Option<OxcSpan>,
+    /// How a binding declared to hold the value is followed.
+    aliases: Aliases,
     /// A position the lists below do not know. Temporary: the soundness PR takes
     /// every such position as an escape.
     legacy_unknown: Fate,
@@ -110,6 +116,26 @@ pub(crate) struct Policy {
     /// on for every policy.
     follow_value_ops: bool,
 }
+
+/// How a binding declared to hold a value, `const v = value`, is followed.
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum Aliases {
+    /// Not followed: the declaration is a position the policy does not know.
+    /// Temporary: the soundness PR follows a local `const` for every policy.
+    Unfollowed,
+    /// A local `const` that holds the value, or takes it apart one level, is
+    /// followed to its own uses here, and must leave it in place for the
+    /// declaration to.
+    Local,
+    /// Followed by the caller's adapter, which credits each use to the
+    /// declaration it is written in.
+    Credited(Credit),
+}
+
+/// Follows the alias the declarator above `value` declares, for [`Aliases::Credited`]:
+/// every use it is put to, each with where it is written, where `own` is where the
+/// declaration itself is and `depth` how many aliases were followed to reach it.
+pub(crate) type Credit = for<'a> fn(&Ctx<'a>, NodeId, u32, usize) -> Vec<(u32, Fate)>;
 
 impl Policy {
     /// What a Zustand store's `getState` or a collection's read method hands out,
@@ -121,9 +147,38 @@ impl Policy {
         test: Fate::InPlace,
         discard: Fate::InPlace,
         returns: None,
+        aliases: Aliases::Local,
         legacy_unknown: Fate::Escapes,
         follow_value_ops: false,
     };
+
+    /// What is read off a binding read as one value. Anything this does not know
+    /// leaves it in place, and so does a binding declared to hold it.
+    pub(crate) const WHOLE: Policy = Policy {
+        arithmetic: Fate::InPlace,
+        test: Fate::InPlace,
+        discard: Fate::InPlace,
+        returns: None,
+        aliases: Aliases::Unfollowed,
+        legacy_unknown: Fate::InPlace,
+        follow_value_ops: false,
+    };
+
+    /// A property read off an object shared property by property or read only for
+    /// its members, or an element read off a collection the file makes. Anything
+    /// this does not know leaves it in place. A binding declared to hold it is
+    /// followed by `credit`.
+    pub(crate) const fn parts(credit: Credit) -> Policy {
+        Policy {
+            arithmetic: Fate::InPlace,
+            test: Fate::InPlace,
+            discard: Fate::InPlace,
+            returns: None,
+            aliases: Aliases::Credited(credit),
+            legacy_unknown: Fate::InPlace,
+            follow_value_ops: false,
+        }
+    }
 
     /// This policy, with the expression body of the arrow at `arrow` in place.
     fn returning(self, arrow: Option<OxcSpan>) -> Policy {
@@ -161,7 +216,32 @@ pub(crate) fn uses(
         return vec![(at, Fate::InPlace)];
     }
     let landing = climb(nodes, value, held, policy);
+    if let Aliases::Credited(credit) = policy.aliases
+        && let AstKind::VariableDeclarator(declarator) = nodes.parent_kind(landing.top)
+        && declarator
+            .init
+            .as_ref()
+            .is_some_and(|init| init.span() == landing.span)
+    {
+        return credit(ctx, landing.top, at, depth);
+    }
     vec![(at, fate(ctx, &landing, policy, depth))]
+}
+
+/// Whether the member expression at `member` is called, or used as a tag, as it
+/// stands: a method called on the value it was read off, which gets that value as
+/// `this`.
+pub(crate) fn called_as_method(nodes: &AstNodes<'_>, member: NodeId) -> bool {
+    let mut current = member;
+    loop {
+        let (outer, span) = through_wrappers(nodes, current);
+        match nodes.parent_kind(outer) {
+            AstKind::ChainExpression(_) => current = nodes.parent_id(outer),
+            AstKind::CallExpression(call) => return call.callee.span() == span,
+            AstKind::TaggedTemplateExpression(tagged) => return tagged.tag.span() == span,
+            _ => return false,
+        }
+    }
 }
 
 /// Whether every use `value` is put to leaves it in place.
@@ -281,11 +361,13 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::ArrowFunctionExpression(arrow) if policy.returns == Some(arrow.span) => {
             Fate::InPlace
         }
+        // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
-            if declarator
-                .init
-                .as_ref()
-                .is_some_and(|init| init.span() == span) =>
+            if matches!(policy.aliases, Aliases::Local)
+                && declarator
+                    .init
+                    .as_ref()
+                    .is_some_and(|init| init.span() == span) =>
         {
             let declaration = nodes.parent_id(parent);
             let local_const = matches!(

@@ -30,7 +30,8 @@ use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::GetSpan;
 
 use super::escape::{
-    ALIAS_DEPTH, CallRule, Held, method_fate, rendered_in_place, through_wrappers,
+    self, ALIAS_DEPTH, CallRule, Fate, Held, Policy, called_as_method, method_fate,
+    through_wrappers,
 };
 use super::members::object_literal;
 use super::parse::Ctx;
@@ -383,7 +384,7 @@ pub(crate) fn independent_properties(ctx: &Ctx<'_>, symbol: SymbolId) -> bool {
 pub(crate) fn accesses(ctx: &Ctx<'_>, node_id: NodeId, mode: Mode) -> Vec<(u32, Access)> {
     let at = ctx.semantic.nodes().get_node(node_id).kind().span().start;
     let mut uses = if mode == Mode::Whole {
-        let write = classify(ctx.semantic.nodes(), node_id) == Use::Mutate;
+        let write = classify(ctx, node_id) == Use::Mutate;
         vec![(at, Access::whole(write))]
     } else {
         reference_accesses(ctx, node_id, mode, 0)
@@ -459,157 +460,87 @@ fn reference_accesses(
         AstKind::ExportDefaultDeclaration(_) if matches!(mode, Mode::Members(_)) => {
             return Vec::new();
         }
-        _ => return whole(classify(nodes, node_id) == Use::Mutate),
+        _ => return whole(classify(ctx, node_id) == Use::Mutate),
     };
 
     // `__proto__` is the prototype, through which every property can change.
     if property.as_deref() == Some("__proto__") {
         return whole(true);
     }
-    // A collection is one value, however it is reached into. What is done with an
-    // element read off it counts as done to it, however deep the chain goes, so
-    // `list[0].count = 1` writes `list`.
-    if let Mode::Collection(collection) = mode {
-        return match property_use(ctx, nodes.parent_id(top), depth) {
-            PropertyUse::Receiver => whole(
+    // A method called on the property gets the object as `this`, through which it
+    // can reach the whole of it. The rule for the binding's methods says which
+    // calls leave it be.
+    let member = nodes.parent_id(top);
+    if called_as_method(nodes, member) {
+        return match mode {
+            Mode::Collection(collection) => whole(
                 !method_fate(ctx, node_id, CallRule::Collection(collection))
                     .is_some_and(|(_, fate)| fate.in_place()),
             ),
-            PropertyUse::Uses(uses) => uses
-                .into_iter()
-                .map(|(offset, write)| (offset.unwrap_or(at), Access::whole(write)))
-                .collect(),
-        };
-    }
-    match property_use(ctx, nodes.parent_id(top), depth) {
-        PropertyUse::Receiver
-            if matches!(mode, Mode::Members(callable)
-                if property.as_ref().is_some_and(|name| callable.contains(name))) =>
-        {
-            vec![(
-                at,
-                Access {
-                    property,
-                    write: false,
-                    read_call: None,
-                },
-            )]
-        }
-        PropertyUse::Receiver => whole(true),
-        PropertyUse::Uses(uses) => uses
-            .into_iter()
-            .map(|(offset, write)| {
-                let offset = offset.unwrap_or(at);
-                (
-                    offset,
+            Mode::Members(callable)
+                if property
+                    .as_ref()
+                    .is_some_and(|name| callable.contains(name)) =>
+            {
+                vec![(
+                    at,
                     Access {
-                        property: property.clone(),
-                        write,
+                        property,
+                        write: false,
                         read_call: None,
                     },
-                )
-            })
+                )]
+            }
+            _ => whole(true),
+        };
+    }
+    // Anything else is done to the property's value, however deep the chain goes:
+    // `state.list.push(x)` writes `list`. A collection is one value, however it is
+    // reached into, so what is done with an element read off it counts as done to
+    // it: `list[0].count = 1` writes `list`.
+    let (held, property) = match mode {
+        Mode::Collection(_) => (Held::Stored, None),
+        _ => (Held::Part, property),
+    };
+    // A use where the property is read is the reference's own.
+    let read_at = nodes.get_node(member).kind().span().start;
+    escape::uses(ctx, member, held, &Policy::parts(credit_alias), depth)
+        .into_iter()
+        .map(|(offset, fate)| {
+            (
+                if offset == read_at { at } else { offset },
+                Access {
+                    property: property.clone(),
+                    write: !fate.in_place(),
+                    read_call: None,
+                },
+            )
+        })
+        .collect()
+}
+
+/// The uses a `const` alias of a property is put to, for [`Policy::parts`]: what
+/// the alias declared by the declarator above `value` does, the property does,
+/// credited where it is written, as `const settings = state.settings` makes a write
+/// through `settings` a write to the property wherever it is made. The alias holds
+/// the property's value, not the object, so whatever it calls is called on that
+/// value. As for an alias of the object, one this cannot follow hands the property
+/// on at `own`, where it is declared, and each of its uses counts where that use is
+/// written.
+fn credit_alias(ctx: &Ctx<'_>, value: NodeId, own: u32, depth: usize) -> Vec<(u32, Fate)> {
+    let fate = |write| if write { Fate::Escapes } else { Fate::InPlace };
+    match followed_alias(ctx, value, Mode::Properties, depth) {
+        Some(uses) => uses
+            .into_iter()
+            .map(|(offset, access)| (offset, fate(access.write)))
             .collect(),
-    }
-}
-
-/// What is done with one property once it has been read off the object.
-enum PropertyUse {
-    /// It is called as a method, which hands it the whole object as `this`.
-    Receiver,
-    /// Each use of the property's value, with where it is written if an alias
-    /// carried it elsewhere, and whether it could change the value.
-    Uses(Vec<(Option<u32>, bool)>),
-}
-
-/// Follows a property read to what is done with it: `state.list.push(x)` writes
-/// `list` however deep the chain, and `state.theme()` is a method call.
-fn property_use(ctx: &Ctx<'_>, member: NodeId, depth: usize) -> PropertyUse {
-    let nodes = ctx.semantic.nodes();
-    let mut current = member;
-    let mut deeper = false;
-    loop {
-        let (outer, span) = through_wrappers(nodes, current);
-        match nodes.parent_kind(outer) {
-            AstKind::StaticMemberExpression(next) if next.object.span() == span => {
-                current = nodes.parent_id(outer);
-                deeper = true;
-            }
-            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {
-                current = nodes.parent_id(outer);
-                deeper = true;
-            }
-            AstKind::ChainExpression(_) => current = nodes.parent_id(outer),
-            _ => break,
-        }
-    }
-
-    let (top, span) = through_wrappers(nodes, current);
-    let written = |write| PropertyUse::Uses(vec![(None, write)]);
-    match nodes.parent_kind(top) {
-        AstKind::CallExpression(call) if call.callee.span() == span => {
-            if deeper {
-                written(true)
-            } else {
-                PropertyUse::Receiver
-            }
-        }
-        AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => {
-            if deeper {
-                written(true)
-            } else {
-                PropertyUse::Receiver
-            }
-        }
-        AstKind::VariableDeclarator(declarator)
-            if declarator
-                .init
-                .as_ref()
-                .is_some_and(|init| init.span() == span) =>
-        {
-            // `const settings = state.settings`: a write through `settings` is a
-            // write to the property, wherever it is made.
-            // The alias holds the property's value, not the object, so whatever it
-            // calls is called on that value.
-            match followed_alias(ctx, top, Mode::Properties, depth) {
-                Some(uses) => PropertyUse::Uses(
-                    uses.into_iter()
-                        .map(|(offset, access)| (Some(offset), access.write))
-                        .collect(),
-                ),
-                // As for an alias of the object, but of this one property.
-                None => PropertyUse::Uses(
-                    std::iter::once((None, true))
-                        .chain(
-                            untracked_uses(ctx, top, depth)
-                                .into_iter()
-                                .map(|(offset, write)| (Some(offset), write)),
-                        )
-                        .collect(),
-                ),
-            }
-        }
-        // Handed to other code, stored, written, or deleted: the value can change.
-        AstKind::CallExpression(_)
-        | AstKind::NewExpression(_)
-        | AstKind::SpreadElement(_)
-        | AstKind::AssignmentExpression(_)
-        | AstKind::UpdateExpression(_)
-        | AstKind::AssignmentTargetPropertyIdentifier(_)
-        | AstKind::AssignmentTargetPropertyProperty(_)
-        | AstKind::ArrayAssignmentTarget(_)
-        | AstKind::AssignmentTargetRest(_)
-        | AstKind::AssignmentTargetWithDefault(_)
-        | AstKind::ForInStatement(_)
-        | AstKind::ForOfStatement(_)
-        | AstKind::JSXOpeningElement(_)
-        | AstKind::JSXClosingElement(_) => written(true),
-        AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => written(true),
-        AstKind::JSXExpressionContainer(_) => {
-            written(!rendered_in_place(nodes, nodes.parent_id(top)))
-        }
-        // Read where it stands, as the whole-value rule reads `s.x`.
-        _ => written(false),
+        None => std::iter::once((own, Fate::Escapes))
+            .chain(
+                untracked_uses(ctx, value, depth)
+                    .into_iter()
+                    .map(|(offset, write)| (offset, fate(write))),
+            )
+            .collect(),
     }
 }
 

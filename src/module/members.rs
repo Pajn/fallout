@@ -588,7 +588,7 @@ fn link_members(
                     );
                 }
                 readers.push((index, position));
-                if writes_object(nodes, node_id, object) {
+                if writes_object(ctx, node_id, object) {
                     writers.push((index, position));
                 }
             }
