@@ -1,0 +1,1 @@
+{ "compilerOptions": { "paths": { "zustand": ["./src/shims/zustand.ts"] } } }

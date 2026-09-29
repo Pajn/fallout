@@ -1,0 +1,19 @@
+# `zustand` is mapped by the tsconfig to a file of the app, whose `create` records
+# every store it makes. The name is Zustand's but the function is not, so making
+# the store is initialisation, and a page that imports only the constant beside the
+# store is reached by an edit to it.
+[[anchor]]
+path = "src/cases/counter-title.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/counter-title.cases.tsx)",
+    "ModuleInit(src/cases/counter-title.cases.tsx)",
+    "ModuleInit(src/store/counter.ts)",
+    "Decl(src/store/counter.ts, useCounter)",
+]
+
+[[anchor]]
+path = "src/cases/counter-button.cases.tsx"
+affected = true
