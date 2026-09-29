@@ -1,0 +1,167 @@
+# Zustand stores wrapped in middleware, one per scenario, each in a module of its
+# own beside a constant `TITLE`, with a case of its own that reads only that
+# constant. Every store's initial state is edited, unless its scenario says
+# otherwise, and no case reads more than one store's module, so each title case
+# answers for its own scenario alone. One case uses every store.
+#
+# `src/inline` is an app bundled with inline requires.
+
+# Middleware recognised as a wrapper: calling it only builds the creator it
+# returns, and calling that creator calls the one it wraps. Each creator here only
+# builds an object of state and actions, so loading the module runs nothing
+# observable, and an edit to the store does not reach a case that reads only the
+# constant beside it.
+
+# `immer(creator)` from `zustand/middleware/immer`.
+[[anchor]]
+path = "src/cases/immer.cases.tsx"
+affected = false
+
+# `subscribeWithSelector(creator)` from `zustand/middleware`.
+[[anchor]]
+path = "src/cases/subscribe-with-selector.cases.tsx"
+affected = false
+
+# `combine(initialState, creator)` from `zustand/middleware`, whose initial state,
+# where the edit is, is an object literal that runs nothing.
+[[anchor]]
+path = "src/cases/combine.cases.tsx"
+affected = false
+
+# All three, nested, in the curried form.
+[[anchor]]
+path = "src/cases/nested.cases.tsx"
+affected = false
+
+# The creator inside `immer` tracked an event as the store was made, and no longer
+# does. The current version's creator runs nothing, so only a base revision sees
+# the work that went, as for a creator with no middleware around it.
+[[anchor]]
+path = "src/cases/immer-effect-removed.cases.tsx"
+affected = true
+from = "base"
+
+[anchor.explain]
+base = [
+    "File(src/cases/immer-effect-removed.cases.tsx)",
+    "ModuleInit(src/cases/immer-effect-removed.cases.tsx)",
+    "ModuleInit(src/stores/immer-effect-removed.ts)",
+]
+
+# Stores that stay initialisation: an edit to each reaches the case beside it, by
+# way of the store's whole declaration.
+
+# The creator inside `immer` tracks an event as the store is made, which the edit
+# adds. Against a base revision, a creator that ran nothing and now runs something
+# is a change to what loading the module does.
+[[anchor]]
+path = "src/cases/immer-effect-added.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/immer-effect-added.cases.tsx)",
+    "ModuleInit(src/cases/immer-effect-added.cases.tsx)",
+    "ModuleInit(src/stores/immer-effect-added.ts)",
+    "Decl(src/stores/immer-effect-added.ts, useCounter)",
+]
+base = [
+    "File(src/cases/immer-effect-added.cases.tsx)",
+    "ModuleInit(src/cases/immer-effect-added.cases.tsx)",
+    "ModuleInit(src/stores/immer-effect-added.ts)",
+]
+
+# The creator inside `immer` tracks an event as the store is made.
+[[anchor]]
+path = "src/cases/immer-creator-runs.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/immer-creator-runs.cases.tsx)",
+    "ModuleInit(src/cases/immer-creator-runs.cases.tsx)",
+    "ModuleInit(src/stores/immer-creator-runs.ts)",
+    "Decl(src/stores/immer-creator-runs.ts, useCounter)",
+]
+
+# `combine`'s initial state tracks an event as it is evaluated.
+[[anchor]]
+path = "src/cases/combine-state-runs.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/combine-state-runs.cases.tsx)",
+    "ModuleInit(src/cases/combine-state-runs.cases.tsx)",
+    "ModuleInit(src/stores/combine-state-runs.ts)",
+    "Decl(src/stores/combine-state-runs.ts, useCounter)",
+]
+
+# `devtools` connects to the browser extension as the store is made.
+[[anchor]]
+path = "src/cases/devtools.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/devtools.cases.tsx)",
+    "ModuleInit(src/cases/devtools.cases.tsx)",
+    "ModuleInit(src/stores/devtools.ts)",
+    "Decl(src/stores/devtools.ts, useCounter)",
+]
+
+# `persist` reads storage as the store is made, and `immer` around it does not
+# make it quiet.
+[[anchor]]
+path = "src/cases/immer-persist.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/immer-persist.cases.tsx)",
+    "ModuleInit(src/cases/immer-persist.cases.tsx)",
+    "ModuleInit(src/stores/immer-persist.ts)",
+    "Decl(src/stores/immer-persist.ts, useCounter)",
+]
+
+# A middleware of the app's own, inside `immer`, records the store as it is made.
+[[anchor]]
+path = "src/cases/own-middleware.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/own-middleware.cases.tsx)",
+    "ModuleInit(src/cases/own-middleware.cases.tsx)",
+    "ModuleInit(src/stores/own-middleware.ts)",
+    "Decl(src/stores/own-middleware.ts, useCounter)",
+]
+
+# A case that uses every store is reached by the edits to them.
+[[anchor]]
+path = "src/cases/stores.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/stores.cases.tsx)",
+    "Decl(src/cases/stores.cases.tsx, Counts)",
+    "Export(src/stores/immer.ts, useCounter)",
+]
+
+# In the app bundled with inline requires, reading an import evaluates the module
+# it names. Calling `immer` reads its import as the store is made, so the store is
+# not made quietly there and stays initialisation, as a creator that reads an
+# import does.
+[[anchor]]
+path = "src/inline/cases/immer.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/inline/cases/immer.cases.tsx)",
+    "Decl(src/inline/cases/immer.cases.tsx, Title)",
+    "Export(src/inline/stores/immer.ts, TITLE)",
+    "ModuleInit(src/inline/stores/immer.ts)",
+    "Decl(src/inline/stores/immer.ts, useCounter)",
+]
