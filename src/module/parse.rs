@@ -242,6 +242,7 @@ fn build_fine(
             span: draft.span,
             refs: Vec::new(),
             member_refs: Vec::new(),
+            writers: Vec::new(),
             imports: Vec::new(),
             members: Vec::new(),
             interior: Span::default(),

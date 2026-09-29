@@ -398,12 +398,10 @@ impl Graph {
     fn member_edges(&self, fine: &Fine, decl: DeclId, member: NameId) -> Vec<Node> {
         let (file, module) = (fine.file(), fine.module());
         let member = self.name(member);
-        if member_of(module, decl, &member).is_none()
-            && let Some(deps) = self.factory_member(fine, decl, &member)
-        {
-            return self.reference_edges(fine, &deps.refs, &deps.member_refs, &deps.imports);
-        }
-        match member_of(module, decl, &member) {
+        let mut edges = match member_of(module, decl, &member) {
+            None if let Some(deps) = self.factory_member(fine, decl, &member) => {
+                self.reference_edges(fine, &deps.refs, &deps.member_refs, &deps.imports)
+            }
             Some(entry) => {
                 let mut edges =
                     self.reference_edges(fine, &entry.refs, &entry.member_refs, &entry.imports);
@@ -417,7 +415,33 @@ impl Graph {
             // Nothing hands out a member node that is not there, but a stale one
             // costs precision rather than an answer.
             None => vec![Node::Decl(file, decl)],
-        }
+        };
+        edges.extend(self.writer_edges(fine, decl, Some(&member)));
+        edges
+    }
+
+    /// The declarations of `file` that write what `decl` binds, as a read of it from
+    /// another module reaches them: every writer, or for a read of one `member`, the
+    /// writers of that property and of the whole value.
+    ///
+    /// They come after every other edge of the node they hang on, so that a path that
+    /// reached the change without them is still the one explained.
+    fn writer_edges(&self, fine: &Fine, decl: DeclId, member: Option<&str>) -> Vec<Node> {
+        let Some(entry) = fine.module().decls.get(decl as usize) else {
+            return Vec::new();
+        };
+        let mut edges: Vec<Node> = entry
+            .writers
+            .iter()
+            .filter(|(_, written)| match (member, written) {
+                (Some(read), Some(written)) => read == written,
+                _ => true,
+            })
+            .map(|(writer, _)| Node::Decl(fine.file(), *writer))
+            .collect();
+        // Sorted by writer, so one that writes several properties is next to itself.
+        edges.dedup();
+        edges
     }
 
     /// A read of `member` off the declaration `decl` of the same file: that member
@@ -469,7 +493,8 @@ impl Graph {
     fn export_edges(&self, fine: &Fine, name: NameId) -> Vec<Node> {
         let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let text = self.name(name);
-        let mut edges = match module.export_named(&text).map(|e| &e.target) {
+        let target = module.export_named(&text).map(|e| &e.target);
+        let mut edges = match target {
             Some(ExportTarget::Local(decl)) => vec![Node::Decl(file, *decl)],
             Some(ExportTarget::Reexport { source, name }) => {
                 match self.target_of(analysed, *source) {
@@ -498,6 +523,14 @@ impl Graph {
         // arrived through `export *`, and for each name of a namespace.
         if self.inline_requires {
             edges.push(Node::ModuleInit(file));
+        }
+        // A value exported from where it is declared can be changed by a writer there
+        // that the importer never names. Exporting it is no use of it, so no edge of
+        // its declaration leads to them; reading it through this name does. A
+        // re-export reaches them through the export node of the file that declares
+        // the value.
+        if let Some(ExportTarget::Local(decl)) = target {
+            edges.extend(self.writer_edges(fine, *decl, None));
         }
         edges
     }

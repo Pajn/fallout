@@ -39,6 +39,14 @@ pub struct Decl {
     /// Properties of object declarations in this same file that this one reads,
     /// where it reads them one at a time: `utils.formatDate` is `(utils, formatDate)`.
     pub member_refs: Vec<(DeclId, String)>,
+    /// The other declarations in this file that could change what this one's
+    /// binding holds, each with the property it writes where the shared-state rule
+    /// tells them apart, and `None` where it writes the whole value. Sorted.
+    ///
+    /// A declaration here that reads the binding already references each writer.
+    /// A reader in another module does not, since exporting a value is no use of
+    /// it, so these are for the nodes an importer lands on.
+    pub writers: Vec<(DeclId, Option<String>)>,
     /// Imported bindings this one references.
     pub imports: Vec<ImportRef>,
     /// The properties of the plain object literal this declaration binds, where

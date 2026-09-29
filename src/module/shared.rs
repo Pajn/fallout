@@ -524,7 +524,44 @@ mod tests {
         module.decls[reader as usize].refs.contains(&writer)
     }
 
+    /// The writers recorded on `name` in `source`, by name, with what each writes.
+    fn writers(source: &str, name: &str) -> Vec<(String, Option<String>)> {
+        let (ModuleAnalysis::Fine(module), _) =
+            analyse_source(Path::new("state.ts"), source, &Reading::default()).unwrap()
+        else {
+            panic!("expected fine module: {source}")
+        };
+        let decl = module.decl_named(name).expect(name);
+        module.decls[decl as usize]
+            .writers
+            .iter()
+            .map(|(writer, written)| (module.decls[*writer as usize].name.clone(), written.clone()))
+            .collect()
+    }
+
     const STATE: &str = "let state = { theme: 'light', volume: 1, list: [] as number[] };\n";
+
+    #[test]
+    fn a_binding_records_the_declarations_that_write_it() {
+        let source = "export const cache = new Map();
+            export function reset() { cache.set('a', 1); }
+            export const read = () => cache.size;";
+        assert_eq!(writers(source, "cache"), [("reset".to_string(), None)]);
+
+        let source = format!(
+            "{STATE}export const write = () => {{ state.theme = 'dark'; }};
+            export const read = () => state.volume;"
+        );
+        assert_eq!(
+            writers(&source, "state"),
+            [("write".to_string(), Some("theme".to_string()))]
+        );
+
+        // Nothing writes it, so a reader elsewhere has nothing more to reach.
+        let source = "export const cache = new Map();
+            export const read = () => cache.size;";
+        assert!(writers(source, "cache").is_empty());
+    }
 
     #[test]
     fn a_write_to_one_property_does_not_reach_a_read_of_another() {

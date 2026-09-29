@@ -1,0 +1,35 @@
+# A Zustand store written through `setState` by a declaration of its own file. A
+# page that uses the store reads what `reset` writes, so an edit to `reset` reaches
+# it, though the page never names `reset`.
+
+# `create`, and `useCounter.setState`.
+[[anchor]]
+path = "src/pages/CounterPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CounterPage.tsx)",
+    "Decl(src/pages/CounterPage.tsx, CounterPage)",
+    "Export(src/stores/counter.ts, useCounter)",
+    "Decl(src/stores/counter.ts, reset)",
+]
+
+# `createStore` from `zustand/vanilla`, and `store.setState`.
+[[anchor]]
+path = "src/pages/VanillaPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/VanillaPage.tsx)",
+    "Decl(src/pages/VanillaPage.tsx, VanillaPage)",
+    "Export(src/stores/vanilla.ts, store)",
+    "Decl(src/stores/vanilla.ts, reset)",
+]
+
+# A page that reads only the constant beside the store reads nothing `reset`
+# writes.
+[[anchor]]
+path = "src/pages/TitlePage.tsx"
+affected = false

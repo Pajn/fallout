@@ -55,10 +55,10 @@ pub(crate) fn link(
         .map(|binding| (binding.local.as_str(), binding))
         .collect();
 
-    // How each declaration touches each module-scope binding of this file, for the
-    // shared-state rule.
-    let mut accesses_of: AHashMap<SymbolId, Vec<(DeclId, Access)>> = AHashMap::default();
-    let mut recorded: AHashMap<SymbolId, AHashSet<(DeclId, Access)>> = AHashMap::default();
+    // How each declaration touches each module-scope binding of this file, by the
+    // declaration that binds it, for the shared-state rule.
+    let mut accesses_of: AHashMap<DeclId, Vec<(DeclId, Access)>> = AHashMap::default();
+    let mut recorded: AHashMap<DeclId, AHashSet<(DeclId, Access)>> = AHashMap::default();
     // Declarations referencing each import statement's bindings, for hunk attribution.
     let mut import_users: AHashMap<Span, Vec<DeclId>> = AHashMap::default();
     let mut statement_imports = StatementImports::default();
@@ -75,10 +75,10 @@ pub(crate) fn link(
         // here. Of an object read only for its members, calling a member that
         // cannot reach the object through `this` is a read of that member; what is
         // done to a member's value still counts.
-        let shared = target_decl.is_some_and(|decl| !drafts[decl as usize].immutable);
+        let shared = target_decl.filter(|&decl| !drafts[decl as usize].immutable);
         let mode = if let Some(object) = object {
             shared::Mode::Members(&object.callable)
-        } else if shared && shared::independent_properties(ctx, symbol_id) {
+        } else if shared.is_some() && shared::independent_properties(ctx, symbol_id) {
             shared::Mode::Properties
         } else {
             shared::Mode::Whole
@@ -128,9 +128,9 @@ pub(crate) fn link(
                 }
             }
 
-            if !shared {
+            let Some(owner) = shared else {
                 continue;
-            }
+            };
             // An access an alias carried elsewhere belongs to the declaration it is
             // written in, which is where the write happens.
             for (offset, access) in shared::accesses(ctx, node_id, mode) {
@@ -140,8 +140,8 @@ pub(crate) fn link(
                 else {
                     continue;
                 };
-                let entry = accesses_of.entry(symbol_id).or_default();
-                let known = recorded.entry(symbol_id).or_default();
+                let entry = accesses_of.entry(owner).or_default();
+                let known = recorded.entry(owner).or_default();
                 for &user in users {
                     let access = (user, access.clone());
                     if known.insert(access.clone()) {
@@ -221,8 +221,12 @@ fn member_call(nodes: &AstNodes<'_>, node_id: NodeId) -> Option<String> {
 /// module's business, and is already an edge to that module. Of an object whose
 /// properties are independent, a write reaches only the uses of the property it
 /// writes, and the uses of the object as a whole; see [`shared`].
+///
+/// Each binding's writers are also recorded on the declaration that binds it, for a
+/// reader in another module. Exporting a value is no use of it, so nothing else
+/// connects that reader to them.
 fn apply_shared_state(
-    accesses_of: &AHashMap<SymbolId, Vec<(DeclId, Access)>>,
+    accesses_of: &AHashMap<DeclId, Vec<(DeclId, Access)>>,
     decls: &mut [Decl],
 ) -> SharedEdges {
     // A binding can have as many users and writers as the file has declarations, so
@@ -232,12 +236,23 @@ fn apply_shared_state(
     // Recorded whether or not the declaration already named the writer, since an
     // object's members each get the rule's edges whatever the declaration names.
     let mut recorded: AHashSet<(DeclId, DeclId)> = AHashSet::default();
-    for accesses in accesses_of.values() {
+    for (&owner, accesses) in accesses_of {
         let writers: Vec<&(DeclId, Access)> =
             accesses.iter().filter(|(_, access)| access.write).collect();
         if writers.is_empty() {
             continue;
         }
+        // The declaration's own initialiser is what it holds to begin with, which
+        // its own node already stands for.
+        let recorded_writers = &mut decls[owner as usize].writers;
+        recorded_writers.extend(
+            writers
+                .iter()
+                .filter(|(writer, _)| *writer != owner)
+                .map(|(writer, written)| (*writer, written.property.clone())),
+        );
+        recorded_writers.sort();
+        recorded_writers.dedup();
         for (user, used) in accesses {
             for (writer, written) in &writers {
                 if user == writer || !used.sees(written) {
