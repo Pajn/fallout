@@ -51,6 +51,28 @@ pub struct Comparison {
     /// module evaluating this one no longer evaluates. Whether the project defers
     /// them is the anchor's to say, so this is kept apart from `init_differs`.
     pub reads_differ: bool,
+    /// What a declaration wrote in the base version and no longer writes, because
+    /// it has gone or because it was edited.
+    ///
+    /// The shared-state rule links a value's readers to its writers in the version
+    /// being read, so once a writer is gone or has stopped writing, nothing in the
+    /// current version connects the readers to the edit. What it used to write has
+    /// to carry the mark instead.
+    pub lost_writes: Vec<LostWrite>,
+}
+
+/// A write to a module-scope value that the base version made and this one does not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LostWrite {
+    /// The declaration that binds the value, by name.
+    pub value: String,
+    /// The property written, where the shared-state rule tells properties apart,
+    /// and `None` where the whole value was.
+    pub property: Option<String>,
+    /// The declarations of the file that the base version linked to the writer, by
+    /// name: those that read what it wrote, and those that called it, which
+    /// removing or editing the writer changes anyway.
+    pub readers: Vec<String>,
 }
 
 impl Comparison {
@@ -61,6 +83,7 @@ impl Comparison {
             && !self.whole_file
             && !self.init_differs
             && !self.reads_differ
+            && self.lost_writes.is_empty()
     }
 }
 
@@ -293,13 +316,91 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         }
     }
 
+    // Only a changed or removed statement can stop writing anything, and either one
+    // has had the base version analysed already.
+    let lost_writes = match old_module {
+        Some(module) if module.decls.iter().any(|decl| !decl.writers.is_empty()) => {
+            let new_module = new_analysis.get_or_insert_with(|| {
+                analyse_source(path, &after, reading).map(|(analysis, _)| analysis)
+            });
+            match new_module {
+                Some(ModuleAnalysis::Fine(now)) => lost_writes(module, now),
+                // A current version the analyser cannot describe finely is marked
+                // whole, which leaves nothing finer to mark.
+                _ => Vec::new(),
+            }
+        }
+        _ => Vec::new(),
+    };
+
     Some(Comparison {
         changed,
         lost_exports,
         whole_file,
         init_differs,
         reads_differ,
+        lost_writes,
     })
+}
+
+/// Each write the `before` module made that the `now` module does not, matched by
+/// the names of the value and of its writer.
+///
+/// A writer of the whole value in the current version still writes every property
+/// of it. One that wrote the whole value and now writes a single property has lost
+/// the write to the whole, which reaches the readers of every property.
+fn lost_writes(before: &FineModule, now: &FineModule) -> Vec<LostWrite> {
+    fn name(module: &FineModule, decl: super::DeclId) -> &str {
+        module
+            .decls
+            .get(decl as usize)
+            .map_or("", |decl| decl.name.as_str())
+    }
+    let mut lost = Vec::new();
+    for (value, decl) in before.decls.iter().enumerate() {
+        let written_now: Vec<(&str, Option<&str>)> = now
+            .decl_named(&decl.name)
+            .and_then(|value| now.decls.get(value as usize))
+            .map(|value| {
+                value
+                    .writers
+                    .iter()
+                    .map(|(writer, property)| (name(now, *writer), property.as_deref()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for (writer, property) in &decl.writers {
+            let writer_name = name(before, *writer);
+            let still = written_now.iter().any(|&(now_writer, now_property)| {
+                now_writer == writer_name
+                    && (now_property.is_none() || now_property == property.as_deref())
+            });
+            if still {
+                continue;
+            }
+            // The shared-state rule gave each declaration that reads the value, and
+            // sees what the writer wrote, an edge to the writer, so those are the
+            // readers it reached. One that reads the value through an alias is
+            // among them, which a search for references to the value would miss.
+            let readers = before
+                .decls
+                .iter()
+                .enumerate()
+                .filter(|&(reader, entry)| {
+                    reader != value
+                        && reader as super::DeclId != *writer
+                        && entry.refs.contains(writer)
+                })
+                .map(|(_, entry)| entry.name.clone())
+                .collect();
+            lost.push(LostWrite {
+                value: decl.name.clone(),
+                property: property.clone(),
+                readers,
+            });
+        }
+    }
+    lost
 }
 
 /// The properties that differ between two versions of an object literal
@@ -1023,5 +1124,31 @@ mod tests {
         // signature runs nothing, so the two files are the same file.
         let comparison = compared(before, after).expect("comparable");
         assert!(comparison.is_empty());
+    }
+
+    #[test]
+    fn a_write_that_went_is_named_with_the_readers_it_reached() {
+        let before = "let state = { theme: 'light', volume: 1 };\n\
+             export function darken() { state.theme = 'dark'; }\n\
+             export const theme = () => state.theme;\n\
+             export const volume = () => state.volume;\n";
+        let after = before.replace("state.theme = 'dark';", "log();");
+        let comparison = compared(before, &after).expect("comparable");
+        assert_eq!(
+            comparison.lost_writes,
+            [LostWrite {
+                value: "state".to_string(),
+                property: Some("theme".to_string()),
+                readers: vec!["theme".to_string()],
+            }]
+        );
+
+        // One that writes the whole value now still writes the property.
+        let after = before.replace(
+            "state.theme = 'dark';",
+            "state = { theme: 'dark', volume: 1 };",
+        );
+        let comparison = compared(before, &after).expect("comparable");
+        assert!(comparison.lost_writes.is_empty());
     }
 }

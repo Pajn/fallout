@@ -1,0 +1,71 @@
+# A declaration that wrote a mutable value in the base version is removed, or no
+# longer writes it. Nothing in the current version links the value's readers to it,
+# so what it used to write carries the mark: the declarations of its file that read
+# the value, and the export and members of the value, which is where a reader in
+# another module lands. A line range cannot see what a statement used to write, so a
+# case only a base revision can tell is held from `base`.
+
+# `bump` wrote `count` and is gone. The page reaches `count` through `read`.
+[[anchor]]
+path = "src/pages/CounterPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/CounterPage.tsx)",
+    "Decl(src/pages/CounterPage.tsx, CounterPage)",
+    "Export(src/state/counter.ts, read)",
+    "Decl(src/state/counter.ts, read)",
+]
+
+# `add` wrote `total` and is gone. The page reads `total` from another module.
+[[anchor]]
+path = "src/pages/TotalPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/TotalPage.tsx)",
+    "Decl(src/pages/TotalPage.tsx, TotalPage)",
+    "Export(src/state/total.ts, total)",
+]
+
+# `click` is still there and no longer writes `clicks`. The edit marks `click`, which
+# the current version no longer links to `clicks`.
+[[anchor]]
+path = "src/pages/ClicksPage.tsx"
+affected = true
+from = "base"
+
+[anchor.explain]
+base = [
+    "File(src/pages/ClicksPage.tsx)",
+    "Decl(src/pages/ClicksPage.tsx, ClicksPage)",
+    "Export(src/state/clicks.ts, clicks)",
+]
+
+# `remember` wrote `items` of an object read only for its members, and is gone.
+[[anchor]]
+path = "src/pages/ItemsPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/ItemsPage.tsx)",
+    "Decl(src/pages/ItemsPage.tsx, ItemsPage)",
+    "Member(src/state/lists.ts, lists.items)",
+]
+
+# `tags` is a property of its own, which `remember` never wrote. Without a base
+# revision, the lines `remember` left fall past the last statement, which marks
+# module initialisation, and every importer of the file reaches that.
+[[anchor]]
+path = "src/pages/TagsPage.tsx"
+affected = false
+from = "base"
+
+# `hasScore` read `score` and wrote nothing, so removing it leaves `readScore` as it
+# was.
+[[anchor]]
+path = "src/pages/ScorePage.tsx"
+affected = false
