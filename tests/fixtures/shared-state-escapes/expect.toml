@@ -101,3 +101,18 @@ symbol = [
     "Decl(src/state/literal-returned.ts, hasItems)",
     "Decl(src/state/literal-returned.ts, lists)",
 ]
+
+# `settle` awaits `state.items`, which calls a `then` it may have with the array
+# as `this`.
+[[anchor]]
+path = "src/pages/AwaitPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/AwaitPage.tsx)",
+    "Decl(src/pages/AwaitPage.tsx, AwaitPage)",
+    "Export(src/state/await.ts, hasItems)",
+    "Decl(src/state/await.ts, hasItems)",
+    "Decl(src/state/await.ts, settle)",
+]

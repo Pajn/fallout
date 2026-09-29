@@ -439,3 +439,69 @@ Path (downstream, symbol granularity):
   Decl(src/state/literal-returned.ts, lists)
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/LiteralReturnedPage.tsx","affected":true,"direction":"downstream","changed":"src/state/literal-returned.ts","path":["File(src/pages/LiteralReturnedPage.tsx)","Decl(src/pages/LiteralReturnedPage.tsx, LiteralReturnedPage)","Export(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, hasItems)","Decl(src/state/literal-returned.ts, lists)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AwaitPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/await.ts"
+Path (downstream, file granularity):
+  File(src/pages/AwaitPage.tsx)
+  File(src/state/await.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","File(src/state/await.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AwaitPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/await.ts"
+Path (downstream, file granularity):
+  File(src/pages/AwaitPage.tsx)
+  File(src/state/await.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","File(src/state/await.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/AwaitPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/await.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/AwaitPage.tsx)
+  Decl(src/pages/AwaitPage.tsx, AwaitPage)
+  Export(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, settle)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","Decl(src/pages/AwaitPage.tsx, AwaitPage)","Export(src/state/await.ts, hasItems)","Decl(src/state/await.ts, hasItems)","Decl(src/state/await.ts, settle)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AwaitPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/await.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/AwaitPage.tsx)
+  Decl(src/pages/AwaitPage.tsx, AwaitPage)
+  Export(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, settle)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","Decl(src/pages/AwaitPage.tsx, AwaitPage)","Export(src/state/await.ts, hasItems)","Decl(src/state/await.ts, hasItems)","Decl(src/state/await.ts, settle)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AwaitPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/await.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/AwaitPage.tsx)
+  Decl(src/pages/AwaitPage.tsx, AwaitPage)
+  Export(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, settle)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","Decl(src/pages/AwaitPage.tsx, AwaitPage)","Export(src/state/await.ts, hasItems)","Decl(src/state/await.ts, hasItems)","Decl(src/state/await.ts, settle)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/AwaitPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/await.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/AwaitPage.tsx)
+  Decl(src/pages/AwaitPage.tsx, AwaitPage)
+  Export(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, hasItems)
+  Decl(src/state/await.ts, settle)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","Decl(src/pages/AwaitPage.tsx, AwaitPage)","Export(src/state/await.ts, hasItems)","Decl(src/state/await.ts, hasItems)","Decl(src/state/await.ts, settle)"],"granularity":"symbol","unresolved":[]}]}

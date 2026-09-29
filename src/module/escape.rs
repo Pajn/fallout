@@ -426,6 +426,8 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::ArrowFunctionExpression(_) | AstKind::ReturnStatement(_) => Fate::Escapes,
         // A literal holds what it is built from, and goes wherever it is taken.
         AstKind::ArrayExpression(_) | AstKind::ObjectProperty(_) => Fate::Escapes,
+        // `await v` calls a `then` the value may have, with the value as `this`.
+        AstKind::AwaitExpression(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -908,7 +910,7 @@ mod tests {
         "const g = () => @;"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
         "const g = () => @.x;"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
         "throw @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "await @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "await @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         "yield @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
         // Passed through an operator that yields one of its operands.
         "f(o && @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
