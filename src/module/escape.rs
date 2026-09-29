@@ -10,8 +10,8 @@
 //! not a walk of its own, so each position is judged in one place and two kinds of
 //! binding can be told apart by reading their policies. That is the module's
 //! depth: a caller passes a value, and the list of positions stays in the
-//! implementation, where a change to one is made once and seen in the table below
-//! for every kind of binding.
+//! implementation, where a change to one is made once and seen, in the table its
+//! tests hold, for every kind of binding.
 //!
 //! A method called on the value is judged by a [`CallRule`], which knows what a
 //! collection's read methods hand back and which calls a factory's rule declares
@@ -21,7 +21,7 @@
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
     Argument, BinaryOperator, BindingPattern, CallExpression, FormalParameters, JSXElementName,
-    UnaryOperator, VariableDeclarationKind,
+    LogicalOperator, UnaryOperator, VariableDeclarationKind,
 };
 use oxc_semantic::{AstNodes, NodeId};
 use oxc_span::{GetSpan, Span as OxcSpan};
@@ -144,6 +144,10 @@ pub(crate) enum Aliases {
 /// Follows the alias the declarator above `value` declares, for [`Aliases::Credited`]:
 /// every use it is put to, each with where it is written, where `own` is where the
 /// declaration itself is and `depth` how many aliases were followed to reach it.
+///
+/// This is the module's one seam. Which declaration a use is credited to is the
+/// shared-state rule's bookkeeping, so `shared` passes an adapter in here rather
+/// than this module reaching for it.
 pub(crate) type Credit = for<'a> fn(&Ctx<'a>, NodeId, u32, usize) -> Vec<(u32, Fate)>;
 
 impl Policy {
@@ -261,7 +265,13 @@ pub(crate) fn called_as_method(nodes: &AstNodes<'_>, member: NodeId) -> bool {
 }
 
 /// Whether every use `value` is put to leaves it in place.
-fn stays(ctx: &Ctx<'_>, value: NodeId, held: Held, policy: &Policy, depth: usize) -> bool {
+pub(crate) fn stays(
+    ctx: &Ctx<'_>,
+    value: NodeId,
+    held: Held,
+    policy: &Policy,
+    depth: usize,
+) -> bool {
     uses(ctx, value, held, policy, depth)
         .iter()
         .all(|(_, fate)| fate.in_place())
@@ -304,7 +314,7 @@ fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -
             AstKind::ChainExpression(_) => {}
             AstKind::LogicalExpression(logical)
                 if policy.follow_value_ops
-                    && (logical.operator != oxc_ast::ast::LogicalOperator::And
+                    && (logical.operator != LogicalOperator::And
                         || logical.right.span() == span) => {}
             AstKind::ConditionalExpression(conditional)
                 if policy.follow_value_ops && conditional.test.span() != span => {}
@@ -680,9 +690,9 @@ mod tests {
     use oxc_allocator::Allocator;
     use oxc_parser::Parser;
     use oxc_semantic::SemanticBuilder;
-    use oxc_span::SourceType;
+    use oxc_span::{GetSpan, SourceType};
 
-    use super::Fate;
+    use super::{Fate, Held, Policy};
     use crate::module::parse::Ctx;
     use crate::module::shared::{self, Collection, Mode};
 
@@ -930,5 +940,313 @@ mod tests {
             }
         }
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// What the state a store hands out, standing in for `S` in `body`, meets under
+    /// `policy`.
+    fn state_fate(body: &str, policy: &Policy) -> Fate {
+        let source = format!("let S: any;\nfunction a() {{\n{body}\n}}\n");
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, &source, SourceType::tsx()).parse();
+        let semantic = SemanticBuilder::new()
+            .with_build_nodes(true)
+            .build(&parsed.program)
+            .semantic;
+        let ctx = Ctx {
+            semantic: &semantic,
+            statements: Vec::new(),
+        };
+        let scoping = semantic.scoping();
+        let symbol = scoping
+            .symbol_ids()
+            .find(|&symbol| scoping.symbol_name(symbol) == "S")
+            .expect("S");
+        let &[reference] = scoping.get_resolved_reference_ids(symbol) else {
+            panic!("expected one reference to S: {source}");
+        };
+        let node = scoping.get_reference(reference).node_id();
+        let [(_, fate)] = super::uses(&ctx, node, Held::State, policy, 0)[..] else {
+            panic!("expected one use: {source}");
+        };
+        fate
+    }
+
+    #[test]
+    fn an_operand_an_operator_yields_is_followed_only_where_the_policy_says() {
+        let following = Policy {
+            follow_value_ops: true,
+            ..Policy::HANDED_OUT
+        };
+        for body in [
+            "(o || S) === 1;",
+            "(o ?? S) === 1;",
+            "(S ?? o) === 1;",
+            "(o && S) === 1;",
+            "(c ? S : d) === 1;",
+            "(0, S) === 1;",
+        ] {
+            assert_eq!(
+                state_fate(body, &Policy::HANDED_OUT),
+                Fate::Escapes,
+                "{body}"
+            );
+            assert_eq!(state_fate(body, &following), Fate::InPlace, "{body}");
+        }
+        // The left of `&&` is yielded only where it is falsy, and a comma yields its
+        // last expression alone, so neither is followed.
+        for body in ["(S && o) === 1;", "(S, 0) === 1;", "f(o || S);"] {
+            assert_eq!(state_fate(body, &following), Fate::Escapes, "{body}");
+        }
+    }
+
+    /// How a reference touches a binding read as one value, for the tests below.
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    enum Use {
+        /// Cannot change what the binding holds.
+        Read,
+        /// Could, or we cannot tell.
+        Mutate,
+    }
+
+    /// How every reference to `S` in `body` is read, in source order.
+    fn uses_of_s(body: &str) -> Vec<Use> {
+        let source = format!("const S = make();\n{body}\n");
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, &source, SourceType::tsx()).parse();
+        let semantic = SemanticBuilder::new()
+            .with_build_nodes(true)
+            .build(&parsed.program)
+            .semantic;
+        let ctx = Ctx {
+            semantic: &semantic,
+            statements: Vec::new(),
+        };
+        let scoping = semantic.scoping();
+
+        let mut found: Vec<(u32, Use)> = Vec::new();
+        for symbol_id in scoping.symbol_ids() {
+            if scoping.symbol_name(symbol_id) != "S" {
+                continue;
+            }
+            for reference_id in scoping.get_resolved_reference_ids(symbol_id) {
+                let node_id = scoping.get_reference(*reference_id).node_id();
+                let start = semantic.nodes().get_node(node_id).kind().span().start;
+                let how = if super::stays(&ctx, node_id, Held::Whole, &Policy::WHOLE, 0) {
+                    Use::Read
+                } else {
+                    Use::Mutate
+                };
+                found.push((start, how));
+            }
+        }
+        found.sort_by_key(|(start, _)| *start);
+        found.into_iter().map(|(_, how)| how).collect()
+    }
+
+    #[test]
+    fn using_a_binding_without_touching_it_is_a_read() {
+        assert_eq!(uses_of_s("export const a = () => S(1);"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => new S(2);"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => typeof S;"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => <S />;"), [Use::Read]);
+        // A closing tag names the component a second time.
+        assert_eq!(
+            uses_of_s("export const a = () => <S>x</S>;"),
+            [Use::Read, Use::Read]
+        );
+    }
+
+    #[test]
+    fn an_element_naming_a_member_is_a_call_on_it() {
+        // `<Ctx.Provider value={v}>` writes v into the context every consumer of
+        // `Ctx` reads. Compound components such as `<Menu.Item />` only read, and
+        // are widened along with it.
+        assert_eq!(
+            uses_of_s("export const a = () => <S.Item />;"),
+            [Use::Mutate]
+        );
+        assert_eq!(
+            uses_of_s("export const a = () => <S.Provider value={1}>x</S.Provider>;"),
+            [Use::Mutate, Use::Mutate]
+        );
+    }
+
+    #[test]
+    fn a_property_read_that_stays_in_the_expression_is_a_read() {
+        assert_eq!(uses_of_s("export const a = () => S.x;"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => S[\"y\"];"), [Use::Read]);
+        assert_eq!(uses_of_s("export const a = () => S.x + 1;"), [Use::Read]);
+    }
+
+    #[test]
+    fn checking_a_value_is_a_read() {
+        for check in [
+            "k in S",
+            "S in o",
+            "S instanceof C",
+            "v instanceof S",
+            "S == o",
+            "o != S",
+            "S === o",
+            "o !== S",
+            "S < 1",
+            "1 <= S",
+            "S > 1",
+            "1 >= S",
+        ] {
+            let body = format!("export const a = () => {{ if ({check}) go(); }};");
+            assert_eq!(uses_of_s(&body), [Use::Read], "{check}");
+        }
+        // With both operands the binding, each is read.
+        assert_eq!(
+            uses_of_s("export const a = () => { if (S === S) go(); };"),
+            [Use::Read, Use::Read]
+        );
+        // `#x in S` asks the same of a private field.
+        assert_eq!(
+            uses_of_s("class K { #x; static t = () => #x in S; }"),
+            [Use::Read]
+        );
+    }
+
+    #[test]
+    fn arithmetic_on_a_value_is_still_counted_as_a_write() {
+        // Only the checks above are taken out of the catch-all. Arithmetic can run
+        // `valueOf` no more than a comparison can, but it stays in it.
+        assert_eq!(uses_of_s("export const a = () => S + 1;"), [Use::Mutate]);
+        assert_eq!(uses_of_s("export const a = () => S | 1;"), [Use::Mutate]);
+        // A check does not make passing the value on any less of a hand-off.
+        assert_eq!(
+            uses_of_s("export const a = () => { if (k in S) other(S); };"),
+            [Use::Read, Use::Mutate]
+        );
+    }
+
+    #[test]
+    fn writing_through_a_binding_is_a_mutation() {
+        assert_eq!(
+            uses_of_s("export const a = () => { S.x = 1 };"),
+            [Use::Mutate]
+        );
+        assert_eq!(uses_of_s("export const a = () => S++;"), [Use::Mutate]);
+        assert_eq!(
+            uses_of_s("export const a = () => { delete S.x };"),
+            [Use::Mutate]
+        );
+    }
+
+    #[test]
+    fn writing_or_calling_anywhere_down_a_member_chain_is_a_mutation() {
+        for body in [
+            "{ S.a.b = 1; }",
+            "{ S.a.b += 1; }",
+            "{ S.a[k]++; }",
+            "{ delete S.a.b; }",
+            "{ S.a.b.c = 1; }",
+            "{ [S.a.b] = o; }",
+            "{ ({ x: S.a.b } = o); }",
+            "{ for (S.a.b of o); }",
+            "{ (S.a as any).b = 1; }",
+            "{ (S.a).b = 1; }",
+            // A method called on what the value holds can change it.
+            "S.items.push(1)",
+            "S.a.b.c()",
+            "S.a?.b.c()",
+            "(S.a).b()",
+            "S.a.b`x`",
+            // Handed to other code, however deep it was read.
+            "other(S.a.b)",
+            "[...S.a.b]",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
+    }
+
+    #[test]
+    fn handing_the_value_to_a_component_is_a_mutation() {
+        for body in [
+            "<Foo value={S.items} />",
+            "<Foo>{S.items}</Foo>",
+            "<Foo value={S} />",
+            "<Foo>{S}</Foo>",
+            "<Foo.Bar>{S.a.b}</Foo.Bar>",
+            // An element of the platform's own calls a handler it is handed.
+            "<div onClick={S.handler} />",
+            "<div title={S.name} />",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
+    }
+
+    #[test]
+    fn rendering_the_value_in_place_is_a_read() {
+        for body in [
+            "<li>{S.count}</li>",
+            "<li key={S.id} />",
+            "<Foo key={S.id} />",
+            "<>{S.a.b}</>",
+            "<li>{S}</li>",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
+        }
+    }
+
+    #[test]
+    fn a_deep_property_read_that_stays_in_the_expression_is_a_read() {
+        for body in [
+            "S.a.b",
+            "S.items.length",
+            "S.a.b + 1",
+            "S?.a.b",
+            "S.a[k]",
+            "`${S.a.b}`",
+            "(S.a as any).b",
+            "{ if (S.a.b === 1) go(); }",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
+        }
+    }
+
+    #[test]
+    fn handing_the_value_to_other_code_is_a_mutation() {
+        // The callee is the reference in `S(1)`; here `S` is an argument, and the
+        // function it lands in can do anything with it.
+        assert_eq!(uses_of_s("export const a = () => other(S);"), [Use::Mutate]);
+        // A method call is the ordinary way to mutate: `.push`, `.set`, `.add`.
+        assert_eq!(
+            uses_of_s("export const a = () => S.push(1);"),
+            [Use::Mutate]
+        );
+        // A property read can escape the same way the binding itself can.
+        assert_eq!(
+            uses_of_s("export const a = () => other(S.x);"),
+            [Use::Mutate]
+        );
+        assert_eq!(uses_of_s("export const a = () => [...S];"), [Use::Mutate]);
+        // Returning the binding hands it to the caller.
+        assert_eq!(uses_of_s("export const a = () => S;"), [Use::Mutate]);
+    }
+
+    #[test]
+    fn each_reference_is_read_on_its_own() {
+        assert_eq!(
+            uses_of_s("export const a = () => { other(S); return S.y };"),
+            [Use::Mutate, Use::Read]
+        );
+    }
+
+    #[test]
+    fn a_property_read_beside_an_assignment_is_not_told_apart() {
+        // `S.y` here only reads. Working out which side of the assignment a member
+        // expression sits on would narrow this, and narrowing is the direction that
+        // can be wrong, so both sides count as writes.
+        assert_eq!(
+            uses_of_s("export const a = () => { S.x = S.y };"),
+            [Use::Mutate, Use::Mutate]
+        );
     }
 }

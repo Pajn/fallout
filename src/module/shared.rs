@@ -35,7 +35,6 @@ use super::escape::{
 };
 use super::members::object_literal;
 use super::parse::Ctx;
-use super::refs::{Use, classify};
 
 /// One way a reference touches a shared binding.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -384,7 +383,7 @@ pub(crate) fn independent_properties(ctx: &Ctx<'_>, symbol: SymbolId) -> bool {
 pub(crate) fn accesses(ctx: &Ctx<'_>, node_id: NodeId, mode: Mode) -> Vec<(u32, Access)> {
     let at = ctx.semantic.nodes().get_node(node_id).kind().span().start;
     let mut uses = if mode == Mode::Whole {
-        let write = classify(ctx, node_id) == Use::Mutate;
+        let write = !escape::stays(ctx, node_id, Held::Whole, &Policy::WHOLE, 0);
         vec![(at, Access::whole(write))]
     } else {
         reference_accesses(ctx, node_id, mode, 0)
@@ -460,7 +459,7 @@ fn reference_accesses(
         AstKind::ExportDefaultDeclaration(_) if matches!(mode, Mode::Members(_)) => {
             return Vec::new();
         }
-        _ => return whole(classify(ctx, node_id) == Use::Mutate),
+        _ => return whole(!escape::stays(ctx, node_id, Held::Whole, &Policy::WHOLE, 0)),
     };
 
     // `__proto__` is the prototype, through which every property can change.
