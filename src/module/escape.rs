@@ -430,6 +430,8 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::AwaitExpression(_) => Fate::Escapes,
         // `yield v` hands the value to whoever drives the generator.
         AstKind::YieldExpression(_) => Fate::Escapes,
+        // `export default v` hands the value to every importer.
+        AstKind::ExportDefaultDeclaration(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -946,7 +948,7 @@ mod tests {
         "export const v = @;"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
         "class K { x = @; }"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
         "function g(x = @) {}"                       => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "export default @;"                          => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "export default @;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Rendered, or handed to a component.
         "return <li>{@}</li>;"                       => [I,  I,  I,  I,  I,  I,  E,  I ];
         "return <>{@}</>;"                           => [I,  I,  I,  I,  I,  I,  E,  I ];

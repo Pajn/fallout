@@ -131,3 +131,17 @@ symbol = [
     "Decl(src/state/yield.ts, hasItems)",
     "Decl(src/state/yield.ts, each)",
 ]
+
+# The default export is `state.items` itself, which every importer can change.
+[[anchor]]
+path = "src/pages/ExportDefaultPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ExportDefaultPage.tsx)",
+    "Decl(src/pages/ExportDefaultPage.tsx, ExportDefaultPage)",
+    "Export(src/state/export-default.ts, hasItems)",
+    "Decl(src/state/export-default.ts, hasItems)",
+    "Decl(src/state/export-default.ts, default)",
+]
