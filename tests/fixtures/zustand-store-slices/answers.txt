@@ -30,7 +30,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-title.cases.tsx [symbol] --include-types
 -- --explain: exit 0
@@ -42,7 +42,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-title.cases.tsx [base]
 -- --explain: exit 0
@@ -54,7 +54,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-title.cases.tsx [base] --include-types
 -- --explain: exit 0
@@ -66,7 +66,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-title.cases.tsx)","ModuleInit(src/cases/counter-title.cases.tsx)","ModuleInit(src/store/counter.ts)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-button.cases.tsx [file]
 -- --explain: exit 0
@@ -96,7 +96,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-button.cases.tsx [symbol] --include-types
 -- --explain: exit 0
@@ -108,7 +108,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-button.cases.tsx [base]
 -- --explain: exit 0
@@ -120,7 +120,7 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}
 
 == src/cases/counter-button.cases.tsx [base] --include-types
 -- --explain: exit 0
@@ -132,4 +132,4 @@ Path (downstream, symbol granularity):
   Decl(src/store/counter.ts, useCounter)
   Decl(src/store/counter.ts, createStepSlice)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-button.cases.tsx","affected":true,"direction":"downstream","changed":"src/store/counter.ts","path":["File(src/cases/counter-button.cases.tsx)","Decl(src/cases/counter-button.cases.tsx, CounterButton)","Export(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, useCounter)","Decl(src/store/counter.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/store/counter.ts"]}]}]}

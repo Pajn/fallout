@@ -24,25 +24,25 @@ Path (downstream, file granularity):
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/counter-title.cases.tsx [symbol] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/counter-title.cases.tsx [base]
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/counter-title.cases.tsx [base] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+{"anchors":[{"anchor":"src/cases/counter-title.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
 
 == src/cases/counter-button.cases.tsx [file]
 -- --explain: exit 0
