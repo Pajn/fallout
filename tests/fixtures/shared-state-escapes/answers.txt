@@ -1,0 +1,111 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/JsxOperatorPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, file granularity):
+  File(src/pages/JsxOperatorPage.tsx)
+  File(src/state/jsx-operator.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorPage.tsx)","File(src/state/jsx-operator.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/JsxOperatorPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, file granularity):
+  File(src/pages/JsxOperatorPage.tsx)
+  File(src/state/jsx-operator.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorPage.tsx)","File(src/state/jsx-operator.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/JsxOperatorPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxOperatorPage.tsx)
+  Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)
+  Export(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, ItemsView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorPage.tsx)","Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)","Export(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, ItemsView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxOperatorPage.tsx)
+  Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)
+  Export(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, ItemsView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorPage.tsx)","Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)","Export(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, ItemsView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxOperatorPage.tsx)
+  Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)
+  Export(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, ItemsView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorPage.tsx)","Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)","Export(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, ItemsView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxOperatorPage.tsx)
+  Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)
+  Export(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, hasItems)
+  Decl(src/state/jsx-operator.tsx, ItemsView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorPage.tsx)","Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)","Export(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, hasItems)","Decl(src/state/jsx-operator.tsx, ItemsView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorReadPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, file granularity):
+  File(src/pages/JsxOperatorReadPage.tsx)
+  File(src/state/jsx-operator.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorReadPage.tsx)","File(src/state/jsx-operator.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/JsxOperatorReadPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-operator.tsx"
+Path (downstream, file granularity):
+  File(src/pages/JsxOperatorReadPage.tsx)
+  File(src/state/jsx-operator.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-operator.tsx","path":["File(src/pages/JsxOperatorReadPage.tsx)","File(src/state/jsx-operator.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/JsxOperatorReadPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorReadPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorReadPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxOperatorReadPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

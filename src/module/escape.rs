@@ -119,11 +119,6 @@ pub(crate) struct Policy {
     /// it is the key, is judged as a member read off it. Temporary: the soundness
     /// PR climbs through wrappers from a bare value as from anything else.
     legacy_bare_parent: bool,
-    /// Whether to climb through the operators that yield an operand as they found
-    /// it: both operands of `||` and `??`, the right of `&&`, the branches of `?:`
-    /// and the last expression of a comma. Temporary: the soundness PR turns it
-    /// on for every policy.
-    follow_value_ops: bool,
 }
 
 /// How a binding declared to hold a value, `const v = value`, is followed.
@@ -164,7 +159,6 @@ impl Policy {
         aliases: Aliases::Local,
         legacy_unknown: Fate::Escapes,
         legacy_bare_parent: false,
-        follow_value_ops: false,
     };
 
     /// A binding read as one value, such as a reassigned `let` or a call's result,
@@ -181,7 +175,6 @@ impl Policy {
         aliases: Aliases::Unfollowed,
         legacy_unknown: Fate::InPlace,
         legacy_bare_parent: true,
-        follow_value_ops: false,
     };
 
     /// A property read off an object shared property by property or read only for
@@ -197,7 +190,6 @@ impl Policy {
             aliases: Aliases::Credited(credit),
             legacy_unknown: Fate::InPlace,
             legacy_bare_parent: false,
-            follow_value_ops: false,
         }
     }
 
@@ -278,9 +270,8 @@ pub(crate) fn stays(
         .all(|(_, fate)| fate.in_place())
 }
 
-/// Climbs from `value` out through wrappers, member reads off it and optional
-/// chaining, and, where the policy says, through the operators that yield an
-/// operand as they found it.
+/// Climbs from `value` out through wrappers, member reads off it, optional
+/// chaining and the operators that yield an operand as they found it.
 fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -> Landing {
     let mut current = value;
     let mut steps = 0;
@@ -313,15 +304,14 @@ fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -
                 steps += 1;
             }
             AstKind::ChainExpression(_) => {}
+            // What these yield is the operand as it was, so where it goes the
+            // operand goes: both operands of `||` and `??`, the right of `&&`, the
+            // branches of `?:` and the last expression of a comma.
             AstKind::LogicalExpression(logical)
-                if policy.follow_value_ops
-                    && (logical.operator != LogicalOperator::And
-                        || logical.right.span() == span) => {}
-            AstKind::ConditionalExpression(conditional)
-                if policy.follow_value_ops && conditional.test.span() != span => {}
+                if logical.operator != LogicalOperator::And || logical.right.span() == span => {}
+            AstKind::ConditionalExpression(conditional) if conditional.test.span() != span => {}
             AstKind::SequenceExpression(sequence)
-                if policy.follow_value_ops
-                    && sequence.expressions.last().map(GetSpan::span) == Some(span) => {}
+                if sequence.expressions.last().map(GetSpan::span) == Some(span) => {}
             _ => {
                 return Landing {
                     top: outer,
@@ -909,13 +899,18 @@ mod tests {
         "await @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
         "yield @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
         // Passed through an operator that yields one of its operands.
-        "f(o && @);"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f(o || @);"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f(o ?? @);"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f(c ? @ : d);"                              => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "f((0, @));"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "f(o && @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(o || @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(o ?? @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(c ? @ : d);"                              => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f((0, @));"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return c ? @ : d;"                          => [E,  U,  U,  U,  U,  E,  E,  E ];
         "return o && @;"                             => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "(o || @) === 1;"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "return <li>{o && @}</li>;"                  => [E,  I,  I,  I,  I,  I,  E,  I ];
+        "return <Foo>{o && @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return <Foo>{c ? @ : d}</Foo>;"             => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "return <Foo>{o ?? @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Held in a literal.
         "f({ a: @ });"                               => [E,  U,  U,  U,  U,  E,  E,  E ];
         "f([@]);"                                    => [E,  U,  U,  U,  U,  E,  E,  E ];
@@ -971,9 +966,8 @@ mod tests {
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
-    /// What the state a store hands out, standing in for `S` in `body`, meets under
-    /// `policy`.
-    fn state_fate(body: &str, policy: &Policy) -> Fate {
+    /// What the state a store hands out, standing in for `S` in `body`, meets.
+    fn state_fate(body: &str) -> Fate {
         let source = format!("let S: any;\nfunction a() {{\n{body}\n}}\n");
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, &source, SourceType::tsx()).parse();
@@ -994,18 +988,14 @@ mod tests {
             panic!("expected one reference to S: {source}");
         };
         let node = scoping.get_reference(reference).node_id();
-        let [(_, fate)] = super::uses(&ctx, node, Held::State, policy, 0)[..] else {
+        let [(_, fate)] = super::uses(&ctx, node, Held::State, &Policy::HANDED_OUT, 0)[..] else {
             panic!("expected one use: {source}");
         };
         fate
     }
 
     #[test]
-    fn an_operand_an_operator_yields_is_followed_only_where_the_policy_says() {
-        let following = Policy {
-            follow_value_ops: true,
-            ..Policy::HANDED_OUT
-        };
+    fn an_operand_an_operator_yields_goes_where_the_operator_puts_it() {
         for body in [
             "(o || S) === 1;",
             "(o ?? S) === 1;",
@@ -1014,17 +1004,22 @@ mod tests {
             "(c ? S : d) === 1;",
             "(0, S) === 1;",
         ] {
-            assert_eq!(
-                state_fate(body, &Policy::HANDED_OUT),
-                Fate::Escapes,
-                "{body}"
-            );
-            assert_eq!(state_fate(body, &following), Fate::InPlace, "{body}");
+            assert_eq!(state_fate(body), Fate::InPlace, "{body}");
+        }
+        for body in [
+            "f(o || S);",
+            "f(S ?? o);",
+            "f(o && S);",
+            "f(c ? S : d);",
+            "f((0, S));",
+            "return c ? o : (0, S);",
+        ] {
+            assert_eq!(state_fate(body), Fate::Escapes, "{body}");
         }
         // The left of `&&` is yielded only where it is falsy, and a comma yields its
         // last expression alone, so neither is followed.
-        for body in ["(S && o) === 1;", "(S, 0) === 1;", "f(o || S);"] {
-            assert_eq!(state_fate(body, &following), Fate::Escapes, "{body}");
+        for body in ["(S && o) === 1;", "(S, 0) === 1;"] {
+            assert_eq!(state_fate(body), Fate::Escapes, "{body}");
         }
     }
 

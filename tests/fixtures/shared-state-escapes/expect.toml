@@ -1,0 +1,27 @@
+# Uses of a shared value that let it escape, each in a module of its own, with a
+# page that only reads the value and an edit to the declaration that lets it go.
+# Every escape here was once read as in place, so the edit did not reach the
+# page. Each declaration is now a writer of what it lets go, and the page is
+# affected.
+
+# `ItemsView` hands `state.items` to a component through `&&`, which yields the
+# array whenever `flag` is set, and `hasItems` reads the array's length.
+[[anchor]]
+path = "src/pages/JsxOperatorPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/JsxOperatorPage.tsx)",
+    "Decl(src/pages/JsxOperatorPage.tsx, JsxOperatorPage)",
+    "Export(src/state/jsx-operator.tsx, hasItems)",
+    "Decl(src/state/jsx-operator.tsx, hasItems)",
+    "Decl(src/state/jsx-operator.tsx, ItemsView)",
+]
+
+# `CountView` renders `state.count` through `&&` as the child of an `<li>`, which
+# only renders it, so it reads the count, and the edit to it does not reach a
+# page that reads the count too.
+[[anchor]]
+path = "src/pages/JsxOperatorReadPage.tsx"
+affected = false
