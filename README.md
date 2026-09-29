@@ -139,7 +139,13 @@ except a method that reads a [Zustand store](#zustand) or a collection whose typ
 file shows. What a property holds is part of the value, so a write or a method call
 anywhere down a member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
 `delete state.a.b` and `state.items.push(x)` write `state` as `state.a = 1` does,
-while `state.items.length` still reads it in place.
+while `state.items.length` still reads it in place. Passing the value, or anything
+read off it, to a component, as a child or as any prop but `key`, passes it on, since
+the component could change it: `<List items={state.items} />` writes `state`, and so
+does `<button onClick={state.handler}>`, which calls what it is handed. Rendered as
+the child of an element such as `<li>` or of a fragment, or used as a `key`, it is
+read in place. The same holds for an object shared property by property, one read
+only for its members, and a collection whose type the file shows.
 
 A collection's type is shown only by a module-scope `const` that nothing reassigns,
 initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or

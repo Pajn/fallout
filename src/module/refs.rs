@@ -511,6 +511,11 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
         }
         // `#x in s` asks the same of a private field.
         AstKind::PrivateInExpression(_) => Use::Read,
+        // `<li>{s}</li>` renders the value where it stands; `<Foo value={s} />`
+        // and `<Foo>{s}</Foo>` hand it to a component, which could change it.
+        AstKind::JSXExpressionContainer(_) => {
+            in_place(shared::rendered_in_place(nodes, nodes.parent_id(node_id)))
+        }
         // `s.x` is a read where the value it yields stays in the expression.
         AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
             chain_use(nodes, nodes.parent_id(node_id))
@@ -524,8 +529,9 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
 ///
 /// What a property holds is part of what the binding holds, so a write anywhere
 /// down the chain, `s.a.b = 1`, writes the binding, and so does a method called on
-/// anything read off it, `s.items.push(1)`, or handing it to other code. Reading it
-/// in place, `s.items.length`, stays a read however deep it goes.
+/// anything read off it, `s.items.push(1)`, or handing it to other code, a
+/// component included, as in `<List items={s.items} />`. Reading it in place,
+/// `s.items.length` or `<li>{s.name}</li>`, stays a read however deep it goes.
 fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
     let mut current = member;
     loop {
@@ -558,8 +564,16 @@ fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
         AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => Use::Mutate,
         // A tag is called with what it was read off as `this`, as a method is.
         AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => Use::Mutate,
+        AstKind::JSXExpressionContainer(_) => {
+            in_place(shared::rendered_in_place(nodes, nodes.parent_id(top)))
+        }
         _ => Use::Read,
     }
+}
+
+/// A read where what is used stays in place, and a possible write where it does not.
+fn in_place(stays: bool) -> Use {
+    if stays { Use::Read } else { Use::Mutate }
 }
 
 /// Where in a declaration's statement it imports something without a binding: a
@@ -1304,6 +1318,37 @@ mod tests {
         ] {
             let source = format!("export const a = () => {body};");
             assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
+    }
+
+    #[test]
+    fn handing_the_value_to_a_component_is_a_mutation() {
+        for body in [
+            "<Foo value={S.items} />",
+            "<Foo>{S.items}</Foo>",
+            "<Foo value={S} />",
+            "<Foo>{S}</Foo>",
+            "<Foo.Bar>{S.a.b}</Foo.Bar>",
+            // An element of the platform's own calls a handler it is handed.
+            "<div onClick={S.handler} />",
+            "<div title={S.name} />",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
+    }
+
+    #[test]
+    fn rendering_the_value_in_place_is_a_read() {
+        for body in [
+            "<li>{S.count}</li>",
+            "<li key={S.id} />",
+            "<Foo key={S.id} />",
+            "<>{S.a.b}</>",
+            "<li>{S}</li>",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
         }
     }
 

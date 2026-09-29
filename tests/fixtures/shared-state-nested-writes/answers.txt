@@ -175,3 +175,69 @@ No reachability impact detected
 No reachability impact detected
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/list.tsx"
+Path (downstream, file granularity):
+  File(src/pages/SizePage.tsx)
+  File(src/state/list.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizePage.tsx","affected":true,"direction":"downstream","changed":"src/state/list.tsx","path":["File(src/pages/SizePage.tsx)","File(src/state/list.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SizePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/list.tsx"
+Path (downstream, file granularity):
+  File(src/pages/SizePage.tsx)
+  File(src/state/list.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizePage.tsx","affected":true,"direction":"downstream","changed":"src/state/list.tsx","path":["File(src/pages/SizePage.tsx)","File(src/state/list.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SizePage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/list.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SizePage.tsx)
+  Decl(src/pages/SizePage.tsx, SizePage)
+  Export(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, ListView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizePage.tsx","affected":true,"direction":"downstream","changed":"src/state/list.tsx","path":["File(src/pages/SizePage.tsx)","Decl(src/pages/SizePage.tsx, SizePage)","Export(src/state/list.tsx, size)","Decl(src/state/list.tsx, size)","Decl(src/state/list.tsx, ListView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizePage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/list.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SizePage.tsx)
+  Decl(src/pages/SizePage.tsx, SizePage)
+  Export(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, ListView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizePage.tsx","affected":true,"direction":"downstream","changed":"src/state/list.tsx","path":["File(src/pages/SizePage.tsx)","Decl(src/pages/SizePage.tsx, SizePage)","Export(src/state/list.tsx, size)","Decl(src/state/list.tsx, size)","Decl(src/state/list.tsx, ListView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizePage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/list.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SizePage.tsx)
+  Decl(src/pages/SizePage.tsx, SizePage)
+  Export(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, ListView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizePage.tsx","affected":true,"direction":"downstream","changed":"src/state/list.tsx","path":["File(src/pages/SizePage.tsx)","Decl(src/pages/SizePage.tsx, SizePage)","Export(src/state/list.tsx, size)","Decl(src/state/list.tsx, size)","Decl(src/state/list.tsx, ListView)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SizePage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/list.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SizePage.tsx)
+  Decl(src/pages/SizePage.tsx, SizePage)
+  Export(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, size)
+  Decl(src/state/list.tsx, ListView)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SizePage.tsx","affected":true,"direction":"downstream","changed":"src/state/list.tsx","path":["File(src/pages/SizePage.tsx)","Decl(src/pages/SizePage.tsx, SizePage)","Export(src/state/list.tsx, size)","Decl(src/state/list.tsx, size)","Decl(src/state/list.tsx, ListView)"],"granularity":"symbol","unresolved":[]}]}

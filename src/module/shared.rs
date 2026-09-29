@@ -607,6 +607,9 @@ fn property_use(ctx: &Ctx<'_>, member: NodeId, depth: usize) -> PropertyUse {
         | AstKind::JSXOpeningElement(_)
         | AstKind::JSXClosingElement(_) => written(true),
         AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => written(true),
+        AstKind::JSXExpressionContainer(_) => {
+            written(!rendered_in_place(nodes, nodes.parent_id(top)))
+        }
         // Read where it stands, as the whole-value rule reads `s.x`.
         _ => written(false),
     }
@@ -970,21 +973,9 @@ fn stays_read(
             AstKind::TaggedTemplateExpression(_)
         ),
         // The state itself is never rendered in place, since it holds the actions.
-        AstKind::JSXExpressionContainer(_) if held == Held::State => false,
-        AstKind::JSXExpressionContainer(_) => match nodes.parent_kind(parent) {
-            // A component is handed its children as a prop, free to call them or
-            // change what they hold. An element of the platform's own, such as
-            // `<li>`, only renders them.
-            AstKind::JSXElement(element) => {
-                matches!(element.opening_element.name, JSXElementName::Identifier(_))
-            }
-            AstKind::JSXFragment(_) => true,
-            // React takes `key` for itself, as a string, and hands it to no
-            // component. Any other prop is handed on, even by an element of the
-            // platform's own, which may call it as a handler.
-            AstKind::JSXAttribute(attribute) => attribute.is_key(),
-            _ => false,
-        },
+        AstKind::JSXExpressionContainer(_) => {
+            held != Held::State && rendered_in_place(nodes, parent)
+        }
         AstKind::VariableDeclarator(declarator)
             if declarator
                 .init
@@ -1038,6 +1029,25 @@ fn binding_reads(
                         && binding_reads(ctx, &property.value, held.read_off(), returns, depth)
                 })
         }
+        _ => false,
+    }
+}
+
+/// Whether a value in the JSX expression container at `container` is only
+/// rendered where it stands, rather than handed to code that could change it.
+///
+/// A component is handed its children as a prop, free to call them or change what
+/// they hold, as it is handed every other prop. An element of the platform's own,
+/// such as `<li>`, or a fragment, only renders its children. React takes `key` for
+/// itself, as a string, and hands it to no component. Any other prop is handed on,
+/// even by an element of the platform's own, which may call it as a handler.
+pub(crate) fn rendered_in_place(nodes: &AstNodes<'_>, container: NodeId) -> bool {
+    match nodes.parent_kind(container) {
+        AstKind::JSXElement(element) => {
+            matches!(element.opening_element.name, JSXElementName::Identifier(_))
+        }
+        AstKind::JSXFragment(_) => true,
+        AstKind::JSXAttribute(attribute) => attribute.is_key(),
         _ => false,
     }
 }
@@ -1625,6 +1635,45 @@ mod tests {
                 assert!(!peek_writes(binding, body), "{binding} {body}");
             }
         }
+    }
+
+    #[test]
+    fn a_property_handed_to_a_component_is_written_however_the_binding_is_read() {
+        // An object tracked property by property, and one read only for its
+        // members: what a component is handed it may change.
+        for (binding, read) in [
+            (STATE, "state.list.length"),
+            (
+                "const state = { list: [] as number[], format: (n: number) => `${n}` };\n",
+                "state.list.length",
+            ),
+        ] {
+            for writer in [
+                "export const Write = () => <Foo items={state.list} />;",
+                "export const Write = () => <Foo>{state.list}</Foo>;",
+                "export const Write = () => <div onClick={state.list} />;",
+            ] {
+                let source = format!("{binding}{writer}\nexport const read = () => {read};");
+                assert!(reaches_tsx(&source, "read", "Write"), "{source}");
+            }
+            for writer in [
+                "export const Write = () => <li>{state.list}</li>;",
+                "export const Write = () => <li key={state.list} />;",
+            ] {
+                let source = format!("{binding}{writer}\nexport const read = () => {read};");
+                assert!(!reaches_tsx(&source, "read", "Write"), "{source}");
+            }
+        }
+        // The second is read only for its members: calling `format` reads that
+        // member, and meets no write of `list`.
+        let source = "const state = { list: [] as number[], format: (n: number) => `${n}` };
+            export const Write = () => <Foo items={state.list} />;
+            export const show = () => state.format(1);";
+        assert!(!reaches_tsx(source, "show", "Write"));
+        // A collection, handed an element of it.
+        assert!(peek_writes(ARRAY, "<Row item={V[0]} />"));
+        assert!(peek_writes(ARRAY, "<Row>{V[0]}</Row>"));
+        assert!(!peek_writes(ARRAY, "<li>{V[0]}</li>"));
     }
 
     #[test]
