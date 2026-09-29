@@ -235,8 +235,10 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
                 Evaluation::Nothing => false,
                 // The current graph decides whether a call runs anything, which
                 // answers for the base version only if it asked the same of the
-                // same callee.
-                now @ Evaluation::Call(_) => now == ran,
+                // same callee, with arguments that would run the same when called:
+                // a store's creator that has lost an effect is written in a call
+                // that reads as it did up to its arguments.
+                now @ Evaluation::Call { .. } => now == ran,
             },
             _ => true,
         };
@@ -380,9 +382,19 @@ enum Evaluation {
     Nothing,
     /// Runs the statement's initialisers.
     Runs,
-    /// Runs a call that may be a factory's, written up to its arguments as this.
-    /// Whether it did anything is a question about another module.
-    Call(String),
+    /// Runs a call that may be a factory's, written up to its arguments as `head`.
+    /// Whether it did anything is a question about another module, and, for a
+    /// factory that calls some of its arguments as it creates its value, about
+    /// whether calling each of them runs anything. `quiet` holds the positions of
+    /// the arguments proven to run nothing when called.
+    ///
+    /// Only those positions are kept, and not a flag for every argument, so that an
+    /// argument added or removed that no factory could call quietly — a string, an
+    /// options object, an async payload creator — changes nothing here.
+    Call {
+        head: String,
+        quiet: Vec<usize>,
+    },
 }
 
 /// What evaluating `module`, whose text is `source`, does with this statement.
@@ -410,7 +422,18 @@ fn evaluation(module: &FineModule, statement: &Keyed<'_>, source: &str) -> Evalu
         .factory
         .as_ref()
         .map_or(statement.span.end, |call| call.interior.start);
-    Evaluation::Call(lines(&source[statement.span.start as usize..head as usize]))
+    let quiet = decl.factory.as_ref().map_or_else(Vec::new, |call| {
+        call.args
+            .iter()
+            .enumerate()
+            .filter(|(_, argument)| argument.quiet_when_called)
+            .map(|(index, _)| index)
+            .collect()
+    });
+    Evaluation::Call {
+        head: lines(&source[statement.span.start as usize..head as usize]),
+        quiet,
+    }
 }
 
 /// Text to compare with its counterpart in the other version, with each line break
@@ -637,6 +660,37 @@ mod tests {
         let after = before.replace('1', "2").replace('\n', "\r\n");
         let comparison = compared(before, &after).expect("comparable");
         assert_eq!(changed(&after, &comparison), ["async () => 2"]);
+    }
+
+    #[test]
+    fn a_creator_that_loses_or_gains_an_effect_changes_initialisation() {
+        let store = |creator: &str| {
+            format!(
+                "import {{ create }} from 'zustand';\nexport const store = create({creator});\n"
+            )
+        };
+        let loud = store("() => ({ id: register() })");
+        let quiet = store("() => ({ id: 0 })");
+        let quieter = store("() => ({ id: 1 })");
+        for (before, after) in [(&loud, &quiet), (&quiet, &loud)] {
+            let comparison = compared(before, after).expect("comparable");
+            assert!(comparison.init_differs, "{before} -> {after}");
+        }
+        // A creator that ran nothing and still runs nothing is an edit to the
+        // store, and to nothing else loading the module does.
+        let comparison = compared(&quiet, &quieter).expect("comparable");
+        assert!(!comparison.init_differs);
+        assert_eq!(comparison.changed.len(), 1);
+    }
+
+    #[test]
+    fn an_argument_no_factory_calls_quietly_leaves_initialisation_alone() {
+        // RTK's options are an object, and its payload creator is async. Neither is
+        // proven to run nothing when called, so adding or removing one says nothing
+        // a factory that calls its arguments could read.
+        let before = "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk('a/b', async () => register(), { condition: () => true });\n";
+        let after = "import { createAsyncThunk } from '@reduxjs/toolkit';\nexport const t = createAsyncThunk('a/b', async () => register());\n";
+        assert!(!compared(before, after).expect("comparable").init_differs);
     }
 
     #[test]
