@@ -1,15 +1,504 @@
-//! What happens to a value where it is used: whether it stays in place, or leaves
-//! the expression it is read in for code that could change it.
+//! What happens to a value where it is used: whether it stays in the expression it
+//! is read in, or leaves it for code that could change it.
 //!
 //! The shared-state rule asks this of every use of a mutable module-scope binding,
-//! and of what a Zustand store or a collection the file makes hands out. The walk
-//! out through the wrappers that leave a value as it was is the same for all of
-//! them, so this module holds it.
+//! and of what a Zustand store or a collection the file makes hands out. This
+//! module answers it behind one interface, [`uses`]: given a value and what it
+//! holds, it climbs out through what leaves the value as it was — parentheses,
+//! type-only wrappers, member chains, optional chaining — and judges the position
+//! it lands in. What differs from one kind of binding to another is a [`Policy`],
+//! not a walk of its own, so each position is judged in one place and two kinds of
+//! binding can be told apart by reading their policies. That is the module's
+//! depth: a caller passes a value, and the list of positions stays in the
+//! implementation, where a change to one is made once and seen in the table below
+//! for every kind of binding.
+//!
+//! A method called on the value is judged by a [`CallRule`], which knows what a
+//! collection's read methods hand back and which calls a factory's rule declares
+//! reads. What such a call hands out, and what a callback it takes is called with,
+//! goes back through [`uses`].
 
 use oxc_ast::AstKind;
-use oxc_ast::ast::JSXElementName;
+use oxc_ast::ast::{
+    Argument, BinaryOperator, BindingPattern, CallExpression, FormalParameters, JSXElementName,
+    UnaryOperator, VariableDeclarationKind,
+};
 use oxc_semantic::{AstNodes, NodeId};
 use oxc_span::{GetSpan, Span as OxcSpan};
+
+use super::parse::Ctx;
+use super::shared::{Callback, Collection};
+use crate::factories::rules::{Reads, read_forms};
+
+/// How far aliases of aliases are followed. Past it, what is handed out is taken
+/// to escape, and an alias of a shared object to use the whole of it.
+pub(crate) const ALIAS_DEPTH: usize = 4;
+
+/// What happens to a value where it is used.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Fate {
+    /// It stays in the expression it is read in: compared, tested, coerced to a
+    /// primitive, rendered where it stands, or dropped.
+    InPlace,
+    /// It is handed to code that could change it: passed on, returned, stored,
+    /// spread or iterated.
+    Escapes,
+    /// It is changed where it stands: assigned, updated, deleted, or called as a
+    /// method on what it was read off.
+    Writes,
+}
+
+impl Fate {
+    pub(crate) fn in_place(self) -> bool {
+        self == Fate::InPlace
+    }
+}
+
+/// What a value holds, which decides what may be done with it in place.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Held {
+    /// A Zustand store's state, whose properties may be actions.
+    State,
+    /// Something read off the state.
+    StatePart,
+    /// What a collection hands out, which may be an object it holds, as may
+    /// anything read off one. A change made through it is one every other reader
+    /// of the collection sees.
+    Stored,
+    /// A boolean, a number, a string or nothing, which holds nothing of the value
+    /// it came from, however it is used.
+    Primitive,
+}
+
+impl Held {
+    /// What something read off a value holding this holds.
+    fn read_off(self) -> Self {
+        match self {
+            Held::State => Held::StatePart,
+            other => other,
+        }
+    }
+}
+
+/// How the positions a value can land in are judged for one kind of binding.
+///
+/// A position whose reading every kind of binding shares is not here: an
+/// assignment writes, a comparison reads, and a component handed the value may
+/// change it, whatever the value is.
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct Policy {
+    /// Put through arithmetic, as in `v + 1` or `-v`, or into an untagged
+    /// template, which coerces it to a primitive. Something read off the value is
+    /// in place there whatever this says.
+    arithmetic: Fate,
+    /// Tested for truth, as `if (v)`, `v ? a : b` and `!v` do. Something read off
+    /// the value is in place there whatever this says.
+    test: Fate,
+    /// Dropped, as an expression statement or `void v` does. Something read off
+    /// the value is in place there whatever this says.
+    discard: Fate,
+    /// Where an arrow's expression body is what the caller does no more with than
+    /// with what it hands out, the span of that arrow. Anywhere else a return
+    /// hands the value on.
+    returns: Option<OxcSpan>,
+    /// A position the lists below do not know. Temporary: the soundness PR takes
+    /// every such position as an escape.
+    legacy_unknown: Fate,
+    /// Whether to climb through the operators that yield an operand as they found
+    /// it: both operands of `||` and `??`, the right of `&&`, the branches of `?:`
+    /// and the last expression of a comma. Temporary: the soundness PR turns it
+    /// on for every policy.
+    follow_value_ops: bool,
+}
+
+impl Policy {
+    /// What a Zustand store's `getState` or a collection's read method hands out,
+    /// and what a listener or callback is called with: it may be used as a value
+    /// where it stands, and a local `const` that holds it, or takes it apart one
+    /// level, is followed to its own uses. Nothing else is known to leave it be.
+    pub(crate) const HANDED_OUT: Policy = Policy {
+        arithmetic: Fate::InPlace,
+        test: Fate::InPlace,
+        discard: Fate::InPlace,
+        returns: None,
+        legacy_unknown: Fate::Escapes,
+        follow_value_ops: false,
+    };
+
+    /// This policy, with the expression body of the arrow at `arrow` in place.
+    fn returning(self, arrow: Option<OxcSpan>) -> Policy {
+        Policy {
+            returns: arrow,
+            ..self
+        }
+    }
+}
+
+/// Where a value lands once it has climbed out through what leaves it as it was.
+struct Landing {
+    /// The outermost node standing for the value, or for what was read off it.
+    top: NodeId,
+    /// That node's span, by which its parent tells which of its parts it is.
+    span: OxcSpan,
+    /// What that node holds.
+    held: Held,
+    /// How many member steps the climb took. Zero where the value itself lands.
+    steps: usize,
+}
+
+/// Every use `value` is put to, each with where it is written and its fate, where
+/// `value` holds `held`. `depth` is how many aliases were followed to reach it.
+pub(crate) fn uses(
+    ctx: &Ctx<'_>,
+    value: NodeId,
+    held: Held,
+    policy: &Policy,
+    depth: usize,
+) -> Vec<(u32, Fate)> {
+    let nodes = ctx.semantic.nodes();
+    let at = nodes.get_node(value).kind().span().start;
+    if held == Held::Primitive {
+        return vec![(at, Fate::InPlace)];
+    }
+    let landing = climb(nodes, value, held, policy);
+    vec![(at, fate(ctx, &landing, policy, depth))]
+}
+
+/// Whether every use `value` is put to leaves it in place.
+fn stays(ctx: &Ctx<'_>, value: NodeId, held: Held, policy: &Policy, depth: usize) -> bool {
+    uses(ctx, value, held, policy, depth)
+        .iter()
+        .all(|(_, fate)| fate.in_place())
+}
+
+/// Climbs from `value` out through wrappers, member reads off it and optional
+/// chaining, and, where the policy says, through the operators that yield an
+/// operand as they found it.
+fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -> Landing {
+    let mut current = value;
+    let mut steps = 0;
+    loop {
+        let (outer, span) = through_wrappers(nodes, current);
+        match nodes.parent_kind(outer) {
+            AstKind::StaticMemberExpression(next) if next.object.span() == span => {
+                held = held.read_off();
+                steps += 1;
+            }
+            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {
+                held = held.read_off();
+                steps += 1;
+            }
+            AstKind::ChainExpression(_) => {}
+            AstKind::LogicalExpression(logical)
+                if policy.follow_value_ops
+                    && (logical.operator != oxc_ast::ast::LogicalOperator::And
+                        || logical.right.span() == span) => {}
+            AstKind::ConditionalExpression(conditional)
+                if policy.follow_value_ops && conditional.test.span() != span => {}
+            AstKind::SequenceExpression(sequence)
+                if policy.follow_value_ops
+                    && sequence.expressions.last().map(GetSpan::span) == Some(span) => {}
+            _ => {
+                return Landing {
+                    top: outer,
+                    span,
+                    held,
+                    steps,
+                };
+            }
+        }
+        current = nodes.parent_id(outer);
+    }
+}
+
+/// What the position a value landed in does to it.
+fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate {
+    let nodes = ctx.semantic.nodes();
+    let Landing {
+        top,
+        span,
+        held,
+        steps,
+    } = *landing;
+    let parent = nodes.parent_id(top);
+    // A knob of the policy speaks for the value itself. Anything read off it is a
+    // part, which these positions leave in place.
+    let own = |fate: Fate| if steps == 0 { fate } else { Fate::InPlace };
+    match nodes.parent_kind(top) {
+        // The state itself is never rendered in place, since it holds the actions.
+        AstKind::JSXExpressionContainer(_) => {
+            if held != Held::State && rendered_in_place(nodes, parent) {
+                Fate::InPlace
+            } else {
+                Fate::Escapes
+            }
+        }
+        AstKind::UnaryExpression(unary) => match unary.operator {
+            UnaryOperator::Typeof => Fate::InPlace,
+            UnaryOperator::Delete => Fate::Writes,
+            UnaryOperator::LogicalNot => own(policy.test),
+            UnaryOperator::Void => own(policy.discard),
+            UnaryOperator::UnaryNegation | UnaryOperator::UnaryPlus | UnaryOperator::BitwiseNot => {
+                own(policy.arithmetic)
+            }
+        },
+        // `k in v`, `v instanceof C` and `v === o` check the value, on either side,
+        // and yield a boolean that holds no reference to it. What they can run, a
+        // proxy's `has` trap, `Symbol.hasInstance`, `valueOf` or `toString`, is
+        // taken to run nothing, as it is for property reads and pure calls.
+        AstKind::BinaryExpression(binary) => {
+            if matches!(
+                binary.operator,
+                BinaryOperator::In
+                    | BinaryOperator::Instanceof
+                    | BinaryOperator::Equality
+                    | BinaryOperator::Inequality
+                    | BinaryOperator::StrictEquality
+                    | BinaryOperator::StrictInequality
+                    | BinaryOperator::LessThan
+                    | BinaryOperator::LessEqualThan
+                    | BinaryOperator::GreaterThan
+                    | BinaryOperator::GreaterEqualThan
+            ) {
+                Fate::InPlace
+            } else {
+                own(policy.arithmetic)
+            }
+        }
+        AstKind::IfStatement(test) if test.test.span() == span => own(policy.test),
+        AstKind::ConditionalExpression(test) if test.test.span() == span => own(policy.test),
+        AstKind::ExpressionStatement(_) => own(policy.discard),
+        // A template's values go to its tag, where it has one.
+        AstKind::TemplateLiteral(_)
+            if !matches!(
+                nodes.parent_kind(parent),
+                AstKind::TaggedTemplateExpression(_)
+            ) =>
+        {
+            own(policy.arithmetic)
+        }
+        // An arrow's expression body is what it returns.
+        AstKind::ArrowFunctionExpression(arrow) if policy.returns == Some(arrow.span) => {
+            Fate::InPlace
+        }
+        AstKind::VariableDeclarator(declarator)
+            if declarator
+                .init
+                .as_ref()
+                .is_some_and(|init| init.span() == span) =>
+        {
+            let declaration = nodes.parent_id(parent);
+            let local_const = matches!(
+                nodes.kind(declaration),
+                AstKind::VariableDeclaration(variable)
+                    if variable.kind == VariableDeclarationKind::Const
+            ) && !matches!(
+                nodes.parent_kind(declaration),
+                AstKind::ExportDeclaration(_)
+            );
+            if local_const && bindings_stay(ctx, &declarator.id, held, policy, depth) {
+                Fate::InPlace
+            } else {
+                Fate::Escapes
+            }
+        }
+        // A method called on what the value was read off gets that as `this`.
+        AstKind::CallExpression(call) if call.callee.span() == span => {
+            if steps > 0 {
+                Fate::Writes
+            } else {
+                Fate::Escapes
+            }
+        }
+        AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => {
+            if steps > 0 {
+                Fate::Writes
+            } else {
+                Fate::Escapes
+            }
+        }
+        AstKind::AssignmentExpression(assignment) => {
+            if assignment.left.span() == span {
+                Fate::Writes
+            } else {
+                Fate::Escapes
+            }
+        }
+        AstKind::ForInStatement(statement) if statement.left.span() == span => Fate::Writes,
+        AstKind::ForOfStatement(statement) if statement.left.span() == span => Fate::Writes,
+        AstKind::UpdateExpression(_)
+        | AstKind::AssignmentTargetPropertyIdentifier(_)
+        | AstKind::AssignmentTargetPropertyProperty(_)
+        | AstKind::ArrayAssignmentTarget(_)
+        | AstKind::AssignmentTargetRest(_)
+        | AstKind::AssignmentTargetWithDefault(_)
+        | AstKind::JSXOpeningElement(_)
+        | AstKind::JSXClosingElement(_) => Fate::Writes,
+        AstKind::CallExpression(_)
+        | AstKind::NewExpression(_)
+        | AstKind::SpreadElement(_)
+        | AstKind::ForInStatement(_)
+        | AstKind::ForOfStatement(_) => Fate::Escapes,
+        _ => policy.legacy_unknown,
+    }
+}
+
+/// Whether every binding a pattern declares is only put to uses that leave it in
+/// place, where what the pattern takes apart holds `held`. Taking apart anything
+/// past one level, or with a rest element or a default, is not followed, and nor
+/// are aliases past [`ALIAS_DEPTH`].
+fn bindings_stay(
+    ctx: &Ctx<'_>,
+    pattern: &BindingPattern<'_>,
+    held: Held,
+    policy: &Policy,
+    depth: usize,
+) -> bool {
+    if depth >= ALIAS_DEPTH {
+        return false;
+    }
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => {
+            let Some(symbol) = identifier.symbol_id.get() else {
+                return false;
+            };
+            let scoping = ctx.semantic.scoping();
+            scoping.get_resolved_reference_ids(symbol).iter().all(|id| {
+                let reference = scoping.get_reference(*id);
+                !reference.is_write() && stays(ctx, reference.node_id(), held, policy, depth + 1)
+            })
+        }
+        BindingPattern::ObjectPattern(object) => {
+            object.rest.is_none()
+                && object.properties.iter().all(|property| {
+                    matches!(property.value, BindingPattern::BindingIdentifier(_))
+                        && bindings_stay(ctx, &property.value, held.read_off(), policy, depth)
+                })
+        }
+        _ => false,
+    }
+}
+
+/// Whether a function only puts what it is called with to uses that leave it in
+/// place, where each argument holds `held`. A rest parameter or a default is not
+/// followed. Where `returns` is the function's own span, what it returns is in
+/// place too, for a callback whose caller does no more with what it returns than
+/// with what it hands out.
+fn params_stay(
+    ctx: &Ctx<'_>,
+    params: &FormalParameters<'_>,
+    held: Held,
+    returns: Option<OxcSpan>,
+) -> bool {
+    let policy = Policy::HANDED_OUT.returning(returns);
+    params.rest.is_none()
+        && params.items.iter().all(|param| {
+            param.initializer.is_none() && bindings_stay(ctx, &param.pattern, held, &policy, 0)
+        })
+}
+
+/// How a method called on a value is judged.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CallRule {
+    /// A collection the file makes, whose built-in read methods are known.
+    Collection(Collection),
+    /// A value some factory's rule may have made, whose rule declares which of its
+    /// methods read it and how each is written; see [`read_forms`].
+    Factory,
+}
+
+/// The method this reference is called with directly, `value.name(…)`, with what
+/// calling it does to the value by `rule`, or `None` where it is no such call.
+///
+/// For a collection, a callback the method calls with what the collection holds
+/// must be an arrow written out in place that does nothing with what it is given
+/// but use it in place, as what the method hands back must be. What else the
+/// callback's body does is judged where it is written, so one that writes the
+/// collection through its own binding is a write there. A callback passed by name
+/// is handed the elements to do with as it likes, and nothing links it to the
+/// collection but this call, so it escapes. So does a `function`, whose
+/// `arguments` also hold what it is called with. What hands back a primitive is a
+/// read however that is used.
+///
+/// For a factory, the call must be written the way each form its rule declares for
+/// the name says: `store.getState().count` and `store.subscribe((state) => …)` for
+/// a Zustand store. Which factory made the value, if any, is not known here, so
+/// this only picks out the calls the graph may treat as reads. Calling what the
+/// state holds, `store.getState().inc()`, calls an action that sets the store, and
+/// handing the state on lets other code do the same.
+pub(crate) fn method_fate<'a>(
+    ctx: &Ctx<'a>,
+    reference: NodeId,
+    rule: CallRule,
+) -> Option<(&'a str, Fate)> {
+    let (name, call_id, call) = method_call(ctx.semantic.nodes(), reference)?;
+    let reads = match rule {
+        CallRule::Collection(collection) => {
+            let Some((hands, callback)) = collection.read_method(name) else {
+                return Some((name, Fate::Writes));
+            };
+            let callback_reads = match (callback, call.arguments.first()) {
+                (Callback::Never, _) | (Callback::Optional, None) => true,
+                (
+                    Callback::Required | Callback::Optional,
+                    Some(Argument::ArrowFunctionExpression(arrow)),
+                ) => params_stay(ctx, &arrow.params, Held::Stored, Some(arrow.span)),
+                _ => false,
+            };
+            callback_reads && stays(ctx, call_id, hands, &Policy::HANDED_OUT, 0)
+        }
+        CallRule::Factory => {
+            let mut forms = read_forms(name).peekable();
+            if forms.peek().is_none() {
+                return Some((name, Fate::Writes));
+            }
+            forms.all(|form| match form {
+                Reads::State(_) => stays(ctx, call_id, Held::State, &Policy::HANDED_OUT, 0),
+                Reads::Listener(_) => listener_stays(ctx, call),
+            })
+        }
+    };
+    Some((name, if reads { Fate::InPlace } else { Fate::Escapes }))
+}
+
+/// Whether a call is given a single listener, written out in place, that does
+/// nothing with the state it is called with but use it in place. What else its
+/// body does is judged where it is written, so a listener that sets the store
+/// through the store's own binding is a write there.
+fn listener_stays(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> bool {
+    let [listener] = call.arguments.as_slice() else {
+        return false;
+    };
+    let params = match listener {
+        Argument::ArrowFunctionExpression(function) => &function.params,
+        Argument::FunctionExpression(function) => &function.params,
+        _ => return false,
+    };
+    params_stay(ctx, params, Held::State, None)
+}
+
+/// The method this reference is called with directly, `value.name(…)`, with the
+/// call's node and the call.
+fn method_call<'a>(
+    nodes: &AstNodes<'a>,
+    node_id: NodeId,
+) -> Option<(&'a str, NodeId, &'a CallExpression<'a>)> {
+    let (object, span) = through_wrappers(nodes, node_id);
+    let AstKind::StaticMemberExpression(member) = nodes.parent_kind(object) else {
+        return None;
+    };
+    if member.object.span() != span {
+        return None;
+    }
+    let (callee, span) = through_wrappers(nodes, nodes.parent_id(object));
+    let AstKind::CallExpression(call) = nodes.parent_kind(callee) else {
+        return None;
+    };
+    if call.callee.span() != span {
+        return None;
+    }
+    Some((member.property.name.as_str(), nodes.parent_id(callee), call))
+}
 
 /// Whether a value in the JSX expression container at `container` is only
 /// rendered where it stands, rather than handed to code that could change it.
@@ -57,19 +546,9 @@ mod tests {
     use oxc_semantic::SemanticBuilder;
     use oxc_span::SourceType;
 
+    use super::Fate;
     use crate::module::parse::Ctx;
     use crate::module::shared::{self, Collection, Mode};
-
-    /// What happens to a value where it is used.
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    enum Fate {
-        /// It stays in the expression it is read in.
-        InPlace,
-        /// It is handed to code that could change it.
-        Escapes,
-        /// It is changed where it stands.
-        Writes,
-    }
 
     /// One cell of the table below.
     #[derive(Copy, Clone, Debug)]
