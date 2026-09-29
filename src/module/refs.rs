@@ -80,6 +80,8 @@ pub(crate) fn link(
             shared::Mode::Members(&object.callable)
         } else if shared.is_some() && shared::independent_properties(ctx, symbol_id) {
             shared::Mode::Properties
+        } else if let Some(collection) = shared.and_then(|_| shared::collection(ctx, symbol_id)) {
+            shared::Mode::Collection(collection)
         } else {
             shared::Mode::Whole
         };
