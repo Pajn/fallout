@@ -1,0 +1,221 @@
+# Zustand stores, one per scenario, each in a module of its own beside a constant
+# `TITLE`, with a case of its own that reads only that constant. Every store's
+# initial state is edited, and no case reads more than one store's module, so each
+# title case answers for its own scenario alone. The two cases that use the stores
+# read every store of their app.
+#
+# `src/shim` has a tsconfig that maps `zustand` to a file of the app, and
+# `src/inline` is an app bundled with inline requires.
+
+# The ways Zustand offers to make a store, and the ways an app reaches them.
+# Creating a store calls its creator, and each creator here only builds an object
+# of state and actions, so loading the module runs nothing observable, and an edit
+# to the store does not reach a case that reads only the constant beside it.
+
+# `create(creator)`.
+[[anchor]]
+path = "src/cases/plain.cases.tsx"
+affected = false
+
+# `create<State>()(creator)`: called with no arguments, `create` returns itself.
+[[anchor]]
+path = "src/cases/curried.cases.tsx"
+affected = false
+
+# `zustand.create`, through a namespace import.
+[[anchor]]
+path = "src/cases/namespace.cases.tsx"
+affected = false
+
+# `create` imported under another name.
+[[anchor]]
+path = "src/cases/alias.cases.tsx"
+affected = false
+
+# `createStore` from `zustand/vanilla`, the store without the hook.
+[[anchor]]
+path = "src/cases/vanilla.cases.tsx"
+affected = false
+
+# Zustand 4's default export of `zustand`, which is `create`.
+[[anchor]]
+path = "src/cases/default-v4.cases.tsx"
+affected = false
+
+# `create` from `zustand/react`, which Zustand 5 also exports it from.
+[[anchor]]
+path = "src/cases/react-subpath.cases.tsx"
+affected = false
+
+# `create` re-exported by a module of the app, followed to the package.
+[[anchor]]
+path = "src/cases/reexport.cases.tsx"
+affected = false
+
+# The creator tracked an event as the store was made, and no longer does. Loading
+# the module ran that call and now runs none. The current version's creator runs
+# nothing, and the call around it reads as it did, so only a base revision sees the
+# work that went. A line range cannot, as with a helper whose effect is removed.
+[[anchor]]
+path = "src/cases/effect-removed.cases.tsx"
+affected = true
+from = "base"
+
+[anchor.explain]
+base = [
+    "File(src/cases/effect-removed.cases.tsx)",
+    "ModuleInit(src/cases/effect-removed.cases.tsx)",
+    "ModuleInit(src/stores/effect-removed.ts)",
+]
+
+# Stores that stay initialisation, since nothing proves that making them runs
+# nothing: an edit to each reaches the case beside it, by way of the store's whole
+# declaration.
+
+# The app's own `createStore`, which records the store before calling `create`.
+[[anchor]]
+path = "src/cases/custom-create.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/custom-create.cases.tsx)",
+    "ModuleInit(src/cases/custom-create.cases.tsx)",
+    "ModuleInit(src/stores/custom-create.ts)",
+    "Decl(src/stores/custom-create.ts, useCounter)",
+]
+
+# A creator that calls a function of another module to restore the saved count.
+[[anchor]]
+path = "src/cases/creator-runs.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/creator-runs.cases.tsx)",
+    "ModuleInit(src/cases/creator-runs.cases.tsx)",
+    "ModuleInit(src/stores/creator-runs.ts)",
+    "Decl(src/stores/creator-runs.ts, useCounter)",
+]
+
+# A creator that reads a `const` declared further down, which throws when the store
+# is made, before that declaration has run.
+[[anchor]]
+path = "src/cases/read-before-declaration.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/read-before-declaration.cases.tsx)",
+    "ModuleInit(src/cases/read-before-declaration.cases.tsx)",
+    "ModuleInit(src/stores/read-before-declaration.ts)",
+    "Decl(src/stores/read-before-declaration.ts, useCounter)",
+]
+
+# A creator wrapped in the `persist` middleware, whose call is what `create` is
+# handed. What a middleware runs is not proven.
+[[anchor]]
+path = "src/cases/persist.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/persist.cases.tsx)",
+    "ModuleInit(src/cases/persist.cases.tsx)",
+    "ModuleInit(src/stores/persist.ts)",
+    "Decl(src/stores/persist.ts, useCounter)",
+]
+
+# A store put together from slices, `(...a) => ({ ...createCountSlice(...a), … })`:
+# a rest parameter, a spread and calls that pass `set` on are more than the proof
+# reads. The edit is to a slice.
+[[anchor]]
+path = "src/cases/slices.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/slices.cases.tsx)",
+    "ModuleInit(src/cases/slices.cases.tsx)",
+    "ModuleInit(src/stores/slices.ts)",
+    "Decl(src/stores/slices.ts, useCounter)",
+    "Decl(src/stores/slices.ts, createStepSlice)",
+]
+
+# `create.withTypes<State>()`. `withTypes` returns Redux Toolkit's factory because
+# RTK says so of its own, and Zustand's `create` has no such method, so what it
+# returns is nobody's to say.
+[[anchor]]
+path = "src/cases/with-types-not-identity.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/with-types-not-identity.cases.tsx)",
+    "ModuleInit(src/cases/with-types-not-identity.cases.tsx)",
+    "ModuleInit(src/stores/with-types-not-identity.ts)",
+    "Decl(src/stores/with-types-not-identity.ts, useCounter)",
+]
+
+# `zustand` mapped by `src/shim/tsconfig.json` to a file of the app, whose `create`
+# records every store it makes. The name is Zustand's and the function is not.
+[[anchor]]
+path = "src/cases/shim.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/shim.cases.tsx)",
+    "ModuleInit(src/cases/shim.cases.tsx)",
+    "ModuleInit(src/shim/store.ts)",
+    "Decl(src/shim/store.ts, useCounter)",
+]
+
+# A case that uses every store is reached by the edits to them.
+[[anchor]]
+path = "src/cases/stores.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/cases/stores.cases.tsx)",
+    "Decl(src/cases/stores.cases.tsx, Counts)",
+    "Export(src/stores/alias.ts, useCounter)",
+]
+
+# In the app bundled with inline requires, importing a module evaluates nothing
+# until one of its names is read. A case that reads only the constant beside a
+# store evaluates the store's module, and so makes the store, but an edit to the
+# store's initial state still does not reach it.
+[[anchor]]
+path = "src/inline/cases/plain.cases.tsx"
+affected = false
+
+# A creator reads `DEFAULT_STEP` when its store is made, which is when the store's
+# module is evaluated, so a case that reads only the constant beside the store
+# evaluates the config module too. A top-level call added there reaches that case,
+# although nothing it reads depends on the store.
+[[anchor]]
+path = "src/inline/cases/reads-import.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/inline/cases/reads-import.cases.tsx)",
+    "Decl(src/inline/cases/reads-import.cases.tsx, Title)",
+    "Export(src/inline/stores/reads-import.ts, TITLE)",
+    "ModuleInit(src/inline/stores/reads-import.ts)",
+    "ModuleInit(src/inline/config.ts)",
+]
+
+# A case that uses both of that app's stores is reached by the edits.
+[[anchor]]
+path = "src/inline/cases/stores.cases.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/inline/cases/stores.cases.tsx)",
+    "Decl(src/inline/cases/stores.cases.tsx, Counts)",
+    "Export(src/inline/stores/plain.ts, useCounter)",
+]

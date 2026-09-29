@@ -1,0 +1,1053 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/cases/plain.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/plain.ts"
+Path (downstream, file granularity):
+  File(src/cases/plain.cases.tsx)
+  File(src/stores/plain.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plain.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/plain.ts","path":["File(src/cases/plain.cases.tsx)","File(src/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/plain.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/plain.ts"
+Path (downstream, file granularity):
+  File(src/cases/plain.cases.tsx)
+  File(src/stores/plain.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plain.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/plain.ts","path":["File(src/cases/plain.cases.tsx)","File(src/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/plain.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/plain.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/plain.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/plain.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/curried.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/curried.ts"
+Path (downstream, file granularity):
+  File(src/cases/curried.cases.tsx)
+  File(src/stores/curried.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/curried.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/curried.ts","path":["File(src/cases/curried.cases.tsx)","File(src/stores/curried.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/curried.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/curried.ts"
+Path (downstream, file granularity):
+  File(src/cases/curried.cases.tsx)
+  File(src/stores/curried.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/curried.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/curried.ts","path":["File(src/cases/curried.cases.tsx)","File(src/stores/curried.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/curried.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/curried.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/curried.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/curried.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/curried.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/curried.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/curried.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/curried.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/namespace.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/namespace.ts"
+Path (downstream, file granularity):
+  File(src/cases/namespace.cases.tsx)
+  File(src/stores/namespace.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/namespace.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/namespace.ts","path":["File(src/cases/namespace.cases.tsx)","File(src/stores/namespace.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/namespace.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/namespace.ts"
+Path (downstream, file granularity):
+  File(src/cases/namespace.cases.tsx)
+  File(src/stores/namespace.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/namespace.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/namespace.ts","path":["File(src/cases/namespace.cases.tsx)","File(src/stores/namespace.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/namespace.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/namespace.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/namespace.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/namespace.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/namespace.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/namespace.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/namespace.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/namespace.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/alias.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, file granularity):
+  File(src/cases/alias.cases.tsx)
+  File(src/stores/alias.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/alias.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/alias.cases.tsx)","File(src/stores/alias.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/alias.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, file granularity):
+  File(src/cases/alias.cases.tsx)
+  File(src/stores/alias.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/alias.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/alias.cases.tsx)","File(src/stores/alias.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/alias.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/alias.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/alias.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/alias.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/alias.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/alias.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/alias.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/alias.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/vanilla.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/vanilla.ts"
+Path (downstream, file granularity):
+  File(src/cases/vanilla.cases.tsx)
+  File(src/stores/vanilla.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/vanilla.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/vanilla.ts","path":["File(src/cases/vanilla.cases.tsx)","File(src/stores/vanilla.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/vanilla.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/vanilla.ts"
+Path (downstream, file granularity):
+  File(src/cases/vanilla.cases.tsx)
+  File(src/stores/vanilla.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/vanilla.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/vanilla.ts","path":["File(src/cases/vanilla.cases.tsx)","File(src/stores/vanilla.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/vanilla.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/vanilla.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/vanilla.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/vanilla.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/vanilla.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/vanilla.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/vanilla.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/vanilla.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/default-v4.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/default-v4.ts"
+Path (downstream, file granularity):
+  File(src/cases/default-v4.cases.tsx)
+  File(src/stores/default-v4.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/default-v4.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/default-v4.ts","path":["File(src/cases/default-v4.cases.tsx)","File(src/stores/default-v4.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/default-v4.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/default-v4.ts"
+Path (downstream, file granularity):
+  File(src/cases/default-v4.cases.tsx)
+  File(src/stores/default-v4.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/default-v4.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/default-v4.ts","path":["File(src/cases/default-v4.cases.tsx)","File(src/stores/default-v4.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/default-v4.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/default-v4.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/default-v4.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/default-v4.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/default-v4.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/default-v4.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/default-v4.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/default-v4.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/react-subpath.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/react-subpath.ts"
+Path (downstream, file granularity):
+  File(src/cases/react-subpath.cases.tsx)
+  File(src/stores/react-subpath.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/react-subpath.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/react-subpath.ts","path":["File(src/cases/react-subpath.cases.tsx)","File(src/stores/react-subpath.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/react-subpath.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/react-subpath.ts"
+Path (downstream, file granularity):
+  File(src/cases/react-subpath.cases.tsx)
+  File(src/stores/react-subpath.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/react-subpath.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/react-subpath.ts","path":["File(src/cases/react-subpath.cases.tsx)","File(src/stores/react-subpath.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/react-subpath.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/react-subpath.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/react-subpath.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/react-subpath.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/react-subpath.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/react-subpath.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/react-subpath.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/react-subpath.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/reexport.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reexport.ts"
+Path (downstream, file granularity):
+  File(src/cases/reexport.cases.tsx)
+  File(src/stores/reexport.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/reexport.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/reexport.ts","path":["File(src/cases/reexport.cases.tsx)","File(src/stores/reexport.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/reexport.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/reexport.ts"
+Path (downstream, file granularity):
+  File(src/cases/reexport.cases.tsx)
+  File(src/stores/reexport.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/reexport.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/reexport.ts","path":["File(src/cases/reexport.cases.tsx)","File(src/stores/reexport.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/reexport.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/reexport.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/reexport.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/reexport.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/reexport.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/reexport.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/reexport.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/reexport.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/effect-removed.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/effect-removed.ts"
+Path (downstream, file granularity):
+  File(src/cases/effect-removed.cases.tsx)
+  File(src/stores/effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/effect-removed.ts","path":["File(src/cases/effect-removed.cases.tsx)","File(src/stores/effect-removed.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/effect-removed.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/effect-removed.ts"
+Path (downstream, file granularity):
+  File(src/cases/effect-removed.cases.tsx)
+  File(src/stores/effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/effect-removed.ts","path":["File(src/cases/effect-removed.cases.tsx)","File(src/stores/effect-removed.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/effect-removed.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/effect-removed.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/effect-removed.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/effect-removed.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/effect-removed.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/effect-removed.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/effect-removed.cases.tsx)
+  ModuleInit(src/cases/effect-removed.cases.tsx)
+  ModuleInit(src/stores/effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/effect-removed.ts","path":["File(src/cases/effect-removed.cases.tsx)","ModuleInit(src/cases/effect-removed.cases.tsx)","ModuleInit(src/stores/effect-removed.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/effect-removed.ts"]}]}]}
+
+== src/cases/effect-removed.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/effect-removed.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/effect-removed.cases.tsx)
+  ModuleInit(src/cases/effect-removed.cases.tsx)
+  ModuleInit(src/stores/effect-removed.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/effect-removed.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/effect-removed.ts","path":["File(src/cases/effect-removed.cases.tsx)","ModuleInit(src/cases/effect-removed.cases.tsx)","ModuleInit(src/stores/effect-removed.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/effect-removed.ts"]}]}]}
+
+== src/cases/custom-create.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/custom-create.ts"
+Path (downstream, file granularity):
+  File(src/cases/custom-create.cases.tsx)
+  File(src/stores/custom-create.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/custom-create.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/custom-create.ts","path":["File(src/cases/custom-create.cases.tsx)","File(src/stores/custom-create.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/custom-create.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/custom-create.ts"
+Path (downstream, file granularity):
+  File(src/cases/custom-create.cases.tsx)
+  File(src/stores/custom-create.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/custom-create.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/custom-create.ts","path":["File(src/cases/custom-create.cases.tsx)","File(src/stores/custom-create.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/custom-create.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/custom-create.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/stores/custom-create.ts)
+  Decl(src/stores/custom-create.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/custom-create.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/custom-create.ts","path":["File(src/cases/custom-create.cases.tsx)","ModuleInit(src/cases/custom-create.cases.tsx)","ModuleInit(src/stores/custom-create.ts)","Decl(src/stores/custom-create.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
+
+== src/cases/custom-create.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/custom-create.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/stores/custom-create.ts)
+  Decl(src/stores/custom-create.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/custom-create.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/custom-create.ts","path":["File(src/cases/custom-create.cases.tsx)","ModuleInit(src/cases/custom-create.cases.tsx)","ModuleInit(src/stores/custom-create.ts)","Decl(src/stores/custom-create.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
+
+== src/cases/custom-create.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/custom-create.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/stores/custom-create.ts)
+  Decl(src/stores/custom-create.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/custom-create.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/custom-create.ts","path":["File(src/cases/custom-create.cases.tsx)","ModuleInit(src/cases/custom-create.cases.tsx)","ModuleInit(src/stores/custom-create.ts)","Decl(src/stores/custom-create.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
+
+== src/cases/custom-create.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/custom-create.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/cases/custom-create.cases.tsx)
+  ModuleInit(src/stores/custom-create.ts)
+  Decl(src/stores/custom-create.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/custom-create.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/custom-create.ts","path":["File(src/cases/custom-create.cases.tsx)","ModuleInit(src/cases/custom-create.cases.tsx)","ModuleInit(src/stores/custom-create.ts)","Decl(src/stores/custom-create.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts"]}]}]}
+
+== src/cases/creator-runs.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/creator-runs.ts"
+Path (downstream, file granularity):
+  File(src/cases/creator-runs.cases.tsx)
+  File(src/stores/creator-runs.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/creator-runs.ts","path":["File(src/cases/creator-runs.cases.tsx)","File(src/stores/creator-runs.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/creator-runs.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/creator-runs.ts"
+Path (downstream, file granularity):
+  File(src/cases/creator-runs.cases.tsx)
+  File(src/stores/creator-runs.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/creator-runs.ts","path":["File(src/cases/creator-runs.cases.tsx)","File(src/stores/creator-runs.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/creator-runs.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/stores/creator-runs.ts)
+  Decl(src/stores/creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/creator-runs.ts","path":["File(src/cases/creator-runs.cases.tsx)","ModuleInit(src/cases/creator-runs.cases.tsx)","ModuleInit(src/stores/creator-runs.ts)","Decl(src/stores/creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts","src/stores/creator-runs.ts"]}]}]}
+
+== src/cases/creator-runs.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/stores/creator-runs.ts)
+  Decl(src/stores/creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/creator-runs.ts","path":["File(src/cases/creator-runs.cases.tsx)","ModuleInit(src/cases/creator-runs.cases.tsx)","ModuleInit(src/stores/creator-runs.ts)","Decl(src/stores/creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts","src/stores/creator-runs.ts"]}]}]}
+
+== src/cases/creator-runs.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/stores/creator-runs.ts)
+  Decl(src/stores/creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/creator-runs.ts","path":["File(src/cases/creator-runs.cases.tsx)","ModuleInit(src/cases/creator-runs.cases.tsx)","ModuleInit(src/stores/creator-runs.ts)","Decl(src/stores/creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts","src/stores/creator-runs.ts"]}]}]}
+
+== src/cases/creator-runs.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/creator-runs.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/cases/creator-runs.cases.tsx)
+  ModuleInit(src/stores/creator-runs.ts)
+  Decl(src/stores/creator-runs.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/creator-runs.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/creator-runs.ts","path":["File(src/cases/creator-runs.cases.tsx)","ModuleInit(src/cases/creator-runs.cases.tsx)","ModuleInit(src/stores/creator-runs.ts)","Decl(src/stores/creator-runs.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/lib/state.ts","src/stores/creator-runs.ts"]}]}]}
+
+== src/cases/read-before-declaration.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/read-before-declaration.ts"
+Path (downstream, file granularity):
+  File(src/cases/read-before-declaration.cases.tsx)
+  File(src/stores/read-before-declaration.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/read-before-declaration.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/read-before-declaration.ts","path":["File(src/cases/read-before-declaration.cases.tsx)","File(src/stores/read-before-declaration.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/read-before-declaration.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/read-before-declaration.ts"
+Path (downstream, file granularity):
+  File(src/cases/read-before-declaration.cases.tsx)
+  File(src/stores/read-before-declaration.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/read-before-declaration.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/read-before-declaration.ts","path":["File(src/cases/read-before-declaration.cases.tsx)","File(src/stores/read-before-declaration.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/read-before-declaration.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/read-before-declaration.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/stores/read-before-declaration.ts)
+  Decl(src/stores/read-before-declaration.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/read-before-declaration.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/read-before-declaration.ts","path":["File(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/stores/read-before-declaration.ts)","Decl(src/stores/read-before-declaration.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/read-before-declaration.ts"]}]}]}
+
+== src/cases/read-before-declaration.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/read-before-declaration.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/stores/read-before-declaration.ts)
+  Decl(src/stores/read-before-declaration.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/read-before-declaration.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/read-before-declaration.ts","path":["File(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/stores/read-before-declaration.ts)","Decl(src/stores/read-before-declaration.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/read-before-declaration.ts"]}]}]}
+
+== src/cases/read-before-declaration.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/read-before-declaration.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/stores/read-before-declaration.ts)
+  Decl(src/stores/read-before-declaration.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/read-before-declaration.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/read-before-declaration.ts","path":["File(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/stores/read-before-declaration.ts)","Decl(src/stores/read-before-declaration.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/read-before-declaration.ts"]}]}]}
+
+== src/cases/read-before-declaration.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/read-before-declaration.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/cases/read-before-declaration.cases.tsx)
+  ModuleInit(src/stores/read-before-declaration.ts)
+  Decl(src/stores/read-before-declaration.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/read-before-declaration.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/read-before-declaration.ts","path":["File(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/cases/read-before-declaration.cases.tsx)","ModuleInit(src/stores/read-before-declaration.ts)","Decl(src/stores/read-before-declaration.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/read-before-declaration.ts"]}]}]}
+
+== src/cases/persist.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/persist.ts"
+Path (downstream, file granularity):
+  File(src/cases/persist.cases.tsx)
+  File(src/stores/persist.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/persist.ts","path":["File(src/cases/persist.cases.tsx)","File(src/stores/persist.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/persist.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/persist.ts"
+Path (downstream, file granularity):
+  File(src/cases/persist.cases.tsx)
+  File(src/stores/persist.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/persist.ts","path":["File(src/cases/persist.cases.tsx)","File(src/stores/persist.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/persist.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/persist.cases.tsx)
+  ModuleInit(src/cases/persist.cases.tsx)
+  ModuleInit(src/stores/persist.ts)
+  Decl(src/stores/persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/persist.ts","path":["File(src/cases/persist.cases.tsx)","ModuleInit(src/cases/persist.cases.tsx)","ModuleInit(src/stores/persist.ts)","Decl(src/stores/persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]}]}]}
+
+== src/cases/persist.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/persist.cases.tsx)
+  ModuleInit(src/cases/persist.cases.tsx)
+  ModuleInit(src/stores/persist.ts)
+  Decl(src/stores/persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/persist.ts","path":["File(src/cases/persist.cases.tsx)","ModuleInit(src/cases/persist.cases.tsx)","ModuleInit(src/stores/persist.ts)","Decl(src/stores/persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]}]}]}
+
+== src/cases/persist.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/persist.cases.tsx)
+  ModuleInit(src/cases/persist.cases.tsx)
+  ModuleInit(src/stores/persist.ts)
+  Decl(src/stores/persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/persist.ts","path":["File(src/cases/persist.cases.tsx)","ModuleInit(src/cases/persist.cases.tsx)","ModuleInit(src/stores/persist.ts)","Decl(src/stores/persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]}]}]}
+
+== src/cases/persist.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/persist.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/persist.cases.tsx)
+  ModuleInit(src/cases/persist.cases.tsx)
+  ModuleInit(src/stores/persist.ts)
+  Decl(src/stores/persist.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/persist.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/persist.ts","path":["File(src/cases/persist.cases.tsx)","ModuleInit(src/cases/persist.cases.tsx)","ModuleInit(src/stores/persist.ts)","Decl(src/stores/persist.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]}]}]}
+
+== src/cases/slices.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/slices.ts"
+Path (downstream, file granularity):
+  File(src/cases/slices.cases.tsx)
+  File(src/stores/slices.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/slices.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/slices.ts","path":["File(src/cases/slices.cases.tsx)","File(src/stores/slices.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/slices.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/slices.ts"
+Path (downstream, file granularity):
+  File(src/cases/slices.cases.tsx)
+  File(src/stores/slices.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/slices.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/slices.ts","path":["File(src/cases/slices.cases.tsx)","File(src/stores/slices.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/slices.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/slices.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/slices.cases.tsx)
+  ModuleInit(src/cases/slices.cases.tsx)
+  ModuleInit(src/stores/slices.ts)
+  Decl(src/stores/slices.ts, useCounter)
+  Decl(src/stores/slices.ts, createStepSlice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/slices.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/slices.ts","path":["File(src/cases/slices.cases.tsx)","ModuleInit(src/cases/slices.cases.tsx)","ModuleInit(src/stores/slices.ts)","Decl(src/stores/slices.ts, useCounter)","Decl(src/stores/slices.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/slices.ts"]}]}]}
+
+== src/cases/slices.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/slices.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/slices.cases.tsx)
+  ModuleInit(src/cases/slices.cases.tsx)
+  ModuleInit(src/stores/slices.ts)
+  Decl(src/stores/slices.ts, useCounter)
+  Decl(src/stores/slices.ts, createStepSlice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/slices.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/slices.ts","path":["File(src/cases/slices.cases.tsx)","ModuleInit(src/cases/slices.cases.tsx)","ModuleInit(src/stores/slices.ts)","Decl(src/stores/slices.ts, useCounter)","Decl(src/stores/slices.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/slices.ts"]}]}]}
+
+== src/cases/slices.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/slices.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/slices.cases.tsx)
+  ModuleInit(src/cases/slices.cases.tsx)
+  ModuleInit(src/stores/slices.ts)
+  Decl(src/stores/slices.ts, useCounter)
+  Decl(src/stores/slices.ts, createStepSlice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/slices.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/slices.ts","path":["File(src/cases/slices.cases.tsx)","ModuleInit(src/cases/slices.cases.tsx)","ModuleInit(src/stores/slices.ts)","Decl(src/stores/slices.ts, useCounter)","Decl(src/stores/slices.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/slices.ts"]}]}]}
+
+== src/cases/slices.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/slices.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/slices.cases.tsx)
+  ModuleInit(src/cases/slices.cases.tsx)
+  ModuleInit(src/stores/slices.ts)
+  Decl(src/stores/slices.ts, useCounter)
+  Decl(src/stores/slices.ts, createStepSlice)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/slices.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/slices.ts","path":["File(src/cases/slices.cases.tsx)","ModuleInit(src/cases/slices.cases.tsx)","ModuleInit(src/stores/slices.ts)","Decl(src/stores/slices.ts, useCounter)","Decl(src/stores/slices.ts, createStepSlice)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/slices.ts"]}]}]}
+
+== src/cases/with-types-not-identity.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/with-types-not-identity.ts"
+Path (downstream, file granularity):
+  File(src/cases/with-types-not-identity.cases.tsx)
+  File(src/stores/with-types-not-identity.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/with-types-not-identity.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/with-types-not-identity.ts","path":["File(src/cases/with-types-not-identity.cases.tsx)","File(src/stores/with-types-not-identity.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/with-types-not-identity.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/with-types-not-identity.ts"
+Path (downstream, file granularity):
+  File(src/cases/with-types-not-identity.cases.tsx)
+  File(src/stores/with-types-not-identity.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/with-types-not-identity.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/with-types-not-identity.ts","path":["File(src/cases/with-types-not-identity.cases.tsx)","File(src/stores/with-types-not-identity.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/with-types-not-identity.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/with-types-not-identity.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/stores/with-types-not-identity.ts)
+  Decl(src/stores/with-types-not-identity.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/with-types-not-identity.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/with-types-not-identity.ts","path":["File(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/stores/with-types-not-identity.ts)","Decl(src/stores/with-types-not-identity.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/with-types-not-identity.ts"]}]}]}
+
+== src/cases/with-types-not-identity.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/with-types-not-identity.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/stores/with-types-not-identity.ts)
+  Decl(src/stores/with-types-not-identity.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/with-types-not-identity.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/with-types-not-identity.ts","path":["File(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/stores/with-types-not-identity.ts)","Decl(src/stores/with-types-not-identity.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/with-types-not-identity.ts"]}]}]}
+
+== src/cases/with-types-not-identity.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/with-types-not-identity.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/stores/with-types-not-identity.ts)
+  Decl(src/stores/with-types-not-identity.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/with-types-not-identity.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/with-types-not-identity.ts","path":["File(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/stores/with-types-not-identity.ts)","Decl(src/stores/with-types-not-identity.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/with-types-not-identity.ts"]}]}]}
+
+== src/cases/with-types-not-identity.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/with-types-not-identity.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/cases/with-types-not-identity.cases.tsx)
+  ModuleInit(src/stores/with-types-not-identity.ts)
+  Decl(src/stores/with-types-not-identity.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/with-types-not-identity.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/with-types-not-identity.ts","path":["File(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/cases/with-types-not-identity.cases.tsx)","ModuleInit(src/stores/with-types-not-identity.ts)","Decl(src/stores/with-types-not-identity.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/with-types-not-identity.ts"]}]}]}
+
+== src/cases/shim.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/shim/store.ts"
+Path (downstream, file granularity):
+  File(src/cases/shim.cases.tsx)
+  File(src/shim/store.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","File(src/shim/store.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/shim.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/shim/store.ts"
+Path (downstream, file granularity):
+  File(src/cases/shim.cases.tsx)
+  File(src/shim/store.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","File(src/shim/store.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/cases/shim.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/shim/store.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/shim.cases.tsx)
+  ModuleInit(src/cases/shim.cases.tsx)
+  ModuleInit(src/shim/store.ts)
+  Decl(src/shim/store.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/cases/shim.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/shim/store.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/shim.cases.tsx)
+  ModuleInit(src/cases/shim.cases.tsx)
+  ModuleInit(src/shim/store.ts)
+  Decl(src/shim/store.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/cases/shim.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/shim/store.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/shim.cases.tsx)
+  ModuleInit(src/cases/shim.cases.tsx)
+  ModuleInit(src/shim/store.ts)
+  Decl(src/shim/store.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/cases/shim.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/shim/store.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/shim.cases.tsx)
+  ModuleInit(src/cases/shim.cases.tsx)
+  ModuleInit(src/shim/store.ts)
+  Decl(src/shim/store.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/shim.cases.tsx","affected":true,"direction":"downstream","changed":"src/shim/store.ts","path":["File(src/cases/shim.cases.tsx)","ModuleInit(src/cases/shim.cases.tsx)","ModuleInit(src/shim/store.ts)","Decl(src/shim/store.ts, useCounter)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/cases/stores.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, file granularity):
+  File(src/cases/stores.cases.tsx)
+  File(src/stores/alias.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","File(src/stores/alias.ts)"],"granularity":"file","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx"]}]}]}
+
+== src/cases/stores.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, file granularity):
+  File(src/cases/stores.cases.tsx)
+  File(src/stores/alias.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","File(src/stores/alias.ts)"],"granularity":"file","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx"]}]}]}
+
+== src/cases/stores.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/alias.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/alias.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/alias.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/cases/stores.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/alias.ts"
+Path (downstream, symbol granularity):
+  File(src/cases/stores.cases.tsx)
+  Decl(src/cases/stores.cases.tsx, Counts)
+  Export(src/stores/alias.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/stores/alias.ts","path":["File(src/cases/stores.cases.tsx)","Decl(src/cases/stores.cases.tsx, Counts)","Export(src/stores/alias.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/cases/stores.cases.tsx","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/inline/cases/plain.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/plain.cases.tsx)
+  File(src/inline/stores/plain.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/plain.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/plain.cases.tsx)","File(src/inline/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/inline/cases/plain.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/plain.cases.tsx)
+  File(src/inline/stores/plain.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/plain.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/plain.cases.tsx)","File(src/inline/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/inline/cases/plain.cases.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/inline/cases/plain.cases.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/inline/cases/plain.cases.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/inline/cases/plain.cases.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/plain.cases.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/lib/state.ts","src/stores/alias.ts","src/stores/creator-runs.ts","src/stores/curried.ts","src/stores/default-v4.ts","src/stores/effect-removed.ts","src/stores/namespace.ts","src/stores/persist.ts","src/stores/plain.ts","src/stores/read-before-declaration.ts","src/stores/slices.ts","src/stores/with-types-not-identity.ts"]},{"specifier":"zustand/middleware","kind":"missing-package","in_repo":false,"from":["src/stores/persist.ts"]},{"specifier":"zustand/react","kind":"missing-package","in_repo":false,"from":["src/stores/react-subpath.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+
+== src/inline/cases/reads-import.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/config.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/reads-import.cases.tsx)
+  File(src/inline/stores/reads-import.ts)
+  File(src/inline/config.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","File(src/inline/stores/reads-import.ts)","File(src/inline/config.ts)"],"granularity":"file","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/reads-import.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/config.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/reads-import.cases.tsx)
+  File(src/inline/stores/reads-import.ts)
+  File(src/inline/config.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","File(src/inline/stores/reads-import.ts)","File(src/inline/config.ts)"],"granularity":"file","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/reads-import.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/config.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/reads-import.cases.tsx)
+  Decl(src/inline/cases/reads-import.cases.tsx, Title)
+  Export(src/inline/stores/reads-import.ts, TITLE)
+  ModuleInit(src/inline/stores/reads-import.ts)
+  ModuleInit(src/inline/config.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/reads-import.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/config.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/reads-import.cases.tsx)
+  Decl(src/inline/cases/reads-import.cases.tsx, Title)
+  Export(src/inline/stores/reads-import.ts, TITLE)
+  ModuleInit(src/inline/stores/reads-import.ts)
+  ModuleInit(src/inline/config.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/reads-import.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/config.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/reads-import.cases.tsx)
+  Decl(src/inline/cases/reads-import.cases.tsx, Title)
+  Export(src/inline/stores/reads-import.ts, TITLE)
+  ModuleInit(src/inline/stores/reads-import.ts)
+  ModuleInit(src/inline/config.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/reads-import.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/config.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/reads-import.cases.tsx)
+  Decl(src/inline/cases/reads-import.cases.tsx, Title)
+  Export(src/inline/stores/reads-import.ts, TITLE)
+  ModuleInit(src/inline/stores/reads-import.ts)
+  ModuleInit(src/inline/config.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/reads-import.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/config.ts","path":["File(src/inline/cases/reads-import.cases.tsx)","Decl(src/inline/cases/reads-import.cases.tsx, Title)","Export(src/inline/stores/reads-import.ts, TITLE)","ModuleInit(src/inline/stores/reads-import.ts)","ModuleInit(src/inline/config.ts)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/stores.cases.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/stores.cases.tsx)
+  File(src/inline/stores/plain.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","File(src/inline/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/inline/cases/stores.cases.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, file granularity):
+  File(src/inline/cases/stores.cases.tsx)
+  File(src/inline/stores/plain.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","File(src/inline/stores/plain.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/inline/cases/stores.cases.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/stores.cases.tsx)
+  Decl(src/inline/cases/stores.cases.tsx, Counts)
+  Export(src/inline/stores/plain.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/stores.cases.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/stores.cases.tsx)
+  Decl(src/inline/cases/stores.cases.tsx, Counts)
+  Export(src/inline/stores/plain.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/stores.cases.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/stores.cases.tsx)
+  Decl(src/inline/cases/stores.cases.tsx, Counts)
+  Export(src/inline/stores/plain.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}
+
+== src/inline/cases/stores.cases.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/inline/stores/plain.ts"
+Path (downstream, symbol granularity):
+  File(src/inline/cases/stores.cases.tsx)
+  Decl(src/inline/cases/stores.cases.tsx, Counts)
+  Export(src/inline/stores/plain.ts, useCounter)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/inline/cases/stores.cases.tsx","affected":true,"direction":"downstream","changed":"src/inline/stores/plain.ts","path":["File(src/inline/cases/stores.cases.tsx)","Decl(src/inline/cases/stores.cases.tsx, Counts)","Export(src/inline/stores/plain.ts, useCounter)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/inline/stores/plain.ts","src/inline/stores/reads-import.ts"]}]}]}

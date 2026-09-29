@@ -1,0 +1,1 @@
+{ "compilerOptions": { "paths": { "zustand": ["./zustand.ts"] } } }
