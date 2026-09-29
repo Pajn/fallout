@@ -432,6 +432,8 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::YieldExpression(_) => Fate::Escapes,
         // `export default v` hands the value to every importer.
         AstKind::ExportDefaultDeclaration(_) => Fate::Escapes,
+        // `<Foo {...v} />` hands what the value holds to the element as props.
+        AstKind::JSXSpreadAttribute(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -958,7 +960,7 @@ mod tests {
         "return <Foo>{@.x}</Foo>;"                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <Foo value={@} />;"                  => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <div onClick={@} />;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "return <Foo {...@} />;"                     => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "return <Foo {...@} />;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <@ />;"                              => [I,  E,  E,  E,  NA, NA, NA, NA];
     };
 

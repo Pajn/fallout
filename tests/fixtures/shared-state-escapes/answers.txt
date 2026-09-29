@@ -637,3 +637,69 @@ Path (downstream, symbol granularity):
   Decl(src/state/export-default.ts, default)
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/ExportDefaultPage.tsx","affected":true,"direction":"downstream","changed":"src/state/export-default.ts","path":["File(src/pages/ExportDefaultPage.tsx)","Decl(src/pages/ExportDefaultPage.tsx, ExportDefaultPage)","Export(src/state/export-default.ts, hasItems)","Decl(src/state/export-default.ts, hasItems)","Decl(src/state/export-default.ts, default)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxSpreadPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-spread.tsx"
+Path (downstream, file granularity):
+  File(src/pages/JsxSpreadPage.tsx)
+  File(src/state/jsx-spread.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxSpreadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-spread.tsx","path":["File(src/pages/JsxSpreadPage.tsx)","File(src/state/jsx-spread.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/JsxSpreadPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-spread.tsx"
+Path (downstream, file granularity):
+  File(src/pages/JsxSpreadPage.tsx)
+  File(src/state/jsx-spread.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxSpreadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-spread.tsx","path":["File(src/pages/JsxSpreadPage.tsx)","File(src/state/jsx-spread.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/JsxSpreadPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-spread.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxSpreadPage.tsx)
+  Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)
+  Export(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, Spread)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxSpreadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-spread.tsx","path":["File(src/pages/JsxSpreadPage.tsx)","Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)","Export(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, Spread)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxSpreadPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-spread.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxSpreadPage.tsx)
+  Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)
+  Export(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, Spread)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxSpreadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-spread.tsx","path":["File(src/pages/JsxSpreadPage.tsx)","Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)","Export(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, Spread)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxSpreadPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-spread.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxSpreadPage.tsx)
+  Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)
+  Export(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, Spread)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxSpreadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-spread.tsx","path":["File(src/pages/JsxSpreadPage.tsx)","Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)","Export(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, Spread)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/JsxSpreadPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/jsx-spread.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/JsxSpreadPage.tsx)
+  Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)
+  Export(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, hasItems)
+  Decl(src/state/jsx-spread.tsx, Spread)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/JsxSpreadPage.tsx","affected":true,"direction":"downstream","changed":"src/state/jsx-spread.tsx","path":["File(src/pages/JsxSpreadPage.tsx)","Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)","Export(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, hasItems)","Decl(src/state/jsx-spread.tsx, Spread)"],"granularity":"symbol","unresolved":[]}]}

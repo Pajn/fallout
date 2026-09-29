@@ -145,3 +145,18 @@ symbol = [
     "Decl(src/state/export-default.ts, hasItems)",
     "Decl(src/state/export-default.ts, default)",
 ]
+
+# `Spread` spreads `state.items` into a component's props, which hands the
+# component what the array holds.
+[[anchor]]
+path = "src/pages/JsxSpreadPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/JsxSpreadPage.tsx)",
+    "Decl(src/pages/JsxSpreadPage.tsx, JsxSpreadPage)",
+    "Export(src/state/jsx-spread.tsx, hasItems)",
+    "Decl(src/state/jsx-spread.tsx, hasItems)",
+    "Decl(src/state/jsx-spread.tsx, Spread)",
+]
