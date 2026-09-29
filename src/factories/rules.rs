@@ -180,6 +180,17 @@ pub const RULES: &[Rule] = &[
         creation: Creation::Calls(&[0]),
         identity: &[Identity::Curried],
     },
+    // Zustand 4 also exports `create` as the default of `zustand`, and
+    // `createStore` as the default of `zustand/vanilla`. From 4.4 each warns on the
+    // console, outside production, that it is deprecated, which is no effect the
+    // app reads, as the local-helper proof takes a write to the console to be none.
+    Rule {
+        sources: &["zustand", "zustand/vanilla"],
+        export: "default",
+        members: &[],
+        creation: Creation::Calls(&[0]),
+        identity: &[Identity::Curried],
+    },
 ];
 
 /// The rule for `source#export`, if there is one.

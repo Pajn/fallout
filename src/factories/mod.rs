@@ -473,6 +473,9 @@ export const t = createAsyncThunk(
             "import { createStore as create } from 'zustand/vanilla';",
             "import { createStore as create } from 'zustand';",
             "import { createWithEqualityFn as create } from 'zustand/traditional';",
+            // Zustand 4's default exports.
+            "import create from 'zustand';",
+            "import create from 'zustand/vanilla';",
         ] {
             for call in [
                 format!("export const t = create({CREATOR});"),
@@ -490,6 +493,12 @@ export const t = createAsyncThunk(
             "import {{ createWithEqualityFn }} from 'zustand/traditional';\nexport const t = createWithEqualityFn({CREATOR}, (a, b) => register(a, b));\n"
         );
         assert!(store(&source).expect("made").creates_quietly());
+
+        // A default Zustand does not export is no factory.
+        let source = format!(
+            "import create from 'zustand/traditional';\nexport const t = create({CREATOR});\n"
+        );
+        assert!(store(&source).is_none());
     }
 
     #[test]
