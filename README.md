@@ -715,6 +715,13 @@ it sits, which makes the remaining cases exact:
 - Anything removed that the module used to *do* on evaluation — an import, a bare
   statement, a declaration whose initialiser may have run something — marks module
   initialisation. Removing an export whose value was computed marks both.
+- A declaration that wrote a shared value (see [Granularity](#granularity)) and has
+  been removed, or edited so that it no longer writes it, marks the value's readers:
+  the declarations of its file that read what it wrote, the export of the value, and,
+  of an object read only for its members, the members that write could reach. Nothing
+  in the current version links those readers to it any more. The value's own
+  declaration is not marked, since loading the file can reach it, and a page that
+  imports only an unrelated name from the file stays apart.
 - The whole file is marked only when the names that went cannot be listed: an
   `export * from` that was itself removed, a base version the analyser cannot
   describe, or a changed `"use client"`.
@@ -1077,6 +1084,10 @@ app owns.
 - At `symbol` granularity, a value read from another module reaches only the writers
   in its own file. A value written in a third file, or through the binding an import
   gives, is not linked to its readers yet.
+- At `symbol` granularity without `--base`, a declaration that was removed, or edited
+  so that it no longer writes a shared value, is not linked to that value's readers:
+  a line range cannot say what a statement used to write. A removed writer can still
+  be reported through the statements around the lines it left.
 - At `symbol` granularity, reading an import is taken to run nothing, in the module body
   and in a local helper. During an import cycle a `let`, `const` or class read before
   its own module has run throws, and that can be missed.

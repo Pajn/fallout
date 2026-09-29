@@ -18,7 +18,7 @@ use ahash::{AHashMap, AHashSet};
 use crate::change::{Change, Extent};
 use crate::diff::LineRange;
 use crate::graph::{FileId, Fine, Graph, Node, View};
-use crate::module::compare::Comparison;
+use crate::module::compare::{Comparison, LostWrite};
 use crate::module::{Decl, DeclId, Export, ExportTarget, FineModule, LineTable, SourceId, Span};
 
 /// What the change marks in one graph.
@@ -143,6 +143,71 @@ fn mark_statements(graph: &Graph, file: FileId, comparison: &Comparison, out: &m
             out.insert(Node::ModuleInit(file));
         }
     }
+
+    for lost in &comparison.lost_writes {
+        mark_lost_write(graph, &fine, lost, out);
+    }
+}
+
+/// Marks what reached a write the base version made and this one does not: the
+/// declarations of the file that read what was written, and the nodes a reader in
+/// another module lands on, which are the export of the value and, for an object read
+/// by member, the members the write could reach.
+///
+/// The declaration of the value is not marked. Module initialisation can reach it,
+/// and marking it would then reach every importer of the file, where a reader of
+/// the value reaches these nodes anyway. They are the nodes that reached the writer
+/// in the base version, so nothing is marked that an edit to the writer would not
+/// have reached there.
+fn mark_lost_write(graph: &Graph, fine: &Fine, lost: &LostWrite, out: &mut AHashSet<Node>) {
+    let (file, module) = (fine.file(), fine.module());
+    for reader in lost
+        .readers
+        .iter()
+        .filter_map(|name| module.decl_named(name))
+    {
+        out.insert(Node::Decl(file, reader));
+        // Every member of a reader got the rule's edge to the writer, since which
+        // of them reads the value is not told apart.
+        for member in members_of(graph, module, file, reader) {
+            out.insert(Node::Member(file, reader, graph.name_id(&member)));
+        }
+    }
+
+    // A value that has gone is read by nothing that has not changed with it.
+    let Some(value) = module.decl_named(&lost.value) else {
+        return;
+    };
+    for export in &module.exports {
+        if export.target == ExportTarget::Local(value) {
+            out.insert(Node::Export(file, graph.name_id(&export.name)));
+        }
+    }
+    // A read of one member reaches the writers of that property and of the whole
+    // value, as the graph's writer edges do.
+    for member in members_of(graph, module, file, value) {
+        if lost
+            .property
+            .as_deref()
+            .is_none_or(|written| written == member)
+        {
+            out.insert(Node::Member(file, value, graph.name_id(&member)));
+        }
+    }
+}
+
+/// The members of `decl` that can be read on their own: the properties of its object
+/// literal, and those of a known factory's result.
+fn members_of(graph: &Graph, module: &FineModule, file: FileId, decl: DeclId) -> Vec<String> {
+    let mut members: Vec<String> = module
+        .decls
+        .get(decl as usize)
+        .map(|entry| entry.members.iter().map(|m| m.name.clone()).collect())
+        .unwrap_or_default();
+    if let Some(made) = graph.made_by(file, decl) {
+        members.extend(made.member_names().map(str::to_string));
+    }
+    members
 }
 
 fn mark_ranges(graph: &Graph, file: FileId, ranges: &[LineRange], out: &mut AHashSet<Node>) {
@@ -498,6 +563,103 @@ mod tests {
         for order in [[3, 2, 1, 0], [1, 3, 0, 2], [2, 0, 3, 1]] {
             assert_eq!(marks(&order), expected, "{order:?}");
         }
+    }
+
+    /// What comparing `state.ts` against `before` marks, rendered and sorted.
+    fn marked_against(before: &str, after: &str) -> Vec<String> {
+        let (_dir, root) = tree(&[("state.ts", after)]);
+        let earlier: AHashMap<PathBuf, String> = [(root.join("state.ts"), before.to_string())]
+            .into_iter()
+            .collect();
+        let change = Change::read(
+            &root,
+            ChangeSet::default(),
+            &[PathBuf::from("state.ts")],
+            Some(Box::new(earlier)),
+            reading(&root),
+        );
+        let graph = graph_of(&root, &change);
+        let mut rendered: Vec<String> = marked_nodes(&graph, change.extents())
+            .into_iter()
+            .map(|node| graph.render(node, &root))
+            .collect();
+        rendered.sort();
+        rendered
+    }
+
+    const COUNTER: &str = "let count = 0;\n\
+         export function bump() { count += 1; }\n\
+         export const read = () => count;\n\
+         export const title = 'Count';\n";
+
+    /// Once `bump` has gone, nothing in the current version links `read` to it, so
+    /// what it used to write has to carry the mark.
+    #[test]
+    fn a_removed_writer_marks_the_readers_of_what_it_wrote() {
+        let after = COUNTER.replace("export function bump() { count += 1; }\n", "");
+        assert_eq!(
+            marked_against(COUNTER, &after),
+            ["Decl(state.ts, read)", "Export(state.ts, bump)"]
+        );
+    }
+
+    #[test]
+    fn a_writer_that_stops_writing_marks_the_readers_of_what_it_wrote() {
+        let after = COUNTER.replace("count += 1;", "log();");
+        assert_eq!(
+            marked_against(COUNTER, &after),
+            [
+                "Decl(state.ts, bump)",
+                "Decl(state.ts, read)",
+                "Export(state.ts, bump)"
+            ]
+        );
+    }
+
+    /// A writer that still writes is still linked to every reader, so marking it is
+    /// enough.
+    #[test]
+    fn a_writer_that_still_writes_marks_only_itself() {
+        let after = COUNTER.replace("count += 1;", "count += 2;");
+        assert_eq!(
+            marked_against(COUNTER, &after),
+            ["Decl(state.ts, bump)", "Export(state.ts, bump)"]
+        );
+    }
+
+    #[test]
+    fn a_removed_declaration_that_wrote_nothing_marks_nothing_more() {
+        let before = format!("{COUNTER}export const isZero = () => count === 0;\n");
+        assert_eq!(
+            marked_against(&before, COUNTER),
+            ["Export(state.ts, isZero)"]
+        );
+    }
+
+    /// A reader in another module lands on the export of the value, or on the
+    /// member it reads, which is where the writers hang for it.
+    #[test]
+    fn a_removed_writer_marks_where_other_modules_read_what_it_wrote() {
+        let before = "export let count = 0;\nexport function bump() { count += 1; }\n";
+        let after = "export let count = 0;\n";
+        assert_eq!(
+            marked_against(before, after),
+            ["Export(state.ts, bump)", "Export(state.ts, count)"]
+        );
+
+        // Of an object read only for its members, a writer of one property reaches
+        // the reads of that property, and not those of another.
+        let before = "export const lists = { items: [] as string[], tags: [] as string[] };\n\
+             export function remember(item: string) { lists.items.push(item); }\n";
+        let after = "export const lists = { items: [] as string[], tags: [] as string[] };\n";
+        assert_eq!(
+            marked_against(before, after),
+            [
+                "Export(state.ts, lists)",
+                "Export(state.ts, remember)",
+                "Member(state.ts, lists.items)",
+            ]
+        );
     }
 
     /// An `export *` whose module moved brings a set of names nobody can list, so
