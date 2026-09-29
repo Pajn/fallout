@@ -148,6 +148,16 @@ method on it, passing it anywhere, a computed key, `__proto__`, an exported or
 reassignable alias, destructuring it, and aliases nested more than four deep. A write
 through one of those aliases still counts in the declaration where it is written.
 
+A read from another module of a value its own file exports and writes reaches the
+declarations of that file that write it. Exporting a value is no use of it, so given
+`export const cache = new Map()` and `export function reset() { cache.set("a", 1) }`,
+nothing else would take a page that reads `cache` to an edit of `reset`. This holds
+however the page reaches the name: imported directly, from an `export { }` list under
+any name, through a barrel, or off a namespace. Of an object read only for its members,
+a page reading `utils.items` reaches the writers of `items` and of the whole object, and
+not one that writes only another property. Loading the file does not reach the
+writers, so a page that imports only an unrelated export of that file stays apart.
+
 A declaration whose initialiser may run something — a call, a `new`, an `await`, a
 tagged template, a write — belongs to module initialisation, so importing anything
 from that file reaches it. It reaches that declaration and what it reads, not the rest
@@ -451,7 +461,10 @@ that `zustand` resolves to, are not matched.
 Using the store is not split by state key. Calling the hook, `getState()`,
 `setState()` and passing the store around each reach the whole declaration, as they
 would for any other value, whichever keys they read. Only making the store is
-narrowed.
+narrowed. A store written through `setState` by a declaration of its own file, such as
+`export const reset = () => useCounter.setState({ count: 0 })`, links every page that
+uses the store to that declaration, as [shared state](#granularity) does for any
+exported value.
 
 Three middlewares are recognised as wrappers, and count as quiet when what they wrap
 is: `immer` from `zustand/middleware/immer`, and `subscribeWithSelector` and
@@ -1061,6 +1074,9 @@ app owns.
 - At `symbol` granularity, a getter, an iterator or a proxy that does something on load
   can be missed, since reading a property and the like is taken to run nothing — see
   [Granularity](#granularity).
+- At `symbol` granularity, a value read from another module reaches only the writers
+  in its own file. A value written in a third file, or through the binding an import
+  gives, is not linked to its readers yet.
 - At `symbol` granularity, reading an import is taken to run nothing, in the module body
   and in a local helper. During an import cycle a `let`, `const` or class read before
   its own module has run throws, and that can be missed.

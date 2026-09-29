@@ -1,0 +1,136 @@
+# A mutable value exported from the module that declares it, and written there by a
+# declaration of its own, one module per scenario. Each page reads the value from
+# another module, and the edit is to the writer. Exporting a value creates no use of
+# it in its own file, so nothing but the value's writers links the page to the edit.
+
+# `export const cache = new Map()`, written by `reset` through `cache.set`.
+[[anchor]]
+path = "src/pages/MapPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/MapPage.tsx)",
+    "Decl(src/pages/MapPage.tsx, MapPage)",
+    "Export(src/state/map.ts, cache)",
+    "Decl(src/state/map.ts, reset)",
+]
+
+# The same value exported under another name by an `export { }` list.
+[[anchor]]
+path = "src/pages/RenamedPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/RenamedPage.tsx)",
+    "Decl(src/pages/RenamedPage.tsx, RenamedPage)",
+    "Export(src/state/renamed.ts, c)",
+    "Decl(src/state/renamed.ts, reset)",
+]
+
+# The same value read through a barrel that re-exports it.
+[[anchor]]
+path = "src/pages/BarrelPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/BarrelPage.tsx)",
+    "Decl(src/pages/BarrelPage.tsx, BarrelPage)",
+    "Export(src/state/barrel.ts, cache)",
+    "Export(src/state/listed.ts, cache)",
+    "Decl(src/state/listed.ts, reset)",
+]
+
+# The same value read off a namespace import.
+[[anchor]]
+path = "src/pages/NamespacePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/NamespacePage.tsx)",
+    "Decl(src/pages/NamespacePage.tsx, NamespacePage)",
+    "Export(src/state/namespace.ts, cache)",
+    "Decl(src/state/namespace.ts, reset)",
+]
+
+# `export let count`, reassigned by `count += 1`.
+[[anchor]]
+path = "src/pages/CounterPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CounterPage.tsx)",
+    "Decl(src/pages/CounterPage.tsx, CounterPage)",
+    "Export(src/state/counter.ts, count)",
+    "Decl(src/state/counter.ts, bump)",
+]
+
+# An exported array, written by `items.push`.
+[[anchor]]
+path = "src/pages/ListPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ListPage.tsx)",
+    "Decl(src/pages/ListPage.tsx, ListPage)",
+    "Export(src/state/list.ts, items)",
+    "Decl(src/state/list.ts, add)",
+]
+
+# An exported class instance, written by calling a method on it.
+[[anchor]]
+path = "src/pages/BoxPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/BoxPage.tsx)",
+    "Decl(src/pages/BoxPage.tsx, BoxPage)",
+    "Export(src/state/box.ts, box)",
+    "Decl(src/state/box.ts, fill)",
+]
+
+# An exported object literal, written by assigning one of its properties.
+[[anchor]]
+path = "src/pages/SettingsPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/SettingsPage.tsx)",
+    "Decl(src/pages/SettingsPage.tsx, SettingsPage)",
+    "Export(src/state/settings.ts, settings)",
+    "Decl(src/state/settings.ts, darken)",
+]
+
+# An object read only for its members. `remember` writes `items`, which the page
+# reads by member.
+[[anchor]]
+path = "src/pages/ItemsPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ItemsPage.tsx)",
+    "Decl(src/pages/ItemsPage.tsx, ItemsPage)",
+    "Member(src/state/utils.ts, utils.items)",
+    "Decl(src/state/utils.ts, remember)",
+]
+
+# `format` is a property of its own, which a write to `items` cannot change.
+[[anchor]]
+path = "src/pages/FormatPage.tsx"
+affected = false
+
+# Loading `made.ts` calls `makeCache()`, which sets the document's title, so its
+# initialisation reaches `cache`. The writers of `cache` are reached by reading
+# `cache` from another module, not by loading the file, so a page that reads only
+# `TITLE` does not reach `reset`.
+[[anchor]]
+path = "src/pages/TitlePage.tsx"
+affected = false
