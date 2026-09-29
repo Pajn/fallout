@@ -110,10 +110,6 @@ pub(crate) struct Policy {
     returns: Option<OxcSpan>,
     /// How a binding declared to hold the value is followed.
     aliases: Aliases,
-    /// A position the lists below do not know, for anything but a binding's value
-    /// used bare, which escapes there. Temporary: the soundness PR takes every
-    /// such position as an escape.
-    legacy_unknown: Fate,
     /// Whether a binding's value used bare is judged by its direct parent alone,
     /// with no climb through wrappers: `(v).x` and `v!.x` escape, and `o[v]`, where
     /// it is the key, is judged as a member read off it. Temporary: the soundness
@@ -154,7 +150,6 @@ impl Policy {
         discard: Fate::InPlace,
         returns: None,
         aliases: Aliases::Local,
-        legacy_unknown: Fate::Escapes,
         legacy_bare_parent: false,
     };
 
@@ -163,20 +158,20 @@ impl Policy {
     /// checked, called, constructed, rendered where it stands or read from, so
     /// arithmetic on it, testing it and dropping it count as escapes. A local
     /// `const` or `let` that holds it, or takes it apart one level, is followed to
-    /// its own uses. What is read off it is in place anywhere this does not know.
+    /// its own uses. What is read off it is in place where it is only tested,
+    /// dropped or put through arithmetic.
     pub(crate) const WHOLE: Policy = Policy {
         arithmetic: Fate::Escapes,
         test: Fate::Escapes,
         discard: Fate::Escapes,
         returns: None,
         aliases: Aliases::Local,
-        legacy_unknown: Fate::InPlace,
         legacy_bare_parent: true,
     };
 
     /// A property read off an object shared property by property or read only for
-    /// its members, or an element read off a collection the file makes. Anything
-    /// this does not know leaves it in place. A binding declared to hold it is
+    /// its members, or an element read off a collection the file makes. It may be
+    /// used as a value where it stands, and a binding declared to hold it is
     /// followed by `credit`.
     pub(crate) const fn parts(credit: Credit) -> Policy {
         Policy {
@@ -185,7 +180,6 @@ impl Policy {
             discard: Fate::InPlace,
             returns: None,
             aliases: Aliases::Credited(credit),
-            legacy_unknown: Fate::InPlace,
             legacy_bare_parent: false,
         }
     }
@@ -388,6 +382,14 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         }
         AstKind::IfStatement(test) if test.test.span() == span => own(policy.test),
         AstKind::ConditionalExpression(test) if test.test.span() == span => own(policy.test),
+        // The left of `&&` is yielded only where it is falsy, and a falsy value is
+        // a primitive, which holds nothing of what it came from, so it is only
+        // tested there.
+        AstKind::LogicalExpression(logical)
+            if logical.operator == LogicalOperator::And && logical.left.span() == span =>
+        {
+            own(policy.test)
+        }
         AstKind::WhileStatement(test) if test.test.span() == span => own(policy.test),
         AstKind::DoWhileStatement(test) if test.test.span() == span => own(policy.test),
         AstKind::ForStatement(test)
@@ -420,20 +422,6 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::ArrowFunctionExpression(arrow) if policy.returns == Some(arrow.span) => {
             Fate::InPlace
         }
-        // Anywhere else, what is returned is handed to the caller, which is free to
-        // change it. A number read off a part may be anything else to a caller
-        // that does not know what the part is.
-        AstKind::ArrowFunctionExpression(_) | AstKind::ReturnStatement(_) => Fate::Escapes,
-        // A literal holds what it is built from, and goes wherever it is taken.
-        AstKind::ArrayExpression(_) | AstKind::ObjectProperty(_) => Fate::Escapes,
-        // `await v` calls a `then` the value may have, with the value as `this`.
-        AstKind::AwaitExpression(_) => Fate::Escapes,
-        // `yield v` hands the value to whoever drives the generator.
-        AstKind::YieldExpression(_) => Fate::Escapes,
-        // `export default v` hands the value to every importer.
-        AstKind::ExportDefaultDeclaration(_) => Fate::Escapes,
-        // `<Foo {...v} />` hands what the value holds to the element as props.
-        AstKind::JSXSpreadAttribute(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -511,13 +499,14 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         | AstKind::AssignmentTargetWithDefault(_)
         | AstKind::JSXOpeningElement(_)
         | AstKind::JSXClosingElement(_) => Fate::Writes,
-        AstKind::CallExpression(_)
-        | AstKind::NewExpression(_)
-        | AstKind::SpreadElement(_)
-        | AstKind::ForInStatement(_)
-        | AstKind::ForOfStatement(_) => Fate::Escapes,
-        _ if bare => Fate::Escapes,
-        _ => policy.legacy_unknown,
+        // Anywhere else the value is handed to code that could change it: passed
+        // to a call or a constructor, returned, which an arrow's expression body
+        // does too, put in an array or object literal, awaited, which calls a
+        // `then` it may have with it as `this`, yielded, thrown, exported as
+        // default, spread, iterated, or held in a binding this does not follow.
+        // A number read off a part may be anything else to code that does not know
+        // what the part is.
+        _ => Fate::Escapes,
     }
 }
 
@@ -729,8 +718,6 @@ mod tests {
     #[derive(Copy, Clone, Debug)]
     enum Cell {
         Is(Fate),
-        /// Read as in place, although the value leaves the expression.
-        KnownUnderReport,
         /// The template is not valid code for this column.
         Invalid,
     }
@@ -739,15 +726,6 @@ mod tests {
     const E: Cell = Cell::Is(Fate::Escapes);
     const W: Cell = Cell::Is(Fate::Writes);
     const NA: Cell = Cell::Invalid;
-
-    /// Marks a known under-report: a use read as in place although the value
-    /// leaves the expression. It is asserted as in place as it stands. Escapes after
-    /// the soundness PR.
-    macro_rules! known_under_report {
-        () => {
-            Cell::KnownUnderReport
-        };
-    }
 
     /// The columns: what `@` stands for in each, and how the reference to `S` in it
     /// is read.
@@ -825,12 +803,10 @@ mod tests {
     }
 
     /// One row per template, with `@` where the value is used, and one cell per
-    /// column. `U` is short for [`known_under_report!`].
+    /// column.
     macro_rules! characterise {
-        (@cell U) => { known_under_report!() };
-        (@cell $cell:ident) => { $cell };
         ($($template:literal => [$($cell:ident),*];)*) => {
-            &[$(($template, [$(characterise!(@cell $cell)),*])),*]
+            &[$(($template, [$($cell),*])),*]
         };
     }
 
@@ -886,7 +862,7 @@ mod tests {
         "f(@);"                                      => [E,  E,  E,  E,  E,  E,  E,  E ];
         "f(@.x);"                                    => [E,  E,  E,  E,  E,  E,  E,  E ];
         "new C(@);"                                  => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "tag`${@}`;"                                 => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "tag`${@}`;"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "@`x`;"                                      => [E,  W,  W,  I,  W,  E,  E,  W ];
         "@.x`y`;"                                    => [W,  W,  W,  W,  W,  W,  W,  W ];
         // Written.
@@ -912,7 +888,7 @@ mod tests {
         "return @.x === 1;"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
         "const g = () => @;"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
         "const g = () => @.x;"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "throw @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "throw @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         "await @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         "yield @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Passed through an operator that yields one of its operands.
@@ -923,6 +899,7 @@ mod tests {
         "f((0, @));"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return c ? @ : d;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return o && @;"                             => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "f(@ && o);"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
         "(o || @) === 1;"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
         "return <li>{o && @}</li>;"                  => [E,  I,  I,  I,  I,  I,  E,  I ];
         "return <Foo>{o && @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
@@ -945,8 +922,8 @@ mod tests {
         "let v = @; v.x;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
         "let v = @; v = o; v.x;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
         "export const v = @;"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "class K { x = @; }"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
-        "function g(x = @) {}"                       => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "class K { x = @; }"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "function g(x = @) {}"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
         "export default @;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Rendered, or handed to a component.
         "return <li>{@}</li>;"                       => [I,  I,  I,  I,  I,  I,  E,  I ];
@@ -969,7 +946,6 @@ mod tests {
                 let found = in_place(template, column);
                 let expected = match cell {
                     Cell::Is(fate) => Some(*fate == Fate::InPlace),
-                    Cell::KnownUnderReport => Some(true),
                     Cell::Invalid => None,
                 };
                 if found != expected {
@@ -1020,6 +996,9 @@ mod tests {
             "(o && S) === 1;",
             "(c ? S : d) === 1;",
             "(0, S) === 1;",
+            // The left of `&&` is only tested, since what it yields is falsy.
+            "(S && o) === 1;",
+            "f(S && o);",
         ] {
             assert_eq!(state_fate(body), Fate::InPlace, "{body}");
         }
@@ -1033,11 +1012,9 @@ mod tests {
         ] {
             assert_eq!(state_fate(body), Fate::Escapes, "{body}");
         }
-        // The left of `&&` is yielded only where it is falsy, and a comma yields its
-        // last expression alone, so neither is followed.
-        for body in ["(S && o) === 1;", "(S, 0) === 1;"] {
-            assert_eq!(state_fate(body), Fate::Escapes, "{body}");
-        }
+        // A comma yields its last expression alone, and what it drops is a
+        // position nothing lists, so it is taken to escape.
+        assert_eq!(state_fate("(S, 0) === 1;"), Fate::Escapes);
     }
 
     /// How a reference touches a binding read as one value, for the tests below.
