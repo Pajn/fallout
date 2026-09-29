@@ -109,3 +109,69 @@ No reachability impact detected
 No reachability impact detected
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/JsxOperatorReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MemberAliasPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/member-alias.ts"
+Path (downstream, file granularity):
+  File(src/pages/MemberAliasPage.tsx)
+  File(src/state/member-alias.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MemberAliasPage.tsx","affected":true,"direction":"downstream","changed":"src/state/member-alias.ts","path":["File(src/pages/MemberAliasPage.tsx)","File(src/state/member-alias.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MemberAliasPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/member-alias.ts"
+Path (downstream, file granularity):
+  File(src/pages/MemberAliasPage.tsx)
+  File(src/state/member-alias.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MemberAliasPage.tsx","affected":true,"direction":"downstream","changed":"src/state/member-alias.ts","path":["File(src/pages/MemberAliasPage.tsx)","File(src/state/member-alias.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MemberAliasPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/member-alias.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MemberAliasPage.tsx)
+  Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)
+  Export(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MemberAliasPage.tsx","affected":true,"direction":"downstream","changed":"src/state/member-alias.ts","path":["File(src/pages/MemberAliasPage.tsx)","Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)","Export(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MemberAliasPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/member-alias.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MemberAliasPage.tsx)
+  Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)
+  Export(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MemberAliasPage.tsx","affected":true,"direction":"downstream","changed":"src/state/member-alias.ts","path":["File(src/pages/MemberAliasPage.tsx)","Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)","Export(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MemberAliasPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/member-alias.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MemberAliasPage.tsx)
+  Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)
+  Export(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MemberAliasPage.tsx","affected":true,"direction":"downstream","changed":"src/state/member-alias.ts","path":["File(src/pages/MemberAliasPage.tsx)","Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)","Export(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MemberAliasPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/member-alias.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MemberAliasPage.tsx)
+  Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)
+  Export(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, hasItems)
+  Decl(src/state/member-alias.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MemberAliasPage.tsx","affected":true,"direction":"downstream","changed":"src/state/member-alias.ts","path":["File(src/pages/MemberAliasPage.tsx)","Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)","Export(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, hasItems)","Decl(src/state/member-alias.ts, add)"],"granularity":"symbol","unresolved":[]}]}

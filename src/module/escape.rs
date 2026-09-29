@@ -124,9 +124,6 @@ pub(crate) struct Policy {
 /// How a binding declared to hold a value, `const v = value`, is followed.
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum Aliases {
-    /// Not followed: the declaration is a position the policy does not know.
-    /// Temporary: the soundness PR follows a local `const` for every policy.
-    Unfollowed,
     /// A local `const` that holds the value, or takes it apart one level, is
     /// followed to its own uses here, and must leave it in place for the
     /// declaration to. So is a `let` that nothing reassigns.
@@ -164,15 +161,15 @@ impl Policy {
     /// A binding read as one value, such as a reassigned `let` or a call's result,
     /// and what is read off it. The value itself escapes wherever it is not
     /// checked, called, constructed, rendered where it stands or read from, so
-    /// arithmetic on it, testing it and dropping it count as escapes, and so does a
-    /// binding declared to hold it. What is read off it is in place anywhere this
-    /// does not know, a binding declared to hold it included.
+    /// arithmetic on it, testing it and dropping it count as escapes. A local
+    /// `const` or `let` that holds it, or takes it apart one level, is followed to
+    /// its own uses. What is read off it is in place anywhere this does not know.
     pub(crate) const WHOLE: Policy = Policy {
         arithmetic: Fate::Escapes,
         test: Fate::Escapes,
         discard: Fate::Escapes,
         returns: None,
-        aliases: Aliases::Unfollowed,
+        aliases: Aliases::Local,
         legacy_unknown: Fate::InPlace,
         legacy_bare_parent: true,
     };
@@ -335,11 +332,18 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         steps,
     } = *landing;
     let parent = nodes.parent_id(top);
-    // A knob of the policy speaks for the value itself. Anything read off it is a
-    // part, which these positions leave in place.
-    let own = |fate: Fate| if steps == 0 { fate } else { Fate::InPlace };
     // A binding's value used bare, as opposed to anything read off it or handed out.
     let bare = held == Held::Whole;
+    // A knob of the policy speaks for the value itself. Anything read off it is a
+    // part, which these positions leave in place, whether it is read off here or
+    // held by an alias.
+    let own = |fate: Fate| {
+        if steps == 0 && bare {
+            fate
+        } else {
+            Fate::InPlace
+        }
+    };
     match nodes.parent_kind(top) {
         // The state itself is never rendered in place, since it holds the actions.
         AstKind::JSXExpressionContainer(_) => {
@@ -917,17 +921,17 @@ mod tests {
         "return { a: @ };"                           => [E,  U,  U,  U,  U,  E,  E,  E ];
         "return [@];"                                => [E,  U,  U,  U,  U,  E,  E,  E ];
         // Held in a binding, or a class field or default of one.
-        "const v = @; f(v);"                         => [E,  U,  E,  E,  E,  E,  E,  E ];
+        "const v = @; f(v);"                         => [E,  E,  E,  E,  E,  E,  E,  E ];
         "const v = @; return v;"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const v = @; v.x;"                          => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "const v = @; v.x = 1;"                      => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const v = @; v.x();"                        => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const { x } = @; f(x);"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "const { x } = @; x + 1;"                    => [E,  I,  E,  E,  E,  I,  I,  I ];
-        "const { x } = @; x.y = 1;"                  => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "let v = @; v.x;"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "let v = @; v = o; v.x;"                     => [E,  U,  E,  E,  E,  E,  E,  E ];
-        "export const v = @;"                        => [E,  U,  E,  E,  E,  E,  E,  E ];
+        "const v = @; v.x;"                          => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "const v = @; v.x = 1;"                      => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const v = @; v.x();"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const { x } = @; f(x);"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "const { x } = @; x + 1;"                    => [I,  I,  E,  E,  E,  I,  I,  I ];
+        "const { x } = @; x.y = 1;"                  => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "let v = @; v.x;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "let v = @; v = o; v.x;"                     => [E,  E,  E,  E,  E,  E,  E,  E ];
+        "export const v = @;"                        => [E,  E,  E,  E,  E,  E,  E,  E ];
         "class K { x = @; }"                         => [E,  U,  U,  U,  U,  E,  E,  E ];
         "function g(x = @) {}"                       => [E,  U,  U,  U,  U,  E,  E,  E ];
         "export default @;"                          => [E,  U,  U,  U,  U,  E,  E,  E ];

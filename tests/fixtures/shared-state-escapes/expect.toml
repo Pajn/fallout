@@ -25,3 +25,19 @@ symbol = [
 [[anchor]]
 path = "src/pages/JsxOperatorReadPage.tsx"
 affected = false
+
+# `state` is a `let` that `reset` reassigns, so it is read as one value. `add`
+# pushes onto `state.items` through a local `const` that holds it, and
+# `hasItems` reads the array's length.
+[[anchor]]
+path = "src/pages/MemberAliasPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/MemberAliasPage.tsx)",
+    "Decl(src/pages/MemberAliasPage.tsx, MemberAliasPage)",
+    "Export(src/state/member-alias.ts, hasItems)",
+    "Decl(src/state/member-alias.ts, hasItems)",
+    "Decl(src/state/member-alias.ts, add)",
+]
