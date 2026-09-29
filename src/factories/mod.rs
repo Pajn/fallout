@@ -645,13 +645,25 @@ export const t = createAsyncThunk(
             "{ const count = useCounter.getState().count; return -count; }",
             "{ const state = useCounter.getState(); return state.count > 0; }",
             "useCounter.subscribe((state) => { document.title = `${state.count}`; })",
-            "useCounter.subscribe(function (state, previous) { return state.count === previous.count; })",
             "useCounter.subscribe(({ count }) => { document.title = `${count}`; })",
             "useCounter.subscribe(() => {})",
             // The function `subscribe` returns unsubscribes, and changes no state.
             "{ const stop = useCounter.subscribe(() => {}); stop(); }",
         ] {
             assert!(!peek_writes(&[], ZUSTAND, "create", body), "{body}");
+        }
+    }
+
+    #[test]
+    fn a_listener_that_can_reach_its_arguments_object_hands_the_state_on() {
+        // `arguments` holds what the listener is called with, whatever its
+        // parameters say, so a `function` is not known to leave the state be.
+        for body in [
+            "useCounter.subscribe(function (state) { register(arguments[0]); })",
+            "useCounter.subscribe(function () { register(arguments[0]); })",
+            "useCounter.subscribe(function (state, previous) { return state.count === previous.count; })",
+        ] {
+            assert!(peek_writes(&[], ZUSTAND, "create", body), "{body}");
         }
     }
 

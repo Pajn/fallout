@@ -639,20 +639,17 @@ pub(crate) fn method_fate<'a>(
     Some((name, if reads { Fate::InPlace } else { Fate::Escapes }))
 }
 
-/// Whether a call is given a single listener, written out in place, that does
-/// nothing with the state it is called with but use it in place. What else its
-/// body does is judged where it is written, so a listener that sets the store
-/// through the store's own binding is a write there.
+/// Whether a call is given a single listener, an arrow written out in place, that
+/// does nothing with the state it is called with but use it in place. What else
+/// its body does is judged where it is written, so a listener that sets the store
+/// through the store's own binding is a write there. A `function` is not one,
+/// since its `arguments` also hold what it is called with, as for a collection's
+/// callback.
 fn listener_stays(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> bool {
-    let [listener] = call.arguments.as_slice() else {
+    let [Argument::ArrowFunctionExpression(listener)] = call.arguments.as_slice() else {
         return false;
     };
-    let params = match listener {
-        Argument::ArrowFunctionExpression(function) => &function.params,
-        Argument::FunctionExpression(function) => &function.params,
-        _ => return false,
-    };
-    params_stay(ctx, params, Held::State, None)
+    params_stay(ctx, &listener.params, Held::State, None)
 }
 
 /// The method this reference is called with directly, `value.name(…)`, with the

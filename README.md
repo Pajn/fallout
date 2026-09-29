@@ -531,9 +531,8 @@ done with what they hand out reads it too: a property of the state used in place
 a value, compared, put through arithmetic or into a string, tested, rendered as the
 child of an element such as `<li>` or of a fragment, or used as a `key`, the state
 destructured into a local `const`, or a `let` that nothing reassigns, whose
-bindings are used the same way, or a
-listener written out in place, given alone, that does the same with the state it is
-called with. Nothing taken from the state may leave the expression it is read in,
+bindings are used the same way, or a listener written out in place as an arrow,
+given alone, that does the same with the state it is called with. Nothing taken from the state may leave the expression it is read in,
 since which properties are actions cannot be told: returning one, as in
 `() => useCounter.getState().count`, passing it on, storing it or spreading it
 writes the store, as `() => useCounter.getState().inc` would hand out an action for
@@ -543,9 +542,10 @@ on too, since the component may call it:
 prop but `key`, even one of an element such as `<button onClick={…}>`, which calls
 what it is handed. So do `setState()`, an action called on what `getState()`
 returns, as in `useCounter.getState().inc()`, the state handed to other code, a
-listener that is not written out in place, and every other method, Zustand 4's
-`destroy()` among them. What a listener's body does to
-the store through the store's own name is its declaration's, so a listener that
+listener that is not written out in place, a `function` listener, whose `arguments`
+hold the state whatever its parameters say, and every other method, Zustand 4's
+`destroy()` among them. What a listener's body does to the store through the
+store's own name is its declaration's, so a listener that
 calls `setState()` still makes one a writer. The methods are recognised on a store
 that one of the factories above is found to have made, however the app reaches the
 factory; the same names on any other value, a store made by an app's own `create`
