@@ -133,7 +133,7 @@ impl Collection {
     /// What it hands back is a primitive, which holds nothing of the collection's
     /// however it is used, or may be or hold an object the collection holds,
     /// through which a caller could change what every other reader of it sees.
-    /// `size` and `length` are properties, which are read in place already.
+    /// `size` and `length` are properties, which hold a number; see [`Self::counts_in`].
     pub(crate) fn read_method(self, name: &str) -> Option<(Held, Callback)> {
         use Collection::*;
         use Held::{Primitive, Stored};

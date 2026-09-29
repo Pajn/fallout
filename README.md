@@ -133,20 +133,32 @@ declarations that only do those stay apart. Nor can checking it with `in`,
 or in a `switch` or one of its `case`s, or using it as a computed key, `o[state]`:
 that reads the value and does not write it. What a check can run, a proxy trap,
 `Symbol.hasInstance`, `valueOf` or `toString`, is taken to run nothing, as it is
-below. Everything else — passing it to a function, returning it, writing through it,
-spreading it, arithmetic on it, or naming a member of it as an element, which is how
-a React context is written — counts as a write. So does calling a method on it,
-except a method that reads a [Zustand store](#zustand) or a collection whose type the
-file shows. What a property holds is part of the value, so a write or a method call
-anywhere down a member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
+below. Everything else — passing it to a function, returning it, putting it in an
+array or object literal, `await`ing it, which calls a `then` it may have, `yield`ing
+it, throwing it, `export default` of it, writing through it, spreading it, arithmetic
+on it, or naming a member of it as an element, which is how a React context is
+written — counts as a write. So does calling a method on it, except a method that
+reads a [Zustand store](#zustand) or a collection whose type the file shows. What a
+property holds is part of the value, so a write or a method call anywhere down a
+member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
 `delete state.a.b` and `state.items.push(x)` write `state` as `state.a = 1` does,
-while `state.items.length` still reads it in place. Passing the value, or anything
-read off it, to a component, as a child or as any prop but `key`, passes it on, since
-the component could change it: `<List items={state.items} />` writes `state`, and so
-does `<button onClick={state.handler}>`, which calls what it is handed. Rendered as
-the child of an element such as `<li>` or of a fragment, or used as a `key`, it is
-read in place. The same holds for an object shared property by property, one read
-only for its members, and a collection whose type the file shows.
+while `state.items.length > 0` still reads it in place. What is read off it is handed
+on like the value itself, so returning a part, as the getter
+`() => state.volume` does, or its `length`, which is not known to be a number, writes
+it too; only a collection whose type the file shows is known to hold a number in
+`length` or `size`. `||`, `??`, `?:`, the right of `&&` and a comma yield an operand
+as it was, so the operand goes where the result goes: `f(flag && state.items)` writes
+`state`, and `(o || state.count) === 1` reads it. The left of `&&` is yielded only
+when falsy, a primitive, so it is only tested. Parentheses, `!`, `as` and `satisfies`
+leave the value as it was. A local `const` alias, or a `let` one that nothing
+reassigns, is followed to its own uses. Passing the value, or anything read off it,
+to a component, as a child or as any prop but `key`, passes it on, since the
+component could change it: `<List items={state.items} />`, `<Foo {...state.items} />`
+and `<Foo>{flag && state.items}</Foo>` write `state`, and so does
+`<button onClick={state.handler}>`, which calls what it is handed. Rendered as the
+child of an element such as `<li>` or of a fragment, or used as a `key`, it is read
+in place. The same holds for an object shared property by property, one read only
+for its members, and a collection whose type the file shows.
 
 A collection's type is shown only by a module-scope `const` that nothing reassigns,
 initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or
@@ -156,13 +168,16 @@ a local `const` alias of it or a `let` one that nothing reassigns, these methods
 it and change none of it:
 
 - `Map` and `WeakMap`: `get` and `has`, and on a `Map` also `forEach`, `keys`,
-  `values` and `entries`. `size` is a property, read in place like any other.
+  `values` and `entries`.
 - `Set` and `WeakSet`: `has`, and on a `Set` also `forEach`, `keys`, `values` and
   `entries`.
 - Arrays: `at`, `concat`, `entries`, `every`, `filter`, `find`, `findIndex`,
   `findLast`, `findLastIndex`, `flat`, `flatMap`, `forEach`, `includes`, `indexOf`,
   `join`, `keys`, `lastIndexOf`, `map`, `reduce`, `reduceRight`, `slice`, `some`,
   `toReversed`, `toSorted`, `toSpliced`, `values`, `with` and `toString`.
+
+A `Map`'s or a `Set`'s `size` and an array's `length` are properties holding a number,
+read wherever they go.
 
 A method that returns a boolean, a number or a string, such as `has`, `includes`,
 `indexOf`, `some` or `join`, is a read however its result is used. One whose result
