@@ -1,0 +1,26 @@
+# `inline-requires-import-read`, with the read in a local helper. The helper is proven
+# to run nothing, so `small` is not module initialisation for what it runs. But
+# calling it reads `base` as `sizes.ts` is evaluated, and under a bundler that defers
+# each import to its first use that evaluates `tokens.ts`, whose top-level statement
+# is edited. The page that imports only `label` is reached.
+[[anchor]]
+path = "src/pages/SizesPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/SizesPage.tsx)",
+    "Decl(src/pages/SizesPage.tsx, default)",
+    "Export(src/lib/sizes.ts, label)",
+    "ModuleInit(src/lib/sizes.ts)",
+    "Decl(src/lib/sizes.ts, small)",
+    "Decl(src/lib/sizes.ts, scaled)",
+    "Export(src/lib/tokens.ts, base)",
+    "ModuleInit(src/lib/tokens.ts)",
+]
+
+# The same helper, called only inside a function nothing on this page calls, reads
+# nothing as `spacing.ts` is evaluated.
+[[anchor]]
+path = "src/pages/SpacingPage.tsx"
+affected = false

@@ -21,15 +21,21 @@
 //! callee's own file, so [`super::init`] defers it and the graph resolves it. What
 //! is here is the half of that question this file can answer: whether calling a
 //! function it hands such a factory runs anything, for a factory that calls it.
+//!
+//! Nor is what reading an import does. Where a project defers each import to its
+//! first use, that evaluates the module the import names, and whether this one does
+//! is the anchor's to say. So [`reads`] only records which code run at load reads
+//! one, and the graph decides.
 
 mod globals;
 mod imports;
 mod local_pure;
+mod reads;
 
 use ahash::AHashMap;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use oxc_semantic::{Scoping, SymbolFlags, SymbolId};
+use oxc_semantic::{AstNodes, Scoping, SymbolFlags, SymbolId};
 use oxc_span::GetSpan;
 
 use super::cjs;
@@ -38,6 +44,7 @@ use super::parse::Ctx;
 use crate::pure::PureList;
 use imports::Imports;
 use local_pure::{LocalPure, Proof};
+use reads::Reader;
 
 /// What code run at module load in one file is judged against: where each import
 /// comes from, what the project has declared pure, what the local-helper proof has
@@ -47,6 +54,7 @@ use local_pure::{LocalPure, Proof};
 /// it.
 pub(super) struct SideEffects<'c, 'a> {
     scoping: &'c Scoping,
+    nodes: &'c AstNodes<'a>,
     /// The local-helper proof. It holds where each import comes from and what the
     /// project has declared pure, since it reads them too.
     local: LocalPure<'c, 'a>,
@@ -65,6 +73,7 @@ impl<'c, 'a> SideEffects<'c, 'a> {
         let imports = Imports::new(scoping, imports, sources, pure);
         Self {
             scoping,
+            nodes: ctx.semantic.nodes(),
             local: LocalPure::infer(ctx, program, imports),
             readable: readable_from(ctx),
         }
@@ -94,74 +103,126 @@ impl<'c, 'a> SideEffects<'c, 'a> {
     /// `statement` is a top-level statement that declares something, so an
     /// expression statement is read as a CommonJS export.
     pub(super) fn declaring_runs(&self, statement: &Statement<'_>) -> bool {
-        let declaration = match statement {
-            Statement::ExportDeclaration(export) => Some(&export.declaration),
-            Statement::ExportDefaultDeclaration(export) => {
-                return self.default_runs(&export.declaration);
-            }
-            // Either the assignment that fills the table, whose initialiser is the
-            // value it assigns, or a defined property, which stores what it is handed
-            // without running any of it.
-            Statement::ExpressionStatement(statement) => {
-                return cjs::assigned_value(&statement.expression)
-                    .is_some_and(|value| self.runs(value));
-            }
-            statement => statement.as_declaration(),
-        };
-
-        let variable = match declaration {
-            Some(Declaration::VariableDeclaration(variable)) => variable,
-            Some(Declaration::ClassDeclaration(class)) => {
-                return self.detect(|detector| detector.visit_class(class));
-            }
-            // Each member's value is computed when the enum is, and a `const enum` is
-            // read the same way because type erasure keeps it.
-            Some(Declaration::TSEnumDeclaration(enumeration)) => {
-                return enumeration
-                    .body
-                    .members
-                    .iter()
-                    .filter_map(|member| member.initializer.as_ref())
-                    .any(|init| self.runs(init));
-            }
-            // A function declaration binds without running anything.
-            _ => return false,
-        };
-
-        variable.declarations.iter().any(|declarator| {
-            // `var _default = (exports.default = …)`, a compiler's `export default`.
-            // Filling the table is the export, not an effect on anybody else, so what
-            // decides whether this runs anything is the value alone.
-            let init = declarator
-                .init
-                .as_ref()
-                .is_some_and(|init| self.runs(cjs::assigned_value(init).unwrap_or(init)));
-            // A pattern computes its defaults and its computed keys as it binds, so
-            // those run with the initialiser. Taking the value apart is left to the
-            // value, as reading a property is everywhere else.
-            init || self.detect(|detector| detector.visit_binding_pattern(&declarator.id))
-        })
+        evaluated(statement)
+            .iter()
+            .any(|part| self.detect(|detector| part.accept(detector)))
     }
 
-    /// `export default …`, which binds a declaration or evaluates an expression.
-    fn default_runs(&self, declaration: &ExportDefaultDeclarationKind<'_>) -> bool {
-        match declaration {
-            ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                self.detect(|detector| detector.visit_class(class))
-            }
-            // `export default function f() {}` binds without running anything.
-            ExportDefaultDeclarationKind::FunctionDeclaration(_)
-            | ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => false,
-            expression => expression
-                .as_expression()
-                .is_some_and(|expression| self.runs(expression)),
-        }
+    /// Whether evaluating `expression` where it is written reads an imported
+    /// binding, itself or in a function of this file it calls there. See
+    /// [`reads`].
+    pub(super) fn reads_import<'s>(&self, expression: &'s Expression<'s>) -> bool
+    where
+        'a: 's,
+    {
+        let mut reader = Reader::new(self.scoping, self.nodes);
+        reader.visit_expression(expression);
+        reader.reads
+    }
+
+    /// Whether declaring what `statement` declares reads an imported binding, in
+    /// what [`Self::declaring_runs`] asks about or in a function of this file it
+    /// calls there.
+    pub(super) fn declaring_reads_import<'s>(&self, statement: &'s Statement<'s>) -> bool
+    where
+        'a: 's,
+    {
+        evaluated(statement).iter().any(|part| {
+            let mut reader = Reader::new(self.scoping, self.nodes);
+            part.accept(&mut reader);
+            reader.reads
+        })
     }
 
     fn detect(&self, visit: impl FnOnce(&mut Detector<'_, 'c, 'a>)) -> bool {
         let mut detector = Detector::new(self);
         visit(&mut detector);
         detector.impure
+    }
+}
+
+/// A part of a declaring statement that runs where the statement is written.
+enum Evaluated<'a> {
+    Expression(&'a Expression<'a>),
+    Class(&'a Class<'a>),
+    Pattern(&'a BindingPattern<'a>),
+}
+
+impl<'a> Evaluated<'a> {
+    fn accept(&self, visitor: &mut impl Visit<'a>) {
+        match self {
+            Evaluated::Expression(expression) => visitor.visit_expression(expression),
+            Evaluated::Class(class) => visitor.visit_class(class),
+            Evaluated::Pattern(pattern) => visitor.visit_binding_pattern(pattern),
+        }
+    }
+}
+
+/// What declaring what `statement` declares evaluates: its initialisers, its
+/// patterns, which compute their defaults and computed keys as they bind, its
+/// class, or its enum members' values. A function declaration binds without
+/// running anything.
+///
+/// `statement` is a top-level statement that declares something, so an expression
+/// statement is read as a CommonJS export: either the assignment that fills the
+/// table, whose initialiser is the value it assigns, or a defined property, which
+/// stores what it is handed without running any of it.
+fn evaluated<'a>(statement: &'a Statement<'a>) -> Vec<Evaluated<'a>> {
+    let declaration = match statement {
+        Statement::ExportDeclaration(export) => Some(&export.declaration),
+        Statement::ExportDefaultDeclaration(export) => {
+            return match &export.declaration {
+                ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+                    vec![Evaluated::Class(class)]
+                }
+                // `export default function f() {}` binds without running anything.
+                ExportDefaultDeclarationKind::FunctionDeclaration(_)
+                | ExportDefaultDeclarationKind::TSInterfaceDeclaration(_) => Vec::new(),
+                expression => expression
+                    .as_expression()
+                    .map(Evaluated::Expression)
+                    .into_iter()
+                    .collect(),
+            };
+        }
+        Statement::ExpressionStatement(statement) => {
+            return cjs::assigned_value(&statement.expression)
+                .map(Evaluated::Expression)
+                .into_iter()
+                .collect();
+        }
+        statement => statement.as_declaration(),
+    };
+
+    match declaration {
+        Some(Declaration::VariableDeclaration(variable)) => variable
+            .declarations
+            .iter()
+            .flat_map(|declarator| {
+                // `var _default = (exports.default = …)`, a compiler's `export
+                // default`. Filling the table is the export, not an effect on anybody
+                // else, so what decides whether this runs anything is the value alone.
+                let init = declarator
+                    .init
+                    .as_ref()
+                    .map(|init| Evaluated::Expression(cjs::assigned_value(init).unwrap_or(init)));
+                // A pattern computes its defaults and its computed keys as it binds,
+                // so those run with the initialiser. Taking the value apart is left to
+                // the value, as reading a property is everywhere else.
+                init.into_iter().chain([Evaluated::Pattern(&declarator.id)])
+            })
+            .collect(),
+        Some(Declaration::ClassDeclaration(class)) => vec![Evaluated::Class(class)],
+        // Each member's value is computed when the enum is, and a `const enum` is read
+        // the same way because type erasure keeps it.
+        Some(Declaration::TSEnumDeclaration(enumeration)) => enumeration
+            .body
+            .members
+            .iter()
+            .filter_map(|member| member.initializer.as_ref())
+            .map(Evaluated::Expression)
+            .collect(),
+        _ => Vec::new(),
     }
 }
 

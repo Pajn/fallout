@@ -17,6 +17,10 @@ use super::{Decl, DeclId, ImportRef, ImportTarget, SourceId, Span};
 /// The edges the shared-state rule added, by the declaration each was added to.
 pub(crate) type SharedEdges = AHashMap<DeclId, Vec<DeclId>>;
 
+/// The imports read by each top-level statement that declares nothing, by the
+/// statement's index.
+pub(crate) type StatementImports = AHashMap<usize, Vec<ImportRef>>;
+
 /// Fills in each declaration's references, and returns the import statement spans
 /// paired with the declarations that use the bindings those statements introduce.
 ///
@@ -26,14 +30,15 @@ pub(crate) type SharedEdges = AHashMap<DeclId, Vec<DeclId>>;
 ///
 /// Also returns the edges the shared-state rule added, by the declaration they
 /// were added to, since those belong to every property of an object declaration
-/// whatever each property names.
+/// whatever each property names, and the imports each statement that declares
+/// nothing reads, by the statement's index.
 pub(crate) fn link(
     ctx: &Ctx<'_>,
     drafts: &[DeclDraft],
     imports: &[ImportBinding],
     objects: &AHashMap<SymbolId, ObjectRef>,
     decls: &mut [Decl],
-) -> (Vec<(Span, Vec<DeclId>)>, SharedEdges) {
+) -> (Vec<(Span, Vec<DeclId>)>, SharedEdges, StatementImports) {
     let scoping = ctx.semantic.scoping();
     let root = scoping.root_scope_id();
 
@@ -55,6 +60,7 @@ pub(crate) fn link(
     let mut recorded: AHashMap<SymbolId, AHashSet<(DeclId, Access)>> = AHashMap::default();
     // Declarations referencing each import statement's bindings, for hunk attribution.
     let mut import_users: AHashMap<Span, Vec<DeclId>> = AHashMap::default();
+    let mut statement_imports = StatementImports::default();
 
     for symbol_id in scoping.symbol_ids() {
         if scoping.symbol_scope_id(symbol_id) != root {
@@ -86,8 +92,15 @@ pub(crate) fn link(
                 continue;
             };
             // A reference from a statement that declares nothing is module
-            // initialisation, which `init` handles.
+            // initialisation, which `init` handles. What it reads of an import is
+            // kept for it, since what the statement does can turn on the value.
             let Some(users) = statement_decls.get(&statement) else {
+                if let Some(binding) = target_import
+                    && scoping.get_reference(*reference_id).is_read()
+                {
+                    let reference = narrowed(ctx.semantic.nodes(), node_id, &binding.reference);
+                    push_import(statement_imports.entry(statement).or_default(), reference);
+                }
                 continue;
             };
 
@@ -142,7 +155,7 @@ pub(crate) fn link(
 
     let mut spans: Vec<(Span, Vec<DeclId>)> = import_users.into_iter().collect();
     spans.sort_by_key(|(span, _)| *span);
-    (spans, shared)
+    (spans, shared, statement_imports)
 }
 
 /// Whether a reference could change what its binding holds, for the shared-state

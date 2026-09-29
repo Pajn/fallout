@@ -129,7 +129,9 @@ fn mark_statements(graph: &Graph, file: FileId, comparison: &Comparison, out: &m
         out.insert(Node::Export(file, graph.name_id(name)));
     }
 
-    if comparison.init_differs {
+    // A declaration that stopped reading an import at load changed what evaluating
+    // this module evaluates only where imports are deferred to their first use.
+    if comparison.init_differs || (comparison.reads_differ && graph.inline_requires()) {
         out.insert(Node::ModuleInit(file));
     }
 

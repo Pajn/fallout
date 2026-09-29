@@ -1,0 +1,27 @@
+# `inline-requires-import-read`, with the import going through a barrel. Under a
+# bundler that defers each import to its first use, a barrel does not evaluate what it
+# re-exports until a name is read through it. `small` reads `base` through the barrel
+# as `sizes.ts` is evaluated, which evaluates `setup.ts`, whose top-level statement is
+# edited. The page that imports only `label` is reached through the barrel's export
+# of `base`, not through the barrel's own initialisation.
+[[anchor]]
+path = "src/pages/SizesPage.tsx"
+affected = true
+
+[anchor.explain]
+base = [
+    "File(src/pages/SizesPage.tsx)",
+    "Decl(src/pages/SizesPage.tsx, default)",
+    "Export(src/lib/sizes.ts, label)",
+    "ModuleInit(src/lib/sizes.ts)",
+    "Decl(src/lib/sizes.ts, small)",
+    "Export(src/tokens/index.ts, base)",
+    "Export(src/tokens/setup.ts, base)",
+    "ModuleInit(src/tokens/setup.ts)",
+]
+
+# `gap` reads `base` through the barrel only when it is called, and nothing on this
+# page calls it.
+[[anchor]]
+path = "src/pages/SpacingPage.tsx"
+affected = false
