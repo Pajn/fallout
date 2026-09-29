@@ -110,11 +110,6 @@ pub(crate) struct Policy {
     returns: Option<OxcSpan>,
     /// How a binding declared to hold the value is followed.
     aliases: Aliases,
-    /// Whether a binding's value used bare is judged by its direct parent alone,
-    /// with no climb through wrappers: `(v).x` and `v!.x` escape, and `o[v]`, where
-    /// it is the key, is judged as a member read off it. Temporary: the soundness
-    /// PR climbs through wrappers from a bare value as from anything else.
-    legacy_bare_parent: bool,
 }
 
 /// How a binding declared to hold a value, `const v = value`, is followed.
@@ -150,7 +145,6 @@ impl Policy {
         discard: Fate::InPlace,
         returns: None,
         aliases: Aliases::Local,
-        legacy_bare_parent: false,
     };
 
     /// A binding read as one value, such as a reassigned `let` or a call's result,
@@ -166,7 +160,6 @@ impl Policy {
         discard: Fate::Escapes,
         returns: None,
         aliases: Aliases::Local,
-        legacy_bare_parent: true,
     };
 
     /// A property read off an object shared property by property or read only for
@@ -180,7 +173,6 @@ impl Policy {
             discard: Fate::InPlace,
             returns: None,
             aliases: Aliases::Credited(credit),
-            legacy_bare_parent: false,
         }
     }
 
@@ -219,7 +211,7 @@ pub(crate) fn uses(
     if held == Held::Primitive {
         return vec![(at, Fate::InPlace)];
     }
-    let landing = climb(nodes, value, held, policy);
+    let landing = climb(nodes, value, held);
     if let Aliases::Credited(credit) = policy.aliases
         && let AstKind::VariableDeclarator(declarator) = nodes.parent_kind(landing.top)
         && declarator
@@ -263,26 +255,9 @@ pub(crate) fn stays(
 
 /// Climbs from `value` out through wrappers, member reads off it, optional
 /// chaining and the operators that yield an operand as they found it.
-fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held, policy: &Policy) -> Landing {
+fn climb(nodes: &AstNodes<'_>, value: NodeId, mut held: Held) -> Landing {
     let mut current = value;
     let mut steps = 0;
-    if held == Held::Whole && policy.legacy_bare_parent {
-        match nodes.parent_kind(value) {
-            AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
-                current = nodes.parent_id(value);
-                held = held.read_off();
-                steps = 1;
-            }
-            _ => {
-                return Landing {
-                    top: value,
-                    span: nodes.get_node(value).kind().span(),
-                    held,
-                    steps,
-                };
-            }
-        }
-    }
     loop {
         let (outer, span) = through_wrappers(nodes, current);
         match nodes.parent_kind(outer) {
@@ -848,11 +823,11 @@ mod tests {
         "@.length;"                                  => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@?.x;"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
         "@[k];"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
-        "(@).x;"                                     => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "(@ as any).x;"                              => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "@!.x;"                                      => [E,  I,  I,  I,  I,  I,  I,  I ];
+        "(@).x;"                                     => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "(@ as any).x;"                              => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "@!.x;"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
         "o[@];"                                      => [I,  I,  I,  I,  I,  I,  I,  I ];
-        "o[@] = 1;"                                  => [W,  I,  I,  I,  I,  I,  I,  I ];
+        "o[@] = 1;"                                  => [I,  I,  I,  I,  I,  I,  I,  I ];
         // Called, constructed, or handed to a call.
         "@();"                                       => [I,  W,  W,  I,  W,  E,  E,  W ];
         "new @();"                                   => [I,  E,  E,  E,  E,  E,  E,  E ];
@@ -900,8 +875,8 @@ mod tests {
         "return c ? @ : d;"                          => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return o && @;"                             => [E,  E,  E,  E,  E,  E,  E,  E ];
         "f(@ && o);"                                 => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "(o || @) === 1;"                            => [E,  I,  I,  I,  I,  I,  I,  I ];
-        "return <li>{o && @}</li>;"                  => [E,  I,  I,  I,  I,  I,  E,  I ];
+        "(o || @) === 1;"                            => [I,  I,  I,  I,  I,  I,  I,  I ];
+        "return <li>{o && @}</li>;"                  => [I,  I,  I,  I,  I,  I,  E,  I ];
         "return <Foo>{o && @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <Foo>{c ? @ : d}</Foo>;"             => [E,  E,  E,  E,  E,  E,  E,  E ];
         "return <Foo>{o ?? @}</Foo>;"                => [E,  E,  E,  E,  E,  E,  E,  E ];
