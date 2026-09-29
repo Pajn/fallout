@@ -1,0 +1,147 @@
+# A `Map`, an array and a `Set`, each a module-scope `const` made in its file,
+# read by two declarations and written by a third.
+#
+# A method that only reads a collection whose type the file shows is a read, so
+# a declaration that only calls one is no writer that every other reader of the
+# collection reaches. A method that hands out what the collection holds is a read
+# only where that is used in place, and a callback it is given only where it is
+# an arrow that reads what it is handed in place.
+
+# In reads.ts, a declaration that compares what `cache.get` hands out is edited.
+# `isCached` only calls `cache.has`, and nothing the edited declaration does can
+# change what `cache` holds.
+[[anchor]]
+path = "src/pages/MapReadPage.tsx"
+affected = false
+
+# The same for an array, where a declaration comparing what `list.find` hands out
+# is edited beside `hasItem`, which calls `list.includes`.
+[[anchor]]
+path = "src/pages/ListReadPage.tsx"
+affected = false
+
+# The same for a `Set`, where a declaration calling `seen.has` twice is edited
+# beside `wasSeen`, which calls it once.
+[[anchor]]
+path = "src/pages/SetReadPage.tsx"
+affected = false
+
+# In writes.ts, the declaration that calls `cache.set` is edited, and `isCached`
+# reads what it writes.
+[[anchor]]
+path = "src/pages/MapWrittenPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/MapWrittenPage.tsx)",
+    "Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)",
+    "Export(src/lib/writes.ts, isCached)",
+    "Decl(src/lib/writes.ts, isCached)",
+    "Decl(src/lib/writes.ts, remember)",
+]
+
+# So does `holds`, which compares what `cache.get` hands out.
+[[anchor]]
+path = "src/pages/MapHeldPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/MapHeldPage.tsx)",
+    "Decl(src/pages/MapHeldPage.tsx, MapHeldPage)",
+    "Export(src/lib/writes.ts, holds)",
+    "Decl(src/lib/writes.ts, holds)",
+    "Decl(src/lib/writes.ts, remember)",
+]
+
+# The declaration that calls `list.push` is edited, and `findsItem` reads it.
+[[anchor]]
+path = "src/pages/ListWrittenPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ListWrittenPage.tsx)",
+    "Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)",
+    "Export(src/lib/writes.ts, findsItem)",
+    "Decl(src/lib/writes.ts, findsItem)",
+    "Decl(src/lib/writes.ts, addItem)",
+]
+
+# The declaration that calls `seen.add` is edited, and `wasSeen` reads it.
+[[anchor]]
+path = "src/pages/SetWrittenPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/SetWrittenPage.tsx)",
+    "Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)",
+    "Export(src/lib/writes.ts, wasSeen)",
+    "Decl(src/lib/writes.ts, wasSeen)",
+    "Decl(src/lib/writes.ts, markSeen)",
+]
+
+# In escapes.ts, each value is read beside an edited declaration that could let
+# other code change it, which is still a writer.
+#
+# `lookup` returns what `cache.get` hands out, and its caller is free to change it.
+[[anchor]]
+path = "src/pages/LookupPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/LookupPage.tsx)",
+    "Decl(src/pages/LookupPage.tsx, LookupPage)",
+    "Export(src/lib/escapes.ts, isCached)",
+    "Decl(src/lib/escapes.ts, isCached)",
+    "Decl(src/lib/escapes.ts, lookup)",
+]
+
+# `firstWith` returns what `list.find` hands out.
+[[anchor]]
+path = "src/pages/FindPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/FindPage.tsx)",
+    "Decl(src/pages/FindPage.tsx, FindPage)",
+    "Export(src/lib/escapes.ts, hasId)",
+    "Decl(src/lib/escapes.ts, hasId)",
+    "Decl(src/lib/escapes.ts, firstWith)",
+]
+
+# `shout` hands each element of `items` to `mutate`, which changes it. `mutate`
+# is edited, and names no collection, so only the call that hands it the
+# elements links it to their readers.
+[[anchor]]
+path = "src/pages/ShoutPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ShoutPage.tsx)",
+    "Decl(src/pages/ShoutPage.tsx, ShoutPage)",
+    "Export(src/lib/escapes.ts, hasLabel)",
+    "Decl(src/lib/escapes.ts, hasLabel)",
+    "Decl(src/lib/escapes.ts, shout)",
+    "Decl(src/lib/escapes.ts, mutate)",
+]
+
+# `queue` is a `let`, so every method called on it is still a write, and the
+# edited `queued`, which calls `queue.indexOf`, is still a writer.
+[[anchor]]
+path = "src/pages/QueuePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/QueuePage.tsx)",
+    "Decl(src/pages/QueuePage.tsx, QueuePage)",
+    "Export(src/lib/escapes.ts, inQueue)",
+    "Decl(src/lib/escapes.ts, inQueue)",
+    "Decl(src/lib/escapes.ts, queued)",
+]

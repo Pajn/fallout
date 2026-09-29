@@ -135,7 +135,50 @@ that reads the value and does not write it. What a check can run, a proxy trap,
 below. Everything else — passing it to a function, returning it, writing through it,
 spreading it, arithmetic on it, or naming a member of it as an element, which is how
 a React context is written — counts as a write. So does calling a method on it,
-except a method that reads a [Zustand store](#zustand).
+except a method that reads a [Zustand store](#zustand) or a collection whose type the
+file shows.
+
+A collection's type is shown only by a module-scope `const` that nothing reassigns,
+initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or
+`new WeakSet(…)` of the globals, not a class of the file or an import of the same
+name, or with an array literal such as `[]` or `[a, b]`. Called directly on it, or on
+a local `const` alias of it, these methods read it and change none of it:
+
+- `Map` and `WeakMap`: `get` and `has`, and on a `Map` also `forEach`, `keys`,
+  `values` and `entries`. `size` is a property, read in place like any other.
+- `Set` and `WeakSet`: `has`, and on a `Set` also `forEach`, `keys`, `values` and
+  `entries`.
+- Arrays: `at`, `concat`, `entries`, `every`, `filter`, `find`, `findIndex`,
+  `findLast`, `findLastIndex`, `flat`, `flatMap`, `forEach`, `includes`, `indexOf`,
+  `join`, `keys`, `lastIndexOf`, `map`, `reduce`, `reduceRight`, `slice`, `some`,
+  `toReversed`, `toSorted`, `toSpliced`, `values`, `with` and `toString`.
+
+A method that returns a boolean, a number or a string, such as `has`, `includes`,
+`indexOf`, `some` or `join`, is a read however its result is used. One whose result
+can be, or hold, an object the collection holds — `get`, `find`, `at`, `filter`,
+`map`, `slice`, `reduce`, an iterator from `keys`, `values` or `entries`, and the
+rest — is a read only where that result is used in place: compared, put through
+arithmetic or into an untagged template, tested, rendered as the child of an element
+such as `<li>` or of a fragment, used as a `key`, or read through a local `const` or
+destructuring used the same way. Returning it, passing it on, storing it, spreading
+it, iterating it with `for…of`, handing it to a component, or calling a method on it
+writes the collection, since the code it reaches could change what the collection
+holds. A callback, as `forEach`, `map` and `find` take, must be an arrow written out
+in place that does nothing with what it is handed but read it the same way; one
+passed by name, or a `function`, writes the collection, as nothing else links it to
+the elements it can change. What a callback's body does to the collection through its
+own name counts where it is written, so `list.forEach((x) => list.push(x))` still
+writes. Every other method writes, `set`, `delete`, `clear`, `add`, `push`, `pop`,
+`shift`, `unshift`, `splice`, `sort`, `reverse`, `fill` and `copyWithin` among them.
+So does every method of a `let` or `var`, of a value whose type the file does not
+show, and of one whose methods could be replaced: anything written through it but an
+array's index or `length`, handing it to `Object` or `Reflect`, as
+`Object.defineProperty` does, or using its constructor other than with `new`,
+`instanceof` or a call of the constructor's own functions such as `Array.isArray`,
+since that could reach its `prototype`. A write
+through an element, as in `list[0].count = 1`, writes the collection. The built-in
+methods are taken to be the standard ones, and a collection handed to other code is
+taken to keep them.
 
 A binding initialised with a plain object literal, frozen or not, which nothing
 reassigns and which has no getter, setter or prototype-setting `__proto__: value`, is

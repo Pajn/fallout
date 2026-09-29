@@ -1,0 +1,661 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/MapReadPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/MapReadPage.tsx)
+  File(src/lib/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapReadPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/reads.ts","path":["File(src/pages/MapReadPage.tsx)","File(src/lib/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MapReadPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/MapReadPage.tsx)
+  File(src/lib/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapReadPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/reads.ts","path":["File(src/pages/MapReadPage.tsx)","File(src/lib/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MapReadPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapReadPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapReadPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapReadPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListReadPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/ListReadPage.tsx)
+  File(src/lib/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListReadPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/reads.ts","path":["File(src/pages/ListReadPage.tsx)","File(src/lib/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ListReadPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/ListReadPage.tsx)
+  File(src/lib/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListReadPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/reads.ts","path":["File(src/pages/ListReadPage.tsx)","File(src/lib/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ListReadPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListReadPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListReadPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListReadPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetReadPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/SetReadPage.tsx)
+  File(src/lib/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetReadPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/reads.ts","path":["File(src/pages/SetReadPage.tsx)","File(src/lib/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SetReadPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/reads.ts"
+Path (downstream, file granularity):
+  File(src/pages/SetReadPage.tsx)
+  File(src/lib/reads.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetReadPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/reads.ts","path":["File(src/pages/SetReadPage.tsx)","File(src/lib/reads.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SetReadPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetReadPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetReadPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetReadPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetReadPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapWrittenPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/MapWrittenPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapWrittenPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MapWrittenPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/MapWrittenPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapWrittenPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MapWrittenPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapWrittenPage.tsx)
+  Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)
+  Export(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapWrittenPage.tsx)","Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)","Export(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapWrittenPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapWrittenPage.tsx)
+  Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)
+  Export(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapWrittenPage.tsx)","Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)","Export(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapWrittenPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapWrittenPage.tsx)
+  Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)
+  Export(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapWrittenPage.tsx)","Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)","Export(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapWrittenPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapWrittenPage.tsx)
+  Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)
+  Export(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, isCached)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapWrittenPage.tsx)","Decl(src/pages/MapWrittenPage.tsx, MapWrittenPage)","Export(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, isCached)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapHeldPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/MapHeldPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapHeldPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapHeldPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MapHeldPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/MapHeldPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapHeldPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapHeldPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/MapHeldPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapHeldPage.tsx)
+  Decl(src/pages/MapHeldPage.tsx, MapHeldPage)
+  Export(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapHeldPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapHeldPage.tsx)","Decl(src/pages/MapHeldPage.tsx, MapHeldPage)","Export(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapHeldPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapHeldPage.tsx)
+  Decl(src/pages/MapHeldPage.tsx, MapHeldPage)
+  Export(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapHeldPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapHeldPage.tsx)","Decl(src/pages/MapHeldPage.tsx, MapHeldPage)","Export(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapHeldPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapHeldPage.tsx)
+  Decl(src/pages/MapHeldPage.tsx, MapHeldPage)
+  Export(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapHeldPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapHeldPage.tsx)","Decl(src/pages/MapHeldPage.tsx, MapHeldPage)","Export(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/MapHeldPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/MapHeldPage.tsx)
+  Decl(src/pages/MapHeldPage.tsx, MapHeldPage)
+  Export(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, holds)
+  Decl(src/lib/writes.ts, remember)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/MapHeldPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/MapHeldPage.tsx)","Decl(src/pages/MapHeldPage.tsx, MapHeldPage)","Export(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, holds)","Decl(src/lib/writes.ts, remember)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListWrittenPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/ListWrittenPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/ListWrittenPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ListWrittenPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/ListWrittenPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/ListWrittenPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ListWrittenPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ListWrittenPage.tsx)
+  Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)
+  Export(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, addItem)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/ListWrittenPage.tsx)","Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)","Export(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, addItem)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListWrittenPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ListWrittenPage.tsx)
+  Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)
+  Export(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, addItem)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/ListWrittenPage.tsx)","Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)","Export(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, addItem)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListWrittenPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ListWrittenPage.tsx)
+  Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)
+  Export(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, addItem)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/ListWrittenPage.tsx)","Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)","Export(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, addItem)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ListWrittenPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ListWrittenPage.tsx)
+  Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)
+  Export(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, findsItem)
+  Decl(src/lib/writes.ts, addItem)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ListWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/ListWrittenPage.tsx)","Decl(src/pages/ListWrittenPage.tsx, ListWrittenPage)","Export(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, findsItem)","Decl(src/lib/writes.ts, addItem)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetWrittenPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/SetWrittenPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/SetWrittenPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SetWrittenPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, file granularity):
+  File(src/pages/SetWrittenPage.tsx)
+  File(src/lib/writes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/SetWrittenPage.tsx)","File(src/lib/writes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SetWrittenPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SetWrittenPage.tsx)
+  Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)
+  Export(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, markSeen)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/SetWrittenPage.tsx)","Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)","Export(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, markSeen)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetWrittenPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SetWrittenPage.tsx)
+  Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)
+  Export(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, markSeen)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/SetWrittenPage.tsx)","Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)","Export(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, markSeen)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetWrittenPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SetWrittenPage.tsx)
+  Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)
+  Export(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, markSeen)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/SetWrittenPage.tsx)","Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)","Export(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, markSeen)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SetWrittenPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/writes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/SetWrittenPage.tsx)
+  Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)
+  Export(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, wasSeen)
+  Decl(src/lib/writes.ts, markSeen)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SetWrittenPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/writes.ts","path":["File(src/pages/SetWrittenPage.tsx)","Decl(src/pages/SetWrittenPage.tsx, SetWrittenPage)","Export(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, wasSeen)","Decl(src/lib/writes.ts, markSeen)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LookupPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/LookupPage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LookupPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/LookupPage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LookupPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/LookupPage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LookupPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/LookupPage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/LookupPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LookupPage.tsx)
+  Decl(src/pages/LookupPage.tsx, LookupPage)
+  Export(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, lookup)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LookupPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/LookupPage.tsx)","Decl(src/pages/LookupPage.tsx, LookupPage)","Export(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, lookup)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LookupPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LookupPage.tsx)
+  Decl(src/pages/LookupPage.tsx, LookupPage)
+  Export(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, lookup)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LookupPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/LookupPage.tsx)","Decl(src/pages/LookupPage.tsx, LookupPage)","Export(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, lookup)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LookupPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LookupPage.tsx)
+  Decl(src/pages/LookupPage.tsx, LookupPage)
+  Export(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, lookup)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LookupPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/LookupPage.tsx)","Decl(src/pages/LookupPage.tsx, LookupPage)","Export(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, lookup)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/LookupPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/LookupPage.tsx)
+  Decl(src/pages/LookupPage.tsx, LookupPage)
+  Export(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, isCached)
+  Decl(src/lib/escapes.ts, lookup)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/LookupPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/LookupPage.tsx)","Decl(src/pages/LookupPage.tsx, LookupPage)","Export(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, isCached)","Decl(src/lib/escapes.ts, lookup)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/FindPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/FindPage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/FindPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/FindPage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/FindPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/FindPage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/FindPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/FindPage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/FindPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/FindPage.tsx)
+  Decl(src/pages/FindPage.tsx, FindPage)
+  Export(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, firstWith)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/FindPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/FindPage.tsx)","Decl(src/pages/FindPage.tsx, FindPage)","Export(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, firstWith)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/FindPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/FindPage.tsx)
+  Decl(src/pages/FindPage.tsx, FindPage)
+  Export(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, firstWith)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/FindPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/FindPage.tsx)","Decl(src/pages/FindPage.tsx, FindPage)","Export(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, firstWith)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/FindPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/FindPage.tsx)
+  Decl(src/pages/FindPage.tsx, FindPage)
+  Export(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, firstWith)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/FindPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/FindPage.tsx)","Decl(src/pages/FindPage.tsx, FindPage)","Export(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, firstWith)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/FindPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/FindPage.tsx)
+  Decl(src/pages/FindPage.tsx, FindPage)
+  Export(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, hasId)
+  Decl(src/lib/escapes.ts, firstWith)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/FindPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/FindPage.tsx)","Decl(src/pages/FindPage.tsx, FindPage)","Export(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, hasId)","Decl(src/lib/escapes.ts, firstWith)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShoutPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/ShoutPage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShoutPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/ShoutPage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ShoutPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/ShoutPage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShoutPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/ShoutPage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ShoutPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ShoutPage.tsx)
+  Decl(src/pages/ShoutPage.tsx, ShoutPage)
+  Export(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, shout)
+  Decl(src/lib/escapes.ts, mutate)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShoutPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/ShoutPage.tsx)","Decl(src/pages/ShoutPage.tsx, ShoutPage)","Export(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, shout)","Decl(src/lib/escapes.ts, mutate)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShoutPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ShoutPage.tsx)
+  Decl(src/pages/ShoutPage.tsx, ShoutPage)
+  Export(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, shout)
+  Decl(src/lib/escapes.ts, mutate)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShoutPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/ShoutPage.tsx)","Decl(src/pages/ShoutPage.tsx, ShoutPage)","Export(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, shout)","Decl(src/lib/escapes.ts, mutate)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShoutPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ShoutPage.tsx)
+  Decl(src/pages/ShoutPage.tsx, ShoutPage)
+  Export(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, shout)
+  Decl(src/lib/escapes.ts, mutate)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShoutPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/ShoutPage.tsx)","Decl(src/pages/ShoutPage.tsx, ShoutPage)","Export(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, shout)","Decl(src/lib/escapes.ts, mutate)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ShoutPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ShoutPage.tsx)
+  Decl(src/pages/ShoutPage.tsx, ShoutPage)
+  Export(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, hasLabel)
+  Decl(src/lib/escapes.ts, shout)
+  Decl(src/lib/escapes.ts, mutate)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ShoutPage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/ShoutPage.tsx)","Decl(src/pages/ShoutPage.tsx, ShoutPage)","Export(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, hasLabel)","Decl(src/lib/escapes.ts, shout)","Decl(src/lib/escapes.ts, mutate)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/QueuePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/QueuePage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/QueuePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/QueuePage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/QueuePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, file granularity):
+  File(src/pages/QueuePage.tsx)
+  File(src/lib/escapes.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/QueuePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/QueuePage.tsx)","File(src/lib/escapes.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/QueuePage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/QueuePage.tsx)
+  Decl(src/pages/QueuePage.tsx, QueuePage)
+  Export(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, queued)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/QueuePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/QueuePage.tsx)","Decl(src/pages/QueuePage.tsx, QueuePage)","Export(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, queued)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/QueuePage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/QueuePage.tsx)
+  Decl(src/pages/QueuePage.tsx, QueuePage)
+  Export(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, queued)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/QueuePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/QueuePage.tsx)","Decl(src/pages/QueuePage.tsx, QueuePage)","Export(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, queued)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/QueuePage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/QueuePage.tsx)
+  Decl(src/pages/QueuePage.tsx, QueuePage)
+  Export(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, queued)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/QueuePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/QueuePage.tsx)","Decl(src/pages/QueuePage.tsx, QueuePage)","Export(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, queued)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/QueuePage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/escapes.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/QueuePage.tsx)
+  Decl(src/pages/QueuePage.tsx, QueuePage)
+  Export(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, inQueue)
+  Decl(src/lib/escapes.ts, queued)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/QueuePage.tsx","affected":true,"direction":"downstream","changed":"src/lib/escapes.ts","path":["File(src/pages/QueuePage.tsx)","Decl(src/pages/QueuePage.tsx, QueuePage)","Export(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, inQueue)","Decl(src/lib/escapes.ts, queued)"],"granularity":"symbol","unresolved":[]}]}

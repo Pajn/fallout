@@ -16,11 +16,17 @@
 //! `const`, destructures, or is nested too deep is taken as writing the whole of
 //! what it aliases, and each of its own uses as a use of the whole of it, credited
 //! where that use is written.
+//!
+//! A collection the file makes itself, a `const` bound to `new Map()` or to an
+//! array literal, is used as a whole too, and its aliases are followed the same
+//! way. But its methods are known, so calling one that only reads it, in a way that
+//! hands none of what it holds to other code, is a read of it rather than a write;
+//! see [`collection`].
 
 use ahash::AHashSet;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
-use oxc_semantic::{AstNodes, NodeId, SymbolId};
+use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
 
 use super::members::object_literal;
@@ -72,6 +78,261 @@ pub(crate) enum Mode<'m> {
     /// which are known not to reach the object through `this`, reads that member
     /// and leaves the object be; calling any other may reach all of it.
     Members(&'m [String]),
+    /// A collection the file makes itself, whose methods are known. Every use is a
+    /// use of the whole value, but calling a method that only reads it, in a way
+    /// that hands none of what it holds to other code, is a read.
+    Collection(Collection),
+}
+
+/// A built-in collection whose type the file shows: a module-scope `const` made
+/// with `new Map()`, `new Set()`, `new WeakMap()` or `new WeakSet()` of the
+/// globals, or with an array literal.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Collection {
+    Map,
+    WeakMap,
+    Set,
+    WeakSet,
+    Array,
+}
+
+/// What a collection's read method hands back.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Hands {
+    /// A boolean, a number, a string or nothing, which holds nothing of the
+    /// collection's, however it is used.
+    Primitive,
+    /// Something that may be, or hold, an object the collection holds, through
+    /// which a caller could change what every other reader of it sees.
+    Stored,
+}
+
+/// Whether a collection's read method takes a callback as its first argument,
+/// which it calls with what the collection holds.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Callback {
+    Never,
+    Required,
+    Optional,
+}
+
+impl Collection {
+    /// The global whose prototype holds the collection's methods.
+    fn constructor(self) -> &'static str {
+        match self {
+            Collection::Map => "Map",
+            Collection::WeakMap => "WeakMap",
+            Collection::Set => "Set",
+            Collection::WeakSet => "WeakSet",
+            Collection::Array => "Array",
+        }
+    }
+
+    /// What calling `name` hands back and whether it takes a callback, where the
+    /// built-in method of that name reads the collection and changes none of it.
+    /// `size` and `length` are properties, which are read in place already.
+    fn read_method(self, name: &str) -> Option<(Hands, Callback)> {
+        use Collection::*;
+        use Hands::*;
+        let method = match (self, name) {
+            (Map | WeakMap, "get") => (Stored, Callback::Never),
+            (Map | WeakMap | Set | WeakSet, "has") => (Primitive, Callback::Never),
+            (Map | Set | Array, "forEach") => (Primitive, Callback::Required),
+            (Map | Set | Array, "keys" | "values" | "entries") => (Stored, Callback::Never),
+            (Array, "every" | "some" | "findIndex" | "findLastIndex") => {
+                (Primitive, Callback::Required)
+            }
+            (Array, "includes" | "indexOf" | "lastIndexOf" | "join" | "toString") => {
+                (Primitive, Callback::Never)
+            }
+            (
+                Array,
+                "filter" | "find" | "findLast" | "flatMap" | "map" | "reduce" | "reduceRight",
+            ) => (Stored, Callback::Required),
+            (Array, "toSorted") => (Stored, Callback::Optional),
+            (Array, "at" | "concat" | "flat" | "slice" | "toReversed" | "toSpliced" | "with") => {
+                (Stored, Callback::Never)
+            }
+            _ => return None,
+        };
+        Some(method)
+    }
+}
+
+/// The collection `symbol` holds, where the file shows what it is and that its
+/// methods are the built-in ones.
+///
+/// The binding must be a `const` that nothing reassigns, initialised with an array
+/// literal or with `new` of a global `Map`, `Set`, `WeakMap` or `WeakSet`, which a
+/// class of the file or an import of the same name would shadow. A value whose own
+/// methods may be replaced, or whose constructor's prototype may be, is not one:
+/// anything written through it but an index or an array's `length`, anything
+/// handed to a method of `Object` or `Reflect`, such as `Object.defineProperty`,
+/// and any use of the constructor but `new`, `instanceof` or a call of one of its
+/// own functions, such as `Array.isArray`. Aliases declared from the binding are
+/// held to the same.
+///
+/// Handing the value to other code does not make it any less of a `Map`, and the
+/// declaration that does so is a writer of it already.
+pub(crate) fn collection(ctx: &Ctx<'_>, symbol: SymbolId) -> Option<Collection> {
+    let scoping = ctx.semantic.scoping();
+    let nodes = ctx.semantic.nodes();
+    if scoping
+        .get_resolved_reference_ids(symbol)
+        .iter()
+        .any(|id| scoping.get_reference(*id).is_write())
+    {
+        return None;
+    }
+    let declarator_id = scoping.symbol_declaration(symbol);
+    let AstKind::VariableDeclarator(declarator) = nodes.kind(declarator_id) else {
+        return None;
+    };
+    let AstKind::VariableDeclaration(variable) = nodes.parent_kind(declarator_id) else {
+        return None;
+    };
+    if variable.kind != VariableDeclarationKind::Const
+        || !matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
+    {
+        return None;
+    }
+    let collection = match declarator.init.as_ref()?.get_inner_expression() {
+        Expression::ArrayExpression(_) => Collection::Array,
+        Expression::NewExpression(new) => match &new.callee {
+            Expression::Identifier(callee) if callee.is_global_reference(scoping) => {
+                match callee.name.as_str() {
+                    "Map" => Collection::Map,
+                    "WeakMap" => Collection::WeakMap,
+                    "Set" => Collection::Set,
+                    "WeakSet" => Collection::WeakSet,
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+    (!constructor_touched(ctx, collection) && !methods_replaceable(ctx, symbol, collection))
+        .then_some(collection)
+}
+
+/// Whether the file uses the collection's global constructor in a way that could
+/// reach its prototype: `Map.prototype.get = …`, or handing `Map` to other code.
+fn constructor_touched(ctx: &Ctx<'_>, collection: Collection) -> bool {
+    let scoping = ctx.semantic.scoping();
+    let nodes = ctx.semantic.nodes();
+    let Some(references) = scoping
+        .root_unresolved_references()
+        .get(collection.constructor())
+    else {
+        return false;
+    };
+    references.iter().any(|id| {
+        let reference = scoping.get_reference(*id);
+        if !reference.is_value() {
+            return false;
+        }
+        let (top, span) = through_wrappers(nodes, reference.node_id());
+        match nodes.parent_kind(top) {
+            AstKind::NewExpression(new) => new.callee.span() != span,
+            AstKind::BinaryExpression(binary) => {
+                binary.operator != BinaryOperator::Instanceof || binary.right.span() != span
+            }
+            AstKind::StaticMemberExpression(member)
+                if member.object.span() == span && member.property.name != "prototype" =>
+            {
+                let (outer, outer_span) = through_wrappers(nodes, nodes.parent_id(top));
+                !matches!(
+                    nodes.parent_kind(outer),
+                    AstKind::CallExpression(call) if call.callee.span() == outer_span
+                )
+            }
+            _ => true,
+        }
+    })
+}
+
+/// Whether anything done through `symbol`, or through an alias declared from it,
+/// could give the value methods of its own: a property written, deleted or
+/// defined on it, or its prototype set. An index or an array's `length` written
+/// leaves its methods as they were.
+fn methods_replaceable(ctx: &Ctx<'_>, symbol: SymbolId, collection: Collection) -> bool {
+    let scoping = ctx.semantic.scoping();
+    let nodes = ctx.semantic.nodes();
+    let mut visited = AHashSet::default();
+    let mut pending = vec![symbol];
+    while let Some(symbol) = pending.pop() {
+        if !visited.insert(symbol) {
+            continue;
+        }
+        for reference_id in scoping.get_resolved_reference_ids(symbol) {
+            let (top, span) =
+                through_wrappers(nodes, scoping.get_reference(*reference_id).node_id());
+            let member = nodes.parent_id(top);
+            match nodes.parent_kind(top) {
+                AstKind::StaticMemberExpression(written) if written.object.span() == span => {
+                    if member_written(nodes, member)
+                        && !(collection == Collection::Array && written.property.name == "length")
+                    {
+                        return true;
+                    }
+                }
+                AstKind::ComputedMemberExpression(written) if written.object.span() == span => {
+                    if member_written(nodes, member)
+                        && !(collection == Collection::Array
+                            && matches!(written.expression, Expression::NumericLiteral(_)))
+                    {
+                        return true;
+                    }
+                }
+                AstKind::CallExpression(call) if call.callee.span() != span => {
+                    if let Expression::StaticMemberExpression(callee) =
+                        call.callee.get_inner_expression()
+                        && let Expression::Identifier(object) = callee.object.get_inner_expression()
+                        && matches!(object.name.as_str(), "Object" | "Reflect")
+                        && object.is_global_reference(scoping)
+                    {
+                        return true;
+                    }
+                }
+                AstKind::VariableDeclarator(declarator)
+                    if declarator
+                        .init
+                        .as_ref()
+                        .is_some_and(|init| init.span() == span) =>
+                {
+                    pending.extend(
+                        declarator
+                            .id
+                            .get_binding_identifiers()
+                            .iter()
+                            .filter_map(|binding| binding.symbol_id.get()),
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+/// Whether the member expression at `member` is written, deleted or assigned to by
+/// a pattern, rather than read.
+fn member_written(nodes: &AstNodes<'_>, member: NodeId) -> bool {
+    let (top, span) = through_wrappers(nodes, member);
+    match nodes.parent_kind(top) {
+        AstKind::AssignmentExpression(assignment) => assignment.left.span() == span,
+        AstKind::ForInStatement(statement) => statement.left.span() == span,
+        AstKind::ForOfStatement(statement) => statement.left.span() == span,
+        AstKind::UnaryExpression(unary) => unary.operator == UnaryOperator::Delete,
+        AstKind::UpdateExpression(_)
+        | AstKind::AssignmentTargetPropertyIdentifier(_)
+        | AstKind::AssignmentTargetPropertyProperty(_)
+        | AstKind::ArrayAssignmentTarget(_)
+        | AstKind::AssignmentTargetRest(_)
+        | AstKind::AssignmentTargetWithDefault(_) => true,
+        _ => false,
+    }
 }
 
 /// How far aliases of aliases are followed before the whole object is assumed.
@@ -209,6 +470,18 @@ fn reference_accesses(
     // `__proto__` is the prototype, through which every property can change.
     if property.as_deref() == Some("__proto__") {
         return whole(true);
+    }
+    // A collection is one value, however it is reached into. What is done with an
+    // element read off it counts as done to it, however deep the chain goes, so
+    // `list[0].count = 1` writes `list`.
+    if let Mode::Collection(collection) = mode {
+        return match property_use(ctx, nodes.parent_id(top), depth) {
+            PropertyUse::Receiver => whole(!collection_read(ctx, node_id, collection)),
+            PropertyUse::Uses(uses) => uses
+                .into_iter()
+                .map(|(offset, write)| (offset.unwrap_or(at), Access::whole(write)))
+                .collect(),
+        };
     }
     match property_use(ctx, nodes.parent_id(top), depth) {
         PropertyUse::Receiver
@@ -517,7 +790,56 @@ fn declared_from<'n, 'a>(
 /// calling what the state holds, `store.getState().inc()`, calls an action that
 /// sets the store, and handing the state on lets other code do the same.
 fn read_call(ctx: &Ctx<'_>, node_id: NodeId) -> Option<String> {
-    let nodes = ctx.semantic.nodes();
+    let (name, call_id, call) = method_call(ctx.semantic.nodes(), node_id)?;
+    let mut forms = read_forms(name).peekable();
+    forms.peek()?;
+    forms
+        .all(|form| match form {
+            Reads::State(_) => stays_read(ctx, call_id, Held::State, None, 0),
+            Reads::Listener(_) => only_reads_what_it_is_given(ctx, call),
+        })
+        .then(|| name.to_string())
+}
+
+/// Whether this reference calls a method that only reads the collection it
+/// holds, in a way that hands none of what it holds to other code.
+///
+/// A callback the method calls with what the collection holds must be an arrow
+/// written out in place that does nothing with what it is given but read it, as
+/// what is done in place with what the method hands back does. What else the
+/// callback's body does is classified where it is written, so one that writes the
+/// collection through its own binding is a write there. A callback passed by name
+/// is handed the elements to do with as it likes, and nothing links it to the
+/// collection but this call, so it is not a read. Nor is a `function`, whose
+/// `arguments` also hold what it is called with.
+///
+/// What hands back a primitive is a read however that is used. What may hand back
+/// an object the collection holds is a read only where it is used in place, as
+/// [`stays_read`] says, since a caller given the object could change it.
+fn collection_read(ctx: &Ctx<'_>, node_id: NodeId, collection: Collection) -> bool {
+    let Some((name, call_id, call)) = method_call(ctx.semantic.nodes(), node_id) else {
+        return false;
+    };
+    let Some((hands, callback)) = collection.read_method(name) else {
+        return false;
+    };
+    let callback_reads = match (callback, call.arguments.first()) {
+        (Callback::Never, _) | (Callback::Optional, None) => true,
+        (
+            Callback::Required | Callback::Optional,
+            Some(Argument::ArrowFunctionExpression(arrow)),
+        ) => params_read(ctx, &arrow.params, Held::Stored, Some(arrow.span)),
+        _ => false,
+    };
+    callback_reads && (hands == Hands::Primitive || stays_read(ctx, call_id, Held::Stored, None, 0))
+}
+
+/// The method this reference is called with directly, `value.name(…)`, with the
+/// call's node and the call.
+fn method_call<'a>(
+    nodes: &AstNodes<'a>,
+    node_id: NodeId,
+) -> Option<(&'a str, NodeId, &'a CallExpression<'a>)> {
     let (object, span) = through_wrappers(nodes, node_id);
     let AstKind::StaticMemberExpression(member) = nodes.parent_kind(object) else {
         return None;
@@ -532,16 +854,7 @@ fn read_call(ctx: &Ctx<'_>, node_id: NodeId) -> Option<String> {
     if call.callee.span() != span {
         return None;
     }
-    let call_id = nodes.parent_id(callee);
-    let name = member.property.name.as_str();
-    let mut forms = read_forms(name).peekable();
-    forms.peek()?;
-    forms
-        .all(|form| match form {
-            Reads::State(_) => stays_read(ctx, call_id, true, 0),
-            Reads::Listener(_) => only_reads_what_it_is_given(ctx, call),
-        })
-        .then(|| name.to_string())
+    Some((member.property.name.as_str(), nodes.parent_id(callee), call))
 }
 
 /// Whether a call is given a single listener, written out in place, that does
@@ -557,26 +870,72 @@ fn only_reads_what_it_is_given(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> bool
         Argument::FunctionExpression(function) => &function.params,
         _ => return false,
     };
-    params.rest.is_none()
-        && params
-            .items
-            .iter()
-            .all(|param| param.initializer.is_none() && binding_reads(ctx, &param.pattern, true, 0))
+    params_read(ctx, params, Held::State, None)
 }
 
-/// Whether what is done with a value only reads it: `whole` for the state itself,
-/// and otherwise for something read off it.
+/// Whether a function does nothing with what it is called with but read it, as
+/// [`binding_reads`] says, where each argument holds `held`. A rest parameter or a
+/// default is not followed.
+fn params_read(
+    ctx: &Ctx<'_>,
+    params: &FormalParameters<'_>,
+    held: Held,
+    returns: Option<OxcSpan>,
+) -> bool {
+    params.rest.is_none()
+        && params.items.iter().all(|param| {
+            param.initializer.is_none() && binding_reads(ctx, &param.pattern, held, returns, 0)
+        })
+}
+
+/// What a value obtained from a shared binding may hold, which decides what may be
+/// done with it in place.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Held {
+    /// A Zustand store's state, whose properties may be actions.
+    State,
+    /// Something read off the state.
+    Part,
+    /// What a collection hands out, which may be an object it holds, as may
+    /// anything read off one. A change made through it is one every other reader
+    /// of the collection sees.
+    Stored,
+}
+
+impl Held {
+    /// What something read off a value holding this holds.
+    fn read_off(self) -> Self {
+        match self {
+            Held::State => Held::Part,
+            other => other,
+        }
+    }
+}
+
+/// Whether what is done with a value only reads it, where it holds `held`.
 ///
-/// A property read off the value may be used in place as a value: compared, put
+/// A property read off the state may be used in place as a value: compared, put
 /// through arithmetic or into a string, tested, or rendered as a child. The state
-/// itself may only be read from, compared or tested. A local `const` that holds
-/// either, or that takes the state apart, is followed to its own uses.
+/// itself may only be read from, compared or tested. What a collection hands out
+/// may be used in place the same way, but rendered only as the child of an element
+/// of the platform's own or of a fragment, or as a `key`. A local `const` that
+/// holds any of these, or that takes one apart, is followed to its own uses. So is
+/// the value an arrow returns where `returns` is that arrow's span, for a callback
+/// whose caller does no more with what it returns than with what it hands out.
 ///
 /// Nothing obtained from the state may leave the expression it is read in. Which
 /// of its properties are actions, whose calls set the store, cannot be told here,
 /// so returning one, passing it on, storing it, spreading it, or calling it is
 /// taken as handing on an action, and is not a read. Nor is writing through it.
-fn stays_read(ctx: &Ctx<'_>, value: NodeId, mut whole: bool, depth: usize) -> bool {
+/// The same holds for what a collection hands out, which may be an object other
+/// code could change.
+fn stays_read(
+    ctx: &Ctx<'_>,
+    value: NodeId,
+    mut held: Held,
+    returns: Option<OxcSpan>,
+    depth: usize,
+) -> bool {
     let nodes = ctx.semantic.nodes();
     let mut current = value;
     loop {
@@ -591,7 +950,7 @@ fn stays_read(ctx: &Ctx<'_>, value: NodeId, mut whole: bool, depth: usize) -> bo
             _ => break,
         }
         current = nodes.parent_id(outer);
-        whole = false;
+        held = held.read_off();
     }
 
     let (top, span) = through_wrappers(nodes, current);
@@ -602,19 +961,31 @@ fn stays_read(ctx: &Ctx<'_>, value: NodeId, mut whole: bool, depth: usize) -> bo
         AstKind::IfStatement(test) => test.test.span() == span,
         AstKind::ConditionalExpression(test) => test.test.span() == span,
         AstKind::ExpressionStatement(_) => true,
+        // An arrow's expression body is what it returns.
+        AstKind::ArrowFunctionExpression(arrow) => returns == Some(arrow.span),
         // A template's values go to its tag, where it has one.
         AstKind::TemplateLiteral(_) => !matches!(
             nodes.parent_kind(parent),
             AstKind::TaggedTemplateExpression(_)
         ),
         // A child of an element is rendered; a prop is handed to the component.
-        AstKind::JSXExpressionContainer(_) => {
-            !whole
-                && matches!(
-                    nodes.parent_kind(parent),
-                    AstKind::JSXElement(_) | AstKind::JSXFragment(_)
-                )
-        }
+        AstKind::JSXExpressionContainer(_) => match nodes.parent_kind(parent) {
+            AstKind::JSXElement(element) => match held {
+                Held::State => false,
+                Held::Part => true,
+                // A component is handed its children as a prop, free to change
+                // what they hold. An element of the platform's own, such as
+                // `<li>`, only renders them.
+                Held::Stored => {
+                    matches!(element.opening_element.name, JSXElementName::Identifier(_))
+                }
+            },
+            AstKind::JSXFragment(_) => held != Held::State,
+            // React takes `key` for itself, as a string, and hands it to no
+            // component.
+            AstKind::JSXAttribute(attribute) => held == Held::Stored && attribute.is_key(),
+            _ => false,
+        },
         AstKind::VariableDeclarator(declarator)
             if declarator
                 .init
@@ -630,17 +1001,22 @@ fn stays_read(ctx: &Ctx<'_>, value: NodeId, mut whole: bool, depth: usize) -> bo
                 nodes.parent_kind(declaration),
                 AstKind::ExportDeclaration(_)
             );
-            local_const && binding_reads(ctx, &declarator.id, whole, depth)
+            local_const && binding_reads(ctx, &declarator.id, held, returns, depth)
         }
         _ => false,
     }
 }
 
 /// Whether every binding a pattern declares is only read, as [`stays_read`] says,
-/// where the pattern takes apart the state if `whole` and something read off it
-/// otherwise. Taking apart anything past one level, or with a rest element or a
-/// default, is not followed.
-fn binding_reads(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>, whole: bool, depth: usize) -> bool {
+/// where what the pattern takes apart holds `held`. Taking apart anything past one
+/// level, or with a rest element or a default, is not followed.
+fn binding_reads(
+    ctx: &Ctx<'_>,
+    pattern: &BindingPattern<'_>,
+    held: Held,
+    returns: Option<OxcSpan>,
+    depth: usize,
+) -> bool {
     if depth >= ALIAS_DEPTH {
         return false;
     }
@@ -652,14 +1028,15 @@ fn binding_reads(ctx: &Ctx<'_>, pattern: &BindingPattern<'_>, whole: bool, depth
             let scoping = ctx.semantic.scoping();
             scoping.get_resolved_reference_ids(symbol).iter().all(|id| {
                 let reference = scoping.get_reference(*id);
-                !reference.is_write() && stays_read(ctx, reference.node_id(), whole, depth + 1)
+                !reference.is_write()
+                    && stays_read(ctx, reference.node_id(), held, returns, depth + 1)
             })
         }
         BindingPattern::ObjectPattern(object) => {
             object.rest.is_none()
                 && object.properties.iter().all(|property| {
                     matches!(property.value, BindingPattern::BindingIdentifier(_))
-                        && binding_reads(ctx, &property.value, false, depth)
+                        && binding_reads(ctx, &property.value, held.read_off(), returns, depth)
                 })
         }
         _ => false,
@@ -951,6 +1328,370 @@ mod tests {
             export const write = () => { state.theme = 'dark'; };
             export const read = () => state.volume;";
         assert!(reaches(source, "read", "write"), "{source}");
+    }
+
+    /// Whether `peek`, declared as `body` beside `binding`, writes `V`: whether a
+    /// reader of `V` in the same file reaches it, and whether `V` records it for a
+    /// reader in another module. The two must agree.
+    fn peek_writes(binding: &str, body: &str) -> bool {
+        let source = format!(
+            "{binding}\nexport const peek = (k: any, x: any) => {body};\nexport const read = () => typeof V;\n"
+        );
+        let (ModuleAnalysis::Fine(module), _) =
+            analyse_source(Path::new("state.tsx"), &source, &Reading::default()).unwrap()
+        else {
+            panic!("expected fine module: {source}")
+        };
+        let decl = |name: &str| module.decl_named(name).expect(name);
+        let (read, peek, v) = (decl("read"), decl("peek"), decl("V"));
+        let local = module.decls[read as usize].refs.contains(&peek);
+        let exported = module.decls[v as usize]
+            .writers
+            .iter()
+            .any(|(writer, _)| *writer == peek);
+        assert_eq!(local, exported, "{source}");
+        local
+    }
+
+    const MAP: &str = "const V = new Map<string, any>();";
+    const WEAK_MAP: &str = "const V = new WeakMap<object, any>();";
+    const SET: &str = "const V = new Set<any>();";
+    const WEAK_SET: &str = "const V = new WeakSet<object>();";
+    const ARRAY: &str = "const V: any[] = [];";
+
+    #[test]
+    fn a_read_method_on_a_collection_made_in_the_file_does_not_write_it() {
+        let map_like = ["V.has(k)", "V.get(k) === x", "{ if (V.get(k)) go(); }"];
+        let iterable = [
+            "V.forEach((value) => { if (value.count > 0) go(); })",
+            "V.keys() === x",
+            "V.values() !== x",
+            "V.entries() === x",
+        ];
+        for body in map_like.iter().chain(&iterable) {
+            assert!(!peek_writes(MAP, body), "{body}");
+        }
+        assert!(!peek_writes(MAP, "V.size > 0"));
+        for body in map_like {
+            assert!(!peek_writes(WEAK_MAP, body), "{body}");
+        }
+        for body in iterable.iter().chain(&["V.has(k)"]) {
+            assert!(!peek_writes(SET, body), "{body}");
+        }
+        assert!(!peek_writes(WEAK_SET, "V.has(k)"));
+        for body in [
+            "V.at(0) === x",
+            "V.concat([1]) === x",
+            "V.entries() === x",
+            "V.every((item) => item.count > 0)",
+            "V.filter((item) => item.count > 0).length > 0",
+            "V.find((item) => item.id === k) !== undefined",
+            "V.findIndex((item) => item.id === k)",
+            "V.findLast((item) => item.id === k) !== undefined",
+            "V.findLastIndex((item) => item.id === k)",
+            "V.flat() === x",
+            "V.flatMap((item) => item.children).length > 0",
+            "V.forEach((item, index) => { if (item.count > index) go(); })",
+            "V.includes(x)",
+            "V.indexOf(x) >= 0",
+            "V.join(', ')",
+            "V.keys() === x",
+            "V.lastIndexOf(x)",
+            "V.map((item) => item.count * 2).length > 0",
+            "V.reduce((sum, item) => sum + item.count, 0) > 1",
+            "V.reduceRight((sum, item) => sum + item.count, 0) > 1",
+            "V.slice(1).length > 0",
+            "V.some(({ id }) => id === k)",
+            "V.toReversed()[0] === x",
+            "V.toSorted((a, b) => a.count - b.count)[0] === x",
+            "V.toSorted()[0] === x",
+            "V.toSpliced(0, 1).length > 0",
+            "V.values() === x",
+            "V.with(0, x).length > 0",
+            "V.toString()",
+            "V.length > 0",
+        ] {
+            assert!(!peek_writes(ARRAY, body), "{body}");
+        }
+        // An array literal with elements, and a collection's type or value read
+        // through wrappers that change neither.
+        assert!(!peek_writes("const V = [1, 2];", "V.includes(x)"));
+        assert!(!peek_writes("const V = [] as number[];", "V.includes(x)"));
+        assert!(!peek_writes("const V = (new Map());", "V.has(k)"));
+        assert!(!peek_writes(MAP, "(V as Map<string, any>).has(k)"));
+        assert!(!peek_writes(MAP, "V?.has(k)"));
+    }
+
+    #[test]
+    fn what_a_read_method_hands_out_is_a_read_only_where_it_is_used_in_place() {
+        for body in [
+            "V.get(k) === x",
+            "V.get(k).count > 0",
+            "V.get(k)?.count > 0",
+            "V.get(k)['count'] + 1",
+            "`${V.get(k).name}`",
+            "{ if (V.get(k).ready) go(); }",
+            "V.get(k).ready ? 1 : 2",
+            "!V.get(k)",
+            "{ const { name } = V.get(k); return name === x; }",
+            "{ const item = V.get(k); return item.count > 0; }",
+            "<p>{V.get(k).name}</p>",
+            "<>{V.get(k)}</>",
+        ] {
+            assert!(!peek_writes(MAP, body), "{body}");
+        }
+        for body in [
+            "V.find((item) => item.id === k) !== undefined",
+            "<ul>{V.map((item) => <li key={item.id}>{item.name}</li>)}</ul>",
+        ] {
+            assert!(!peek_writes(ARRAY, body), "{body}");
+        }
+        for body in [
+            // Returned, passed, stored, spread, or a method called on it.
+            "V.get(k)",
+            "{ return V.get(k); }",
+            "V.get(k).name",
+            "register(V.get(k))",
+            "{ held = V.get(k); }",
+            "({ item: V.get(k) })",
+            "[V.get(k)]",
+            "[...V.values()]",
+            "{ for (const value of V.values()) go(value); }",
+            "V.get(k).reset()",
+            "V.get(k).items.push(1)",
+            "V.get(k).count = 1",
+            "{ V.get(k).count++; }",
+            "{ delete V.get(k).count; }",
+            "{ const item = V.get(k); register(item); }",
+            "{ const item = V.get(k); item.count = 1; }",
+            "{ let item = V.get(k); return item === x; }",
+            "{ const { item } = V.get(k); item.count = 1; }",
+            "{ const { ...rest } = V.get(k); return rest === x; }",
+            // Handed to a component as a prop, or as its children.
+            "<Row item={V.get(k)} />",
+            "<Row>{V.get(k)}</Row>",
+            "<p title={V.get(k).name} />",
+            "V.keys().next()",
+        ] {
+            assert!(peek_writes(MAP, body), "{body}");
+        }
+        for body in [
+            "V.find((item) => item.id === k)",
+            "V.at(0)",
+            "V.filter((item) => item.ready)",
+            "V.slice()",
+            "V.map((item) => item)",
+            "V.concat([])",
+            "V.toSorted()",
+            "V.filter((item) => item.ready).map((item) => item.id)",
+            "V.at(0).count = 1",
+            "V.reduce((acc, item) => item)",
+            "<List>{V.map((item) => <li key={item.id}>{item.name}</li>)}</List>",
+        ] {
+            assert!(peek_writes(ARRAY, body), "{body}");
+        }
+        // A method that hands out a primitive is a read however that is used.
+        for body in [
+            "V.includes(x)",
+            "{ return V.indexOf(x); }",
+            "register(V.some((item) => item.ready))",
+            "register(V.join(', '))",
+        ] {
+            assert!(!peek_writes(ARRAY, body), "{body}");
+        }
+        assert!(!peek_writes(MAP, "register(V.has(k))"));
+    }
+
+    #[test]
+    fn a_method_that_changes_a_collection_still_writes_it() {
+        for body in ["V.set(k, x)", "V.delete(k)", "V.clear()", "V.other()"] {
+            assert!(peek_writes(MAP, body), "{body}");
+        }
+        for body in ["V.set(k, x)", "V.delete(k)"] {
+            assert!(peek_writes(WEAK_MAP, body), "{body}");
+        }
+        for body in ["V.add(x)", "V.delete(x)", "V.clear()"] {
+            assert!(peek_writes(SET, body), "{body}");
+        }
+        for body in ["V.add(x)", "V.delete(x)"] {
+            assert!(peek_writes(WEAK_SET, body), "{body}");
+        }
+        // A method one collection reads with is no read of another.
+        assert!(peek_writes(WEAK_MAP, "V.forEach((value) => value === x)"));
+        assert!(peek_writes(SET, "V.get(k) === x"));
+        assert!(peek_writes(WEAK_SET, "V.keys() === x"));
+        for body in [
+            "V.push(x)",
+            "V.pop()",
+            "V.shift()",
+            "V.unshift(x)",
+            "V.splice(0, 1)",
+            "V.sort()",
+            "V.reverse()",
+            "V.fill(0)",
+            "V.copyWithin(0, 1)",
+            "V.get(k) === x",
+            // Writing through an element, and handing the array on.
+            "{ V[0].count = 1; }",
+            "{ V.length = 0; }",
+            "register(V)",
+            "V.concat(V).length",
+        ] {
+            assert!(peek_writes(ARRAY, body), "{body}");
+        }
+    }
+
+    #[test]
+    fn a_collection_whose_type_cannot_be_seen_keeps_the_whole_value_rule() {
+        for binding in [
+            "let V = new Map<string, any>();",
+            "var V = new Map<string, any>();",
+            "let V: any[] = [];",
+            "let V: any[] = []; export const reset = () => { V = []; };",
+            "const V = makeMap();",
+            "const V = new Map<string, any>() || other;",
+            "const V = Array.from(items);",
+            "const V = new Array<any>();",
+            "const V = new Map2<string, any>();",
+            // A `Map` of the file's own, or one imported, may do anything.
+            "class Map { has(k: any) { register(k); return true; } }\nconst V = new Map();",
+            "function Map() {}\nconst V = new (Map as any)();",
+            "import { Map } from './map';\nconst V = new Map();",
+            // A method replaced on the value, or on what it inherits from.
+            "const V = new Map<string, any>();\nexport const patch = () => { V.has = () => true; };",
+            "const V = new Map<string, any>();\nexport const patch = () => { V['has'] = () => true; };",
+            "const V = new Map<string, any>();\nexport const patch = () => Object.defineProperty(V, 'has', { value: () => true });",
+            "const V = new Map<string, any>();\nexport const patch = () => Object.setPrototypeOf(V, other);",
+            "const V = new Map<string, any>();\nexport const patch = () => Reflect.set(V, 'has', other);",
+            "const V = new Map<string, any>();\nexport const patch = () => { const alias = V; alias.has = () => true; };",
+            "const V = new Map<string, any>();\nexport const patch = () => { Map.prototype.has = () => true; };",
+            "const V = new Map<string, any>();\nObject.defineProperty(Map.prototype, 'has', { value: () => true });",
+        ] {
+            assert!(peek_writes(binding, "V.has(k)"), "{binding}");
+        }
+        for binding in [
+            "const V: any[] = [];\nexport const patch = () => { Array.prototype.includes = () => true; };",
+            "const V: any[] = [];\nexport const patch = () => { V.includes = () => true; };",
+            "const V: any[] = [];\nexport const patch = () => { V[key] = () => true; };",
+        ] {
+            assert!(peek_writes(binding, "V.includes(x)"), "{binding}");
+        }
+        // An element or the length written leaves the methods as they were.
+        for binding in [
+            "const V: any[] = [];\nexport const put = () => { V[0] = 1; };",
+            "const V: any[] = [];\nexport const put = () => { V.length = 0; };",
+        ] {
+            assert!(!peek_writes(binding, "V.includes(x)"), "{binding}");
+        }
+        // Naming the constructor as a type, checking against it, or calling one of
+        // its own functions leaves its prototype be.
+        for (binding, body) in [
+            ("const V: Map<string, number> = new Map();", "V.has(k)"),
+            (
+                "const V = new Map<string, any>();\nexport const isMap = (value: unknown) => value instanceof Map;",
+                "V.has(k)",
+            ),
+            (
+                "const V: any[] = [];\nexport const isList = (value: unknown) => Array.isArray(value);",
+                "V.includes(x)",
+            ),
+        ] {
+            assert!(!peek_writes(binding, body), "{binding}");
+        }
+        // Handed to other code, the value is still what it was made as, and the
+        // declaration that hands it on is a writer of it, as it always was.
+        let binding = "const V = new Map<string, any>();\nexport const share = () => register(V);";
+        assert!(!peek_writes(binding, "V.has(k)"));
+        let source = format!("{binding}\nexport const read = () => V.has(1);\n");
+        assert!(reaches_tsx(&source, "read", "share"));
+    }
+
+    #[test]
+    fn a_callback_that_writes_still_makes_its_declaration_a_writer() {
+        for body in [
+            // The collection written by name in the callback.
+            "V.forEach((item) => V.push(item))",
+            "V.forEach((item) => { V.splice(0, 1); })",
+            // An element written, handed on, returned or called.
+            "V.forEach((item) => { item.count = 1; })",
+            "V.forEach((item) => item.reset())",
+            "V.forEach((item) => register(item))",
+            "V.some((item) => { return item; })",
+            "V.forEach((item) => { later = () => item; })",
+            "V.forEach((item, index, all) => all.push(item))",
+            "V.reduce((acc, item) => { acc.push(item); return acc; }, []).length",
+            "V.toSorted((a, b) => { a.count = b.count; return 0; })[0] === x",
+            // Parameters this cannot follow, and a function whose `arguments` hold
+            // what it is called with.
+            "V.forEach((...items) => register(items))",
+            "V.forEach((item = other) => item === x)",
+            "V.forEach(([first]) => first === x)",
+            "V.forEach(function (item) { if (item.count > 0) go(); })",
+            "V.forEach()",
+        ] {
+            assert!(peek_writes(ARRAY, body), "{body}");
+        }
+        assert!(peek_writes(MAP, "V.forEach((value) => V.delete(value))"));
+        assert!(peek_writes(
+            SET,
+            "V.forEach((value) => { value.count = 1; })"
+        ));
+    }
+
+    #[test]
+    fn a_callback_passed_by_name_still_writes_the_collection() {
+        // `mutate` changes each element it is handed, and nothing about it names
+        // the array, so only the call that hands it the elements can link it.
+        let binding = "const V: any[] = [];\nconst mutate = (item: any) => { item.count = 1; };\nconst isReady = (item: any) => item.ready === true;";
+        for body in [
+            "V.forEach(mutate)",
+            "V.some(isReady)",
+            "V.map(isReady).length",
+            "V.filter(callbacks.ready).length",
+        ] {
+            assert!(peek_writes(binding, body), "{body}");
+        }
+        // The reader reaches `mutate` through the call.
+        let source = format!(
+            "{binding}\nexport const peek = () => V.forEach(mutate);\nexport const read = () => V.includes(1);\n"
+        );
+        assert!(reaches_tsx(&source, "read", "peek"));
+        assert!(reaches_tsx(&source, "peek", "mutate"));
+    }
+
+    #[test]
+    fn a_local_const_alias_of_a_collection_is_followed_to_its_uses() {
+        assert!(!peek_writes(
+            MAP,
+            "{ const alias = V; return alias.has(k); }"
+        ));
+        assert!(!peek_writes(
+            MAP,
+            "{ const alias = V; return alias.get(k) === x; }"
+        ));
+        assert!(peek_writes(MAP, "{ const alias = V; alias.set(k, x); }"));
+        assert!(peek_writes(
+            MAP,
+            "{ const alias = V; return alias.get(k); }"
+        ));
+        assert!(peek_writes(MAP, "{ let alias = V; return alias.has(k); }"));
+        // A write through an alias declared elsewhere is credited where it is made.
+        let source = format!(
+            "{MAP}\nconst alias = V;\nexport const peek = (k: any) => alias.set(k, 1);\nexport const read = () => V.has(1);\n"
+        );
+        assert!(reaches_tsx(&source, "read", "peek"));
+    }
+
+    /// Whether `reader` reaches `writer` in `source`, read as TSX.
+    fn reaches_tsx(source: &str, reader: &str, writer: &str) -> bool {
+        let (ModuleAnalysis::Fine(module), _) =
+            analyse_source(Path::new("state.tsx"), source, &Reading::default()).unwrap()
+        else {
+            panic!("expected fine module: {source}")
+        };
+        let reader = module.decl_named(reader).expect(reader);
+        let writer = module.decl_named(writer).expect(writer);
+        module.decls[reader as usize].refs.contains(&writer)
     }
 
     #[test]
