@@ -505,3 +505,69 @@ Path (downstream, symbol granularity):
   Decl(src/state/await.ts, settle)
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/AwaitPage.tsx","affected":true,"direction":"downstream","changed":"src/state/await.ts","path":["File(src/pages/AwaitPage.tsx)","Decl(src/pages/AwaitPage.tsx, AwaitPage)","Export(src/state/await.ts, hasItems)","Decl(src/state/await.ts, hasItems)","Decl(src/state/await.ts, settle)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/YieldPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/yield.ts"
+Path (downstream, file granularity):
+  File(src/pages/YieldPage.tsx)
+  File(src/state/yield.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/YieldPage.tsx","affected":true,"direction":"downstream","changed":"src/state/yield.ts","path":["File(src/pages/YieldPage.tsx)","File(src/state/yield.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/YieldPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/yield.ts"
+Path (downstream, file granularity):
+  File(src/pages/YieldPage.tsx)
+  File(src/state/yield.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/YieldPage.tsx","affected":true,"direction":"downstream","changed":"src/state/yield.ts","path":["File(src/pages/YieldPage.tsx)","File(src/state/yield.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/YieldPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/yield.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/YieldPage.tsx)
+  Decl(src/pages/YieldPage.tsx, YieldPage)
+  Export(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, each)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/YieldPage.tsx","affected":true,"direction":"downstream","changed":"src/state/yield.ts","path":["File(src/pages/YieldPage.tsx)","Decl(src/pages/YieldPage.tsx, YieldPage)","Export(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, each)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/YieldPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/yield.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/YieldPage.tsx)
+  Decl(src/pages/YieldPage.tsx, YieldPage)
+  Export(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, each)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/YieldPage.tsx","affected":true,"direction":"downstream","changed":"src/state/yield.ts","path":["File(src/pages/YieldPage.tsx)","Decl(src/pages/YieldPage.tsx, YieldPage)","Export(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, each)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/YieldPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/yield.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/YieldPage.tsx)
+  Decl(src/pages/YieldPage.tsx, YieldPage)
+  Export(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, each)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/YieldPage.tsx","affected":true,"direction":"downstream","changed":"src/state/yield.ts","path":["File(src/pages/YieldPage.tsx)","Decl(src/pages/YieldPage.tsx, YieldPage)","Export(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, each)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/YieldPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/yield.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/YieldPage.tsx)
+  Decl(src/pages/YieldPage.tsx, YieldPage)
+  Export(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, hasItems)
+  Decl(src/state/yield.ts, each)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/YieldPage.tsx","affected":true,"direction":"downstream","changed":"src/state/yield.ts","path":["File(src/pages/YieldPage.tsx)","Decl(src/pages/YieldPage.tsx, YieldPage)","Export(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, hasItems)","Decl(src/state/yield.ts, each)"],"granularity":"symbol","unresolved":[]}]}

@@ -116,3 +116,18 @@ symbol = [
     "Decl(src/state/await.ts, hasItems)",
     "Decl(src/state/await.ts, settle)",
 ]
+
+# `each` yields `state.items` to whoever drives the generator, who can change
+# the array.
+[[anchor]]
+path = "src/pages/YieldPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/YieldPage.tsx)",
+    "Decl(src/pages/YieldPage.tsx, YieldPage)",
+    "Export(src/state/yield.ts, hasItems)",
+    "Decl(src/state/yield.ts, hasItems)",
+    "Decl(src/state/yield.ts, each)",
+]

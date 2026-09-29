@@ -428,6 +428,8 @@ fn fate(ctx: &Ctx<'_>, landing: &Landing, policy: &Policy, depth: usize) -> Fate
         AstKind::ArrayExpression(_) | AstKind::ObjectProperty(_) => Fate::Escapes,
         // `await v` calls a `then` the value may have, with the value as `this`.
         AstKind::AwaitExpression(_) => Fate::Escapes,
+        // `yield v` hands the value to whoever drives the generator.
+        AstKind::YieldExpression(_) => Fate::Escapes,
         // A credited alias never gets here: `uses` hands it to the adapter.
         AstKind::VariableDeclarator(declarator)
             if matches!(policy.aliases, Aliases::Local)
@@ -911,7 +913,7 @@ mod tests {
         "const g = () => @.x;"                       => [E,  E,  E,  E,  E,  E,  E,  E ];
         "throw @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
         "await @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
-        "yield @;"                                   => [E,  U,  U,  U,  U,  E,  E,  E ];
+        "yield @;"                                   => [E,  E,  E,  E,  E,  E,  E,  E ];
         // Passed through an operator that yields one of its operands.
         "f(o && @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
         "f(o || @);"                                 => [E,  E,  E,  E,  E,  E,  E,  E ];
