@@ -1,0 +1,177 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/CountPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/state.ts"
+Path (downstream, file granularity):
+  File(src/pages/CountPage.tsx)
+  File(src/state/state.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/state/state.ts","path":["File(src/pages/CountPage.tsx)","File(src/state/state.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/state.ts"
+Path (downstream, file granularity):
+  File(src/pages/CountPage.tsx)
+  File(src/state/state.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/state/state.ts","path":["File(src/pages/CountPage.tsx)","File(src/state/state.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/state.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/state/state.ts, count)
+  Decl(src/state/state.ts, count)
+  Decl(src/state/state.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/state/state.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/state/state.ts, count)","Decl(src/state/state.ts, count)","Decl(src/state/state.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/state.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/state/state.ts, count)
+  Decl(src/state/state.ts, count)
+  Decl(src/state/state.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/state/state.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/state/state.ts, count)","Decl(src/state/state.ts, count)","Decl(src/state/state.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/state.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/state/state.ts, count)
+  Decl(src/state/state.ts, count)
+  Decl(src/state/state.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/state/state.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/state/state.ts, count)","Decl(src/state/state.ts, count)","Decl(src/state/state.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/CountPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/state.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/CountPage.tsx)
+  Decl(src/pages/CountPage.tsx, CountPage)
+  Export(src/state/state.ts, count)
+  Decl(src/state/state.ts, count)
+  Decl(src/state/state.ts, add)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/CountPage.tsx","affected":true,"direction":"downstream","changed":"src/state/state.ts","path":["File(src/pages/CountPage.tsx)","Decl(src/pages/CountPage.tsx, CountPage)","Export(src/state/state.ts, count)","Decl(src/state/state.ts, count)","Decl(src/state/state.ts, add)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WaitingPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, file granularity):
+  File(src/pages/WaitingPage.tsx)
+  File(src/state/queue.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WaitingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/WaitingPage.tsx)","File(src/state/queue.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/WaitingPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, file granularity):
+  File(src/pages/WaitingPage.tsx)
+  File(src/state/queue.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WaitingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/WaitingPage.tsx)","File(src/state/queue.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/WaitingPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WaitingPage.tsx)
+  Decl(src/pages/WaitingPage.tsx, WaitingPage)
+  Export(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, enqueue)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WaitingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/WaitingPage.tsx)","Decl(src/pages/WaitingPage.tsx, WaitingPage)","Export(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, enqueue)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WaitingPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WaitingPage.tsx)
+  Decl(src/pages/WaitingPage.tsx, WaitingPage)
+  Export(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, enqueue)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WaitingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/WaitingPage.tsx)","Decl(src/pages/WaitingPage.tsx, WaitingPage)","Export(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, enqueue)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WaitingPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WaitingPage.tsx)
+  Decl(src/pages/WaitingPage.tsx, WaitingPage)
+  Export(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, enqueue)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WaitingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/WaitingPage.tsx)","Decl(src/pages/WaitingPage.tsx, WaitingPage)","Export(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, enqueue)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/WaitingPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/WaitingPage.tsx)
+  Decl(src/pages/WaitingPage.tsx, WaitingPage)
+  Export(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, waiting)
+  Decl(src/state/queue.ts, enqueue)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/WaitingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/WaitingPage.tsx)","Decl(src/pages/WaitingPage.tsx, WaitingPage)","Export(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, waiting)","Decl(src/state/queue.ts, enqueue)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HeadingPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, file granularity):
+  File(src/pages/HeadingPage.tsx)
+  File(src/state/queue.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/HeadingPage.tsx)","File(src/state/queue.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/HeadingPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/state/queue.ts"
+Path (downstream, file granularity):
+  File(src/pages/HeadingPage.tsx)
+  File(src/state/queue.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":true,"direction":"downstream","changed":"src/state/queue.ts","path":["File(src/pages/HeadingPage.tsx)","File(src/state/queue.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/HeadingPage.tsx [symbol]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HeadingPage.tsx [symbol] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HeadingPage.tsx [base]
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/HeadingPage.tsx [base] --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/HeadingPage.tsx","affected":false,"granularity":"symbol","unresolved":[]}]}

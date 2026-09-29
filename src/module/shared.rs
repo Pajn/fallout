@@ -1045,7 +1045,7 @@ fn binding_reads(
 
 /// Walks out through parentheses and type-only wrappers, which leave the value as
 /// it was, returning the outermost node standing for it and its span.
-fn through_wrappers(nodes: &AstNodes<'_>, node_id: NodeId) -> (NodeId, OxcSpan) {
+pub(crate) fn through_wrappers(nodes: &AstNodes<'_>, node_id: NodeId) -> (NodeId, OxcSpan) {
     let mut current = node_id;
     let mut span = nodes.get_node(node_id).kind().span();
     loop {
@@ -1604,6 +1604,44 @@ mod tests {
         assert!(!peek_writes(binding, "V.has(k)"));
         let source = format!("{binding}\nexport const read = () => V.has(1);\n");
         assert!(reaches_tsx(&source, "read", "share"));
+    }
+
+    #[test]
+    fn a_write_anywhere_down_a_member_chain_writes_a_whole_value() {
+        for binding in [
+            "const V = make();",
+            "let V = make();\nexport const reset = () => { V = make(); };",
+        ] {
+            for body in [
+                "{ V.a.b = 1; }",
+                "{ V.a.b += 1; }",
+                "{ V.a[k]++; }",
+                "{ delete V.a.b; }",
+                "V.items.push(1)",
+                "V.a.b.c()",
+            ] {
+                assert!(peek_writes(binding, body), "{binding} {body}");
+            }
+            for body in ["V.items.length", "V.a.b", "V.a.b === x", "`${V.a.b}`"] {
+                assert!(!peek_writes(binding, body), "{binding} {body}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_method_called_on_a_members_member_writes_that_member() {
+        // `utils` is read only for its members, and a call on something read off
+        // one of them hands that something, not `utils`, to the method.
+        let source =
+            "const utils = { list: { items: [] as number[] }, format: (n: number) => `${n}` };
+            export const add = () => { utils.list.items.push(1); };
+            export const clear = () => utils.list.reset();
+            export const count = () => utils.list.items.length;
+            export const show = () => utils.format(1);";
+        assert!(reaches(source, "count", "add"));
+        assert!(reaches(source, "count", "clear"));
+        assert!(!reaches(source, "show", "add"));
+        assert!(!reaches(source, "show", "clear"));
     }
 
     #[test]

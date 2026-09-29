@@ -136,7 +136,10 @@ below. Everything else — passing it to a function, returning it, writing throu
 spreading it, arithmetic on it, or naming a member of it as an element, which is how
 a React context is written — counts as a write. So does calling a method on it,
 except a method that reads a [Zustand store](#zustand) or a collection whose type the
-file shows.
+file shows. What a property holds is part of the value, so a write or a method call
+anywhere down a member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
+`delete state.a.b` and `state.items.push(x)` write `state` as `state.a = 1` does,
+while `state.items.length` still reads it in place.
 
 A collection's type is shown only by a module-scope `const` that nothing reassigns,
 initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or
