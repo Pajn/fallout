@@ -519,14 +519,19 @@ change none of it, as Zustand 4 and 5 write them, so a declaration that only rea
 the store through them is no writer of it, and neither pages that use the store nor
 other declarations that read it are linked to it. That holds only where what is
 done with what they hand out reads it too: a property of the state used in place as
-a value, compared, put through arithmetic or into a string, tested or rendered, the
-state destructured into a local `const` whose bindings are used the same way, or a
+a value, compared, put through arithmetic or into a string, tested, rendered as the
+child of an element such as `<li>` or of a fragment, or used as a `key`, the state
+destructured into a local `const` whose bindings are used the same way, or a
 listener written out in place, given alone, that does the same with the state it is
 called with. Nothing taken from the state may leave the expression it is read in,
 since which properties are actions cannot be told: returning one, as in
 `() => useCounter.getState().count`, passing it on, storing it or spreading it
 writes the store, as `() => useCounter.getState().inc` would hand out an action for
-the caller to call. So do `setState()`, an action called on what `getState()`
+the caller to call. Passing it to a component, as a child or as a prop, passes it
+on too, since the component may call it:
+`<Confirm>{useCounter.getState().inc}</Confirm>` writes the store, and so does any
+prop but `key`, even one of an element such as `<button onClick={…}>`, which calls
+what it is handed. So do `setState()`, an action called on what `getState()`
 returns, as in `useCounter.getState().inc()`, the state handed to other code, a
 listener that is not written out in place, and every other method, Zustand 4's
 `destroy()` among them. What a listener's body does to

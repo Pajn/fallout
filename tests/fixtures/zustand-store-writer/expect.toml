@@ -89,6 +89,20 @@ symbol = [
     "Decl(src/stores/reads.ts, pickAction)",
 ]
 
+# So does an action rendered as the child of a component, which is handed it as
+# a prop and here calls it.
+[[anchor]]
+path = "src/pages/ConfirmPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ConfirmPage.tsx)",
+    "Decl(src/pages/ConfirmPage.tsx, ConfirmPage)",
+    "Export(src/stores/confirm.tsx, useConfirm)",
+    "Decl(src/stores/confirm.tsx, ConfirmButton)",
+]
+
 # So does a listener that calls `setState`.
 [[anchor]]
 path = "src/pages/SyncPage.tsx"

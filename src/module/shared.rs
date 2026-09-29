@@ -914,11 +914,12 @@ impl Held {
 
 /// Whether what is done with a value only reads it, where it holds `held`.
 ///
-/// A property read off the state may be used in place as a value: compared, put
-/// through arithmetic or into a string, tested, or rendered as a child. The state
-/// itself may only be read from, compared or tested. What a collection hands out
-/// may be used in place the same way, but rendered only as the child of an element
-/// of the platform's own or of a fragment, or as a `key`. A local `const` that
+/// A property read off the state, or what a collection hands out, may be used in
+/// place as a value: compared, put through arithmetic or into a string, tested,
+/// rendered as the child of an element of the platform's own or of a fragment, or
+/// used as a `key`. A component is handed its children as a prop, as it is handed
+/// every other, so rendering a value as the child of one passes it on. The state
+/// itself may only be read from, compared or tested. A local `const` that
 /// holds any of these, or that takes one apart, is followed to its own uses. So is
 /// the value an arrow returns where `returns` is that arrow's span, for a callback
 /// whose caller does no more with what it returns than with what it hands out.
@@ -968,22 +969,20 @@ fn stays_read(
             nodes.parent_kind(parent),
             AstKind::TaggedTemplateExpression(_)
         ),
-        // A child of an element is rendered; a prop is handed to the component.
+        // The state itself is never rendered in place, since it holds the actions.
+        AstKind::JSXExpressionContainer(_) if held == Held::State => false,
         AstKind::JSXExpressionContainer(_) => match nodes.parent_kind(parent) {
-            AstKind::JSXElement(element) => match held {
-                Held::State => false,
-                Held::Part => true,
-                // A component is handed its children as a prop, free to change
-                // what they hold. An element of the platform's own, such as
-                // `<li>`, only renders them.
-                Held::Stored => {
-                    matches!(element.opening_element.name, JSXElementName::Identifier(_))
-                }
-            },
-            AstKind::JSXFragment(_) => held != Held::State,
+            // A component is handed its children as a prop, free to call them or
+            // change what they hold. An element of the platform's own, such as
+            // `<li>`, only renders them.
+            AstKind::JSXElement(element) => {
+                matches!(element.opening_element.name, JSXElementName::Identifier(_))
+            }
+            AstKind::JSXFragment(_) => true,
             // React takes `key` for itself, as a string, and hands it to no
-            // component.
-            AstKind::JSXAttribute(attribute) => held == Held::Stored && attribute.is_key(),
+            // component. Any other prop is handed on, even by an element of the
+            // platform's own, which may call it as a handler.
+            AstKind::JSXAttribute(attribute) => attribute.is_key(),
             _ => false,
         },
         AstKind::VariableDeclarator(declarator)

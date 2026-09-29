@@ -599,13 +599,25 @@ export const t = createAsyncThunk(
     /// `body`, among the given other files. Both a reader in the same file and a
     /// reader in another module, landing on the export, are asked, and must agree.
     fn peek_writes(files: &[(&str, &str)], import: &str, make: &str, body: &str) -> bool {
+        peek_writes_in("slice.ts", files, import, make, body)
+    }
+
+    /// As [`peek_writes`], with the store's file named `name`, so that `body` may
+    /// be JSX.
+    fn peek_writes_in(
+        name: &str,
+        files: &[(&str, &str)],
+        import: &str,
+        make: &str,
+        body: &str,
+    ) -> bool {
         let source = format!(
             "{import}\nexport const useCounter = {make}(() => ({{ count: 0, inc: () => {{}} }}));\nexport const read = () => useCounter((state) => state.count);\nexport const peek = () => {body};\n"
         );
         let mut files = files.to_vec();
-        files.push(("slice.ts", &source));
+        files.push((name, &source));
         let (dir, graph) = graph_for(&files);
-        let slice = file(&graph, &dir, "slice.ts");
+        let slice = file(&graph, &dir, name);
         let module = graph.view(slice).fine().unwrap();
         let decl = |name: &str| module.module().decl_named(name).expect(name);
         let peek = Node::Decl(slice, decl("peek"));
@@ -640,6 +652,39 @@ export const t = createAsyncThunk(
             "{ const stop = useCounter.subscribe(() => {}); stop(); }",
         ] {
             assert!(!peek_writes(&[], ZUSTAND, "create", body), "{body}");
+        }
+    }
+
+    #[test]
+    fn state_rendered_by_an_element_is_read_and_handed_to_a_component_is_passed() {
+        let writes = |body: &str| peek_writes_in("slice.tsx", &[], ZUSTAND, "create", body);
+        for body in [
+            "<li>{useCounter.getState().count}</li>",
+            "<>{useCounter.getState().count}</>",
+            "<li key={useCounter.getState().count}>x</li>",
+            "<Row key={useCounter.getState().count} />",
+            "{ const { count } = useCounter.getState(); return <li>{count}</li>; }",
+            "useCounter.subscribe((state) => { render(<li>{state.count}</li>); })",
+        ] {
+            assert!(!writes(body), "{body}");
+        }
+        for body in [
+            // A component is handed its children as a prop, and may call them.
+            "<Foo>{useCounter.getState().inc}</Foo>",
+            "<Foo>{useCounter.getState().count}</Foo>",
+            "<Foo.Bar>{useCounter.getState().inc}</Foo.Bar>",
+            "{ const { inc } = useCounter.getState(); return <Foo>{inc}</Foo>; }",
+            "{ const state = useCounter.getState(); return <Foo>{state.inc}</Foo>; }",
+            "useCounter.subscribe((state) => { render(<Foo>{state.inc}</Foo>); })",
+            // Any prop but `key` is handed on, even to an element of the
+            // platform's own, which may call it as a handler.
+            "<Foo value={useCounter.getState().count} />",
+            "<div title={useCounter.getState().count} />",
+            "<div onClick={useCounter.getState().inc} />",
+            // The state itself is never rendered in place.
+            "<li>{useCounter.getState()}</li>",
+        ] {
+            assert!(writes(body), "{body}");
         }
     }
 
