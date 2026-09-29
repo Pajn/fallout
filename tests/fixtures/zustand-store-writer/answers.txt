@@ -148,25 +148,25 @@ Path (downstream, file granularity):
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/TitlePage.tsx [symbol] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/TitlePage.tsx [base]
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/TitlePage.tsx [base] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/TitlePage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/CountPage.tsx [file]
 -- --explain: exit 0
@@ -256,25 +256,25 @@ Path (downstream, file granularity):
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/PeekPage.tsx [symbol] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/PeekPage.tsx [base]
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/PeekPage.tsx [base] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/PeekPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/WatchPage.tsx [file]
 -- --explain: exit 0
@@ -298,25 +298,25 @@ Path (downstream, file granularity):
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/WatchPage.tsx [symbol] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/WatchPage.tsx [base]
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/WatchPage.tsx [base] --include-types
 -- --explain: exit 1
 No reachability impact detected
 -- --json: exit 0
-{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
+{"anchors":[{"anchor":"src/pages/WatchPage.tsx","affected":false,"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx","src/stores/counter.ts","src/stores/reads.ts"]},{"specifier":"zustand/vanilla","kind":"missing-package","in_repo":false,"from":["src/stores/vanilla.ts"]}]}]}
 
 == src/pages/BumpPage.tsx [file]
 -- --explain: exit 0
@@ -441,6 +441,68 @@ Path (downstream, symbol granularity):
   Decl(src/stores/reads.ts, pickAction)
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/TickPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/reads.ts","path":["File(src/pages/TickPage.tsx)","Decl(src/pages/TickPage.tsx, TickPage)","Export(src/stores/reads.ts, useTick)","Decl(src/stores/reads.ts, pickAction)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/reads.ts"]}]}]}
+
+== src/pages/ConfirmPage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/confirm.tsx"
+Path (downstream, file granularity):
+  File(src/pages/ConfirmPage.tsx)
+  File(src/stores/confirm.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ConfirmPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/confirm.tsx","path":["File(src/pages/ConfirmPage.tsx)","File(src/stores/confirm.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ConfirmPage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/confirm.tsx"
+Path (downstream, file granularity):
+  File(src/pages/ConfirmPage.tsx)
+  File(src/stores/confirm.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ConfirmPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/confirm.tsx","path":["File(src/pages/ConfirmPage.tsx)","File(src/stores/confirm.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ConfirmPage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/confirm.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/ConfirmPage.tsx)
+  Decl(src/pages/ConfirmPage.tsx, ConfirmPage)
+  Export(src/stores/confirm.tsx, useConfirm)
+  Decl(src/stores/confirm.tsx, ConfirmButton)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ConfirmPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/confirm.tsx","path":["File(src/pages/ConfirmPage.tsx)","Decl(src/pages/ConfirmPage.tsx, ConfirmPage)","Export(src/stores/confirm.tsx, useConfirm)","Decl(src/stores/confirm.tsx, ConfirmButton)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx"]}]}]}
+
+== src/pages/ConfirmPage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/confirm.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/ConfirmPage.tsx)
+  Decl(src/pages/ConfirmPage.tsx, ConfirmPage)
+  Export(src/stores/confirm.tsx, useConfirm)
+  Decl(src/stores/confirm.tsx, ConfirmButton)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ConfirmPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/confirm.tsx","path":["File(src/pages/ConfirmPage.tsx)","Decl(src/pages/ConfirmPage.tsx, ConfirmPage)","Export(src/stores/confirm.tsx, useConfirm)","Decl(src/stores/confirm.tsx, ConfirmButton)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx"]}]}]}
+
+== src/pages/ConfirmPage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/confirm.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/ConfirmPage.tsx)
+  Decl(src/pages/ConfirmPage.tsx, ConfirmPage)
+  Export(src/stores/confirm.tsx, useConfirm)
+  Decl(src/stores/confirm.tsx, ConfirmButton)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ConfirmPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/confirm.tsx","path":["File(src/pages/ConfirmPage.tsx)","Decl(src/pages/ConfirmPage.tsx, ConfirmPage)","Export(src/stores/confirm.tsx, useConfirm)","Decl(src/stores/confirm.tsx, ConfirmButton)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx"]}]}]}
+
+== src/pages/ConfirmPage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/stores/confirm.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/ConfirmPage.tsx)
+  Decl(src/pages/ConfirmPage.tsx, ConfirmPage)
+  Export(src/stores/confirm.tsx, useConfirm)
+  Decl(src/stores/confirm.tsx, ConfirmButton)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ConfirmPage.tsx","affected":true,"direction":"downstream","changed":"src/stores/confirm.tsx","path":["File(src/pages/ConfirmPage.tsx)","Decl(src/pages/ConfirmPage.tsx, ConfirmPage)","Export(src/stores/confirm.tsx, useConfirm)","Decl(src/stores/confirm.tsx, ConfirmButton)"],"granularity":"symbol","unresolved":[{"specifier":"zustand","kind":"missing-package","in_repo":false,"from":["src/stores/confirm.tsx"]}]}]}
 
 == src/pages/SyncPage.tsx [file]
 -- --explain: exit 0

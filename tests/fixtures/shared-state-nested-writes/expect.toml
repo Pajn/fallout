@@ -1,0 +1,58 @@
+# A value used as a whole, a `let` that is reassigned in state.ts and the result
+# of a call in queue.ts, written by a method called two and three levels below
+# the binding, and a reassigned `let` in list.tsx, part of which is handed to a
+# component.
+#
+# A write or a method call anywhere down a member chain rooted at the value is a
+# write of the value, and so is handing it or part of it to a component, so the
+# edited writer reaches every declaration that reads it, however shallow the
+# read.
+
+# `add` calls `state.items.push`, and `count` reads `state.items.length`.
+[[anchor]]
+path = "src/pages/CountPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/CountPage.tsx)",
+    "Decl(src/pages/CountPage.tsx, CountPage)",
+    "Export(src/state/state.ts, count)",
+    "Decl(src/state/state.ts, count)",
+    "Decl(src/state/state.ts, add)",
+]
+
+# `enqueue` calls `queue.pending.items.push` on what `makeQueue` made, and
+# `waiting` reads the same array's length.
+[[anchor]]
+path = "src/pages/WaitingPage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/WaitingPage.tsx)",
+    "Decl(src/pages/WaitingPage.tsx, WaitingPage)",
+    "Export(src/state/queue.ts, waiting)",
+    "Decl(src/state/queue.ts, waiting)",
+    "Decl(src/state/queue.ts, enqueue)",
+]
+
+# `heading` reads nothing of `queue`, so a write to it does not reach the page.
+[[anchor]]
+path = "src/pages/HeadingPage.tsx"
+affected = false
+
+# `ListView` hands `list.items` to a component as a prop, which could change the
+# array, so it writes `list`, and `size` reads the array's length.
+[[anchor]]
+path = "src/pages/SizePage.tsx"
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/SizePage.tsx)",
+    "Decl(src/pages/SizePage.tsx, SizePage)",
+    "Export(src/state/list.tsx, size)",
+    "Decl(src/state/list.tsx, size)",
+    "Decl(src/state/list.tsx, ListView)",
+]

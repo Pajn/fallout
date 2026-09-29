@@ -136,7 +136,16 @@ below. Everything else — passing it to a function, returning it, writing throu
 spreading it, arithmetic on it, or naming a member of it as an element, which is how
 a React context is written — counts as a write. So does calling a method on it,
 except a method that reads a [Zustand store](#zustand) or a collection whose type the
-file shows.
+file shows. What a property holds is part of the value, so a write or a method call
+anywhere down a member chain writes the value too: `state.a.b = 1`, `state.a[k]++`,
+`delete state.a.b` and `state.items.push(x)` write `state` as `state.a = 1` does,
+while `state.items.length` still reads it in place. Passing the value, or anything
+read off it, to a component, as a child or as any prop but `key`, passes it on, since
+the component could change it: `<List items={state.items} />` writes `state`, and so
+does `<button onClick={state.handler}>`, which calls what it is handed. Rendered as
+the child of an element such as `<li>` or of a fragment, or used as a `key`, it is
+read in place. The same holds for an object shared property by property, one read
+only for its members, and a collection whose type the file shows.
 
 A collection's type is shown only by a module-scope `const` that nothing reassigns,
 initialised in the same file with `new Map(…)`, `new Set(…)`, `new WeakMap(…)` or
@@ -516,14 +525,19 @@ change none of it, as Zustand 4 and 5 write them, so a declaration that only rea
 the store through them is no writer of it, and neither pages that use the store nor
 other declarations that read it are linked to it. That holds only where what is
 done with what they hand out reads it too: a property of the state used in place as
-a value, compared, put through arithmetic or into a string, tested or rendered, the
-state destructured into a local `const` whose bindings are used the same way, or a
+a value, compared, put through arithmetic or into a string, tested, rendered as the
+child of an element such as `<li>` or of a fragment, or used as a `key`, the state
+destructured into a local `const` whose bindings are used the same way, or a
 listener written out in place, given alone, that does the same with the state it is
 called with. Nothing taken from the state may leave the expression it is read in,
 since which properties are actions cannot be told: returning one, as in
 `() => useCounter.getState().count`, passing it on, storing it or spreading it
 writes the store, as `() => useCounter.getState().inc` would hand out an action for
-the caller to call. So do `setState()`, an action called on what `getState()`
+the caller to call. Passing it to a component, as a child or as a prop, passes it
+on too, since the component may call it:
+`<Confirm>{useCounter.getState().inc}</Confirm>` writes the store, and so does any
+prop but `key`, even one of an element such as `<button onClick={…}>`, which calls
+what it is handed. So do `setState()`, an action called on what `getState()`
 returns, as in `useCounter.getState().inc()`, the state handed to other code, a
 listener that is not written out in place, and every other method, Zustand 4's
 `destroy()` among them. What a listener's body does to

@@ -511,22 +511,69 @@ pub(crate) fn classify(nodes: &AstNodes<'_>, node_id: NodeId) -> Use {
         }
         // `#x in s` asks the same of a private field.
         AstKind::PrivateInExpression(_) => Use::Read,
+        // `<li>{s}</li>` renders the value where it stands; `<Foo value={s} />`
+        // and `<Foo>{s}</Foo>` hand it to a component, which could change it.
+        AstKind::JSXExpressionContainer(_) => {
+            in_place(shared::rendered_in_place(nodes, nodes.parent_id(node_id)))
+        }
         // `s.x` is a read where the value it yields stays in the expression.
         AstKind::StaticMemberExpression(_) | AstKind::ComputedMemberExpression(_) => {
-            match nodes.parent_kind(nodes.parent_id(node_id)) {
-                AstKind::AssignmentExpression(_)
-                | AstKind::UpdateExpression(_)
-                | AstKind::CallExpression(_)
-                | AstKind::NewExpression(_)
-                | AstKind::SpreadElement(_) => Use::Mutate,
-                AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => {
-                    Use::Mutate
-                }
-                _ => Use::Read,
-            }
+            chain_use(nodes, nodes.parent_id(node_id))
         }
         _ => Use::Mutate,
     }
+}
+
+/// How a member expression read off a binding is used, followed to the end of the
+/// chain it starts.
+///
+/// What a property holds is part of what the binding holds, so a write anywhere
+/// down the chain, `s.a.b = 1`, writes the binding, and so does a method called on
+/// anything read off it, `s.items.push(1)`, or handing it to other code, a
+/// component included, as in `<List items={s.items} />`. Reading it in place,
+/// `s.items.length` or `<li>{s.name}</li>`, stays a read however deep it goes.
+fn chain_use(nodes: &AstNodes<'_>, member: NodeId) -> Use {
+    let mut current = member;
+    loop {
+        let (outer, span) = shared::through_wrappers(nodes, current);
+        match nodes.parent_kind(outer) {
+            AstKind::StaticMemberExpression(next) if next.object.span() == span => {
+                current = nodes.parent_id(outer);
+            }
+            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {
+                current = nodes.parent_id(outer);
+            }
+            AstKind::ChainExpression(_) => current = nodes.parent_id(outer),
+            _ => break,
+        }
+    }
+    let (top, span) = shared::through_wrappers(nodes, current);
+    match nodes.parent_kind(top) {
+        AstKind::AssignmentExpression(_)
+        | AstKind::UpdateExpression(_)
+        | AstKind::CallExpression(_)
+        | AstKind::NewExpression(_)
+        | AstKind::SpreadElement(_)
+        | AstKind::AssignmentTargetPropertyIdentifier(_)
+        | AstKind::AssignmentTargetPropertyProperty(_)
+        | AstKind::ArrayAssignmentTarget(_)
+        | AstKind::AssignmentTargetRest(_)
+        | AstKind::AssignmentTargetWithDefault(_)
+        | AstKind::ForInStatement(_)
+        | AstKind::ForOfStatement(_) => Use::Mutate,
+        AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => Use::Mutate,
+        // A tag is called with what it was read off as `this`, as a method is.
+        AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => Use::Mutate,
+        AstKind::JSXExpressionContainer(_) => {
+            in_place(shared::rendered_in_place(nodes, nodes.parent_id(top)))
+        }
+        _ => Use::Read,
+    }
+}
+
+/// A read where what is used stays in place, and a possible write where it does not.
+fn in_place(stays: bool) -> Use {
+    if stays { Use::Read } else { Use::Mutate }
 }
 
 /// Where in a declaration's statement it imports something without a binding: a
@@ -1244,6 +1291,82 @@ mod tests {
             uses_of_s("export const a = () => { delete S.x };"),
             [Use::Mutate]
         );
+    }
+
+    #[test]
+    fn writing_or_calling_anywhere_down_a_member_chain_is_a_mutation() {
+        for body in [
+            "{ S.a.b = 1; }",
+            "{ S.a.b += 1; }",
+            "{ S.a[k]++; }",
+            "{ delete S.a.b; }",
+            "{ S.a.b.c = 1; }",
+            "{ [S.a.b] = o; }",
+            "{ ({ x: S.a.b } = o); }",
+            "{ for (S.a.b of o); }",
+            "{ (S.a as any).b = 1; }",
+            "{ (S.a).b = 1; }",
+            // A method called on what the value holds can change it.
+            "S.items.push(1)",
+            "S.a.b.c()",
+            "S.a?.b.c()",
+            "(S.a).b()",
+            "S.a.b`x`",
+            // Handed to other code, however deep it was read.
+            "other(S.a.b)",
+            "[...S.a.b]",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
+    }
+
+    #[test]
+    fn handing_the_value_to_a_component_is_a_mutation() {
+        for body in [
+            "<Foo value={S.items} />",
+            "<Foo>{S.items}</Foo>",
+            "<Foo value={S} />",
+            "<Foo>{S}</Foo>",
+            "<Foo.Bar>{S.a.b}</Foo.Bar>",
+            // An element of the platform's own calls a handler it is handed.
+            "<div onClick={S.handler} />",
+            "<div title={S.name} />",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Mutate], "{body}");
+        }
+    }
+
+    #[test]
+    fn rendering_the_value_in_place_is_a_read() {
+        for body in [
+            "<li>{S.count}</li>",
+            "<li key={S.id} />",
+            "<Foo key={S.id} />",
+            "<>{S.a.b}</>",
+            "<li>{S}</li>",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
+        }
+    }
+
+    #[test]
+    fn a_deep_property_read_that_stays_in_the_expression_is_a_read() {
+        for body in [
+            "S.a.b",
+            "S.items.length",
+            "S.a.b + 1",
+            "S?.a.b",
+            "S.a[k]",
+            "`${S.a.b}`",
+            "(S.a as any).b",
+            "{ if (S.a.b === 1) go(); }",
+        ] {
+            let source = format!("export const a = () => {body};");
+            assert_eq!(uses_of_s(&source), [Use::Read], "{body}");
+        }
     }
 
     #[test]
