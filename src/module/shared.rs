@@ -27,12 +27,14 @@ use ahash::AHashSet;
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_semantic::{AstNodes, IsGlobalReference, NodeId, SymbolId};
-use oxc_span::{GetSpan, Span as OxcSpan};
+use oxc_span::GetSpan;
 
+use super::escape::{
+    self, ALIAS_DEPTH, CallRule, Fate, Held, Policy, called_as_method, method_fate,
+    through_wrappers,
+};
 use super::members::object_literal;
 use super::parse::Ctx;
-use super::refs::{Use, classify};
-use crate::factories::rules::{Reads, read_forms};
 
 /// One way a reference touches a shared binding.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -44,7 +46,7 @@ pub(crate) struct Access {
     /// The method a write calls on the binding, where it is a call that some
     /// factory's rule declares a read of the value it makes and the call is written
     /// the way that rule's form says. Whether the binding holds such a value is the
-    /// graph's to tell, so the access stays a write here; see [`read_call`].
+    /// graph's to tell, so the access stays a write here; see [`method_fate`].
     pub read_call: Option<String>,
 }
 
@@ -96,21 +98,10 @@ pub(crate) enum Collection {
     Array,
 }
 
-/// What a collection's read method hands back.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Hands {
-    /// A boolean, a number, a string or nothing, which holds nothing of the
-    /// collection's, however it is used.
-    Primitive,
-    /// Something that may be, or hold, an object the collection holds, through
-    /// which a caller could change what every other reader of it sees.
-    Stored,
-}
-
 /// Whether a collection's read method takes a callback as its first argument,
 /// which it calls with what the collection holds.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Callback {
+pub(crate) enum Callback {
     Never,
     Required,
     Optional,
@@ -130,10 +121,13 @@ impl Collection {
 
     /// What calling `name` hands back and whether it takes a callback, where the
     /// built-in method of that name reads the collection and changes none of it.
+    /// What it hands back is a primitive, which holds nothing of the collection's
+    /// however it is used, or may be or hold an object the collection holds,
+    /// through which a caller could change what every other reader of it sees.
     /// `size` and `length` are properties, which are read in place already.
-    fn read_method(self, name: &str) -> Option<(Hands, Callback)> {
+    pub(crate) fn read_method(self, name: &str) -> Option<(Held, Callback)> {
         use Collection::*;
-        use Hands::*;
+        use Held::{Primitive, Stored};
         let method = match (self, name) {
             (Map | WeakMap, "get") => (Stored, Callback::Never),
             (Map | WeakMap | Set | WeakSet, "has") => (Primitive, Callback::Never),
@@ -335,9 +329,6 @@ fn member_written(nodes: &AstNodes<'_>, member: NodeId) -> bool {
     }
 }
 
-/// How far aliases of aliases are followed before the whole object is assumed.
-const ALIAS_DEPTH: usize = 4;
-
 /// Whether `symbol` holds an object whose properties are independent of each other:
 /// a plain object literal with no accessor and no prototype of its own, bound by a
 /// declaration nothing reassigns.
@@ -392,19 +383,23 @@ pub(crate) fn independent_properties(ctx: &Ctx<'_>, symbol: SymbolId) -> bool {
 pub(crate) fn accesses(ctx: &Ctx<'_>, node_id: NodeId, mode: Mode) -> Vec<(u32, Access)> {
     let at = ctx.semantic.nodes().get_node(node_id).kind().span().start;
     let mut uses = if mode == Mode::Whole {
-        let write = classify(ctx.semantic.nodes(), node_id) == Use::Mutate;
+        let write = !escape::stays(ctx, node_id, Held::Whole, &Policy::WHOLE, 0);
         vec![(at, Access::whole(write))]
     } else {
         reference_accesses(ctx, node_id, mode, 0)
     };
     // A method call on the binding writes the whole of it, as far as this file can
-    // tell. The graph may yet find that the method only reads what made the value.
+    // tell. The graph may yet find that the method only reads what made the value,
+    // where some factory's rule declares it a read of the value it makes and the
+    // call is written the way that rule's form says.
     if let [(offset, access)] = uses.as_mut_slice()
         && *offset == at
         && access.write
         && access.property.is_none()
     {
-        access.read_call = read_call(ctx, node_id);
+        access.read_call = method_fate(ctx, node_id, CallRule::Factory)
+            .filter(|(_, fate)| fate.in_place())
+            .map(|(method, _)| method.to_string());
     }
     uses
 }
@@ -464,154 +459,87 @@ fn reference_accesses(
         AstKind::ExportDefaultDeclaration(_) if matches!(mode, Mode::Members(_)) => {
             return Vec::new();
         }
-        _ => return whole(classify(nodes, node_id) == Use::Mutate),
+        _ => return whole(!escape::stays(ctx, node_id, Held::Whole, &Policy::WHOLE, 0)),
     };
 
     // `__proto__` is the prototype, through which every property can change.
     if property.as_deref() == Some("__proto__") {
         return whole(true);
     }
-    // A collection is one value, however it is reached into. What is done with an
-    // element read off it counts as done to it, however deep the chain goes, so
-    // `list[0].count = 1` writes `list`.
-    if let Mode::Collection(collection) = mode {
-        return match property_use(ctx, nodes.parent_id(top), depth) {
-            PropertyUse::Receiver => whole(!collection_read(ctx, node_id, collection)),
-            PropertyUse::Uses(uses) => uses
-                .into_iter()
-                .map(|(offset, write)| (offset.unwrap_or(at), Access::whole(write)))
-                .collect(),
-        };
-    }
-    match property_use(ctx, nodes.parent_id(top), depth) {
-        PropertyUse::Receiver
-            if matches!(mode, Mode::Members(callable)
-                if property.as_ref().is_some_and(|name| callable.contains(name))) =>
-        {
-            vec![(
-                at,
-                Access {
-                    property,
-                    write: false,
-                    read_call: None,
-                },
-            )]
-        }
-        PropertyUse::Receiver => whole(true),
-        PropertyUse::Uses(uses) => uses
-            .into_iter()
-            .map(|(offset, write)| {
-                let offset = offset.unwrap_or(at);
-                (
-                    offset,
+    // A method called on the property gets the object as `this`, through which it
+    // can reach the whole of it. The rule for the binding's methods says which
+    // calls leave it be.
+    let member = nodes.parent_id(top);
+    if called_as_method(nodes, member) {
+        return match mode {
+            Mode::Collection(collection) => whole(
+                !method_fate(ctx, node_id, CallRule::Collection(collection))
+                    .is_some_and(|(_, fate)| fate.in_place()),
+            ),
+            Mode::Members(callable)
+                if property
+                    .as_ref()
+                    .is_some_and(|name| callable.contains(name)) =>
+            {
+                vec![(
+                    at,
                     Access {
-                        property: property.clone(),
-                        write,
+                        property,
+                        write: false,
                         read_call: None,
                     },
-                )
-            })
+                )]
+            }
+            _ => whole(true),
+        };
+    }
+    // Anything else is done to the property's value, however deep the chain goes:
+    // `state.list.push(x)` writes `list`. A collection is one value, however it is
+    // reached into, so what is done with an element read off it counts as done to
+    // it: `list[0].count = 1` writes `list`.
+    let (held, property) = match mode {
+        Mode::Collection(_) => (Held::Stored, None),
+        _ => (Held::Part, property),
+    };
+    // A use where the property is read is the reference's own.
+    let read_at = nodes.get_node(member).kind().span().start;
+    escape::uses(ctx, member, held, &Policy::parts(credit_alias), depth)
+        .into_iter()
+        .map(|(offset, fate)| {
+            (
+                if offset == read_at { at } else { offset },
+                Access {
+                    property: property.clone(),
+                    write: !fate.in_place(),
+                    read_call: None,
+                },
+            )
+        })
+        .collect()
+}
+
+/// The uses a `const` alias of a property is put to, for [`Policy::parts`]: what
+/// the alias declared by the declarator above `value` does, the property does,
+/// credited where it is written, as `const settings = state.settings` makes a write
+/// through `settings` a write to the property wherever it is made. The alias holds
+/// the property's value, not the object, so whatever it calls is called on that
+/// value. As for an alias of the object, one this cannot follow hands the property
+/// on at `own`, where it is declared, and each of its uses counts where that use is
+/// written.
+fn credit_alias(ctx: &Ctx<'_>, value: NodeId, own: u32, depth: usize) -> Vec<(u32, Fate)> {
+    let fate = |write| if write { Fate::Escapes } else { Fate::InPlace };
+    match followed_alias(ctx, value, Mode::Properties, depth) {
+        Some(uses) => uses
+            .into_iter()
+            .map(|(offset, access)| (offset, fate(access.write)))
             .collect(),
-    }
-}
-
-/// What is done with one property once it has been read off the object.
-enum PropertyUse {
-    /// It is called as a method, which hands it the whole object as `this`.
-    Receiver,
-    /// Each use of the property's value, with where it is written if an alias
-    /// carried it elsewhere, and whether it could change the value.
-    Uses(Vec<(Option<u32>, bool)>),
-}
-
-/// Follows a property read to what is done with it: `state.list.push(x)` writes
-/// `list` however deep the chain, and `state.theme()` is a method call.
-fn property_use(ctx: &Ctx<'_>, member: NodeId, depth: usize) -> PropertyUse {
-    let nodes = ctx.semantic.nodes();
-    let mut current = member;
-    let mut deeper = false;
-    loop {
-        let (outer, span) = through_wrappers(nodes, current);
-        match nodes.parent_kind(outer) {
-            AstKind::StaticMemberExpression(next) if next.object.span() == span => {
-                current = nodes.parent_id(outer);
-                deeper = true;
-            }
-            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {
-                current = nodes.parent_id(outer);
-                deeper = true;
-            }
-            AstKind::ChainExpression(_) => current = nodes.parent_id(outer),
-            _ => break,
-        }
-    }
-
-    let (top, span) = through_wrappers(nodes, current);
-    let written = |write| PropertyUse::Uses(vec![(None, write)]);
-    match nodes.parent_kind(top) {
-        AstKind::CallExpression(call) if call.callee.span() == span => {
-            if deeper {
-                written(true)
-            } else {
-                PropertyUse::Receiver
-            }
-        }
-        AstKind::TaggedTemplateExpression(tagged) if tagged.tag.span() == span => {
-            if deeper {
-                written(true)
-            } else {
-                PropertyUse::Receiver
-            }
-        }
-        AstKind::VariableDeclarator(declarator)
-            if declarator
-                .init
-                .as_ref()
-                .is_some_and(|init| init.span() == span) =>
-        {
-            // `const settings = state.settings`: a write through `settings` is a
-            // write to the property, wherever it is made.
-            // The alias holds the property's value, not the object, so whatever it
-            // calls is called on that value.
-            match followed_alias(ctx, top, Mode::Properties, depth) {
-                Some(uses) => PropertyUse::Uses(
-                    uses.into_iter()
-                        .map(|(offset, access)| (Some(offset), access.write))
-                        .collect(),
-                ),
-                // As for an alias of the object, but of this one property.
-                None => PropertyUse::Uses(
-                    std::iter::once((None, true))
-                        .chain(
-                            untracked_uses(ctx, top, depth)
-                                .into_iter()
-                                .map(|(offset, write)| (Some(offset), write)),
-                        )
-                        .collect(),
-                ),
-            }
-        }
-        // Handed to other code, stored, written, or deleted: the value can change.
-        AstKind::CallExpression(_)
-        | AstKind::NewExpression(_)
-        | AstKind::SpreadElement(_)
-        | AstKind::AssignmentExpression(_)
-        | AstKind::UpdateExpression(_)
-        | AstKind::AssignmentTargetPropertyIdentifier(_)
-        | AstKind::AssignmentTargetPropertyProperty(_)
-        | AstKind::ArrayAssignmentTarget(_)
-        | AstKind::AssignmentTargetRest(_)
-        | AstKind::AssignmentTargetWithDefault(_)
-        | AstKind::ForInStatement(_)
-        | AstKind::ForOfStatement(_)
-        | AstKind::JSXOpeningElement(_)
-        | AstKind::JSXClosingElement(_) => written(true),
-        AstKind::UnaryExpression(unary) if unary.operator == UnaryOperator::Delete => written(true),
-        AstKind::JSXExpressionContainer(_) => {
-            written(!rendered_in_place(nodes, nodes.parent_id(top)))
-        }
-        // Read where it stands, as the whole-value rule reads `s.x`.
-        _ => written(false),
+        None => std::iter::once((own, Fate::Escapes))
+            .chain(
+                untracked_uses(ctx, value, depth)
+                    .into_iter()
+                    .map(|(offset, write)| (offset, fate(write))),
+            )
+            .collect(),
     }
 }
 
@@ -779,295 +707,6 @@ fn declared_from<'n, 'a>(
                 return Some((declarator, hands_on));
             }
             _ => return None,
-        }
-    }
-}
-
-/// The method this reference calls on its binding, where some factory's rule
-/// declares that method a read of the value it makes and the call is written the
-/// way each form declared for the name says: `store.getState().count` and
-/// `store.subscribe((state) => …)` for a Zustand store.
-///
-/// Which factory made the binding, if any, is not known here, so this only picks
-/// out the calls the graph may treat as reads. Anything else stays a write:
-/// calling what the state holds, `store.getState().inc()`, calls an action that
-/// sets the store, and handing the state on lets other code do the same.
-fn read_call(ctx: &Ctx<'_>, node_id: NodeId) -> Option<String> {
-    let (name, call_id, call) = method_call(ctx.semantic.nodes(), node_id)?;
-    let mut forms = read_forms(name).peekable();
-    forms.peek()?;
-    forms
-        .all(|form| match form {
-            Reads::State(_) => stays_read(ctx, call_id, Held::State, None, 0),
-            Reads::Listener(_) => only_reads_what_it_is_given(ctx, call),
-        })
-        .then(|| name.to_string())
-}
-
-/// Whether this reference calls a method that only reads the collection it
-/// holds, in a way that hands none of what it holds to other code.
-///
-/// A callback the method calls with what the collection holds must be an arrow
-/// written out in place that does nothing with what it is given but read it, as
-/// what is done in place with what the method hands back does. What else the
-/// callback's body does is classified where it is written, so one that writes the
-/// collection through its own binding is a write there. A callback passed by name
-/// is handed the elements to do with as it likes, and nothing links it to the
-/// collection but this call, so it is not a read. Nor is a `function`, whose
-/// `arguments` also hold what it is called with.
-///
-/// What hands back a primitive is a read however that is used. What may hand back
-/// an object the collection holds is a read only where it is used in place, as
-/// [`stays_read`] says, since a caller given the object could change it.
-fn collection_read(ctx: &Ctx<'_>, node_id: NodeId, collection: Collection) -> bool {
-    let Some((name, call_id, call)) = method_call(ctx.semantic.nodes(), node_id) else {
-        return false;
-    };
-    let Some((hands, callback)) = collection.read_method(name) else {
-        return false;
-    };
-    let callback_reads = match (callback, call.arguments.first()) {
-        (Callback::Never, _) | (Callback::Optional, None) => true,
-        (
-            Callback::Required | Callback::Optional,
-            Some(Argument::ArrowFunctionExpression(arrow)),
-        ) => params_read(ctx, &arrow.params, Held::Stored, Some(arrow.span)),
-        _ => false,
-    };
-    callback_reads && (hands == Hands::Primitive || stays_read(ctx, call_id, Held::Stored, None, 0))
-}
-
-/// The method this reference is called with directly, `value.name(…)`, with the
-/// call's node and the call.
-fn method_call<'a>(
-    nodes: &AstNodes<'a>,
-    node_id: NodeId,
-) -> Option<(&'a str, NodeId, &'a CallExpression<'a>)> {
-    let (object, span) = through_wrappers(nodes, node_id);
-    let AstKind::StaticMemberExpression(member) = nodes.parent_kind(object) else {
-        return None;
-    };
-    if member.object.span() != span {
-        return None;
-    }
-    let (callee, span) = through_wrappers(nodes, nodes.parent_id(object));
-    let AstKind::CallExpression(call) = nodes.parent_kind(callee) else {
-        return None;
-    };
-    if call.callee.span() != span {
-        return None;
-    }
-    Some((member.property.name.as_str(), nodes.parent_id(callee), call))
-}
-
-/// Whether a call is given a single listener, written out in place, that does
-/// nothing with the state it is called with but read it. What else its body does
-/// is classified where it is written, so a listener that sets the store through
-/// the store's own binding is a write there.
-fn only_reads_what_it_is_given(ctx: &Ctx<'_>, call: &CallExpression<'_>) -> bool {
-    let [listener] = call.arguments.as_slice() else {
-        return false;
-    };
-    let params = match listener {
-        Argument::ArrowFunctionExpression(function) => &function.params,
-        Argument::FunctionExpression(function) => &function.params,
-        _ => return false,
-    };
-    params_read(ctx, params, Held::State, None)
-}
-
-/// Whether a function does nothing with what it is called with but read it, as
-/// [`binding_reads`] says, where each argument holds `held`. A rest parameter or a
-/// default is not followed.
-fn params_read(
-    ctx: &Ctx<'_>,
-    params: &FormalParameters<'_>,
-    held: Held,
-    returns: Option<OxcSpan>,
-) -> bool {
-    params.rest.is_none()
-        && params.items.iter().all(|param| {
-            param.initializer.is_none() && binding_reads(ctx, &param.pattern, held, returns, 0)
-        })
-}
-
-/// What a value obtained from a shared binding may hold, which decides what may be
-/// done with it in place.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Held {
-    /// A Zustand store's state, whose properties may be actions.
-    State,
-    /// Something read off the state.
-    Part,
-    /// What a collection hands out, which may be an object it holds, as may
-    /// anything read off one. A change made through it is one every other reader
-    /// of the collection sees.
-    Stored,
-}
-
-impl Held {
-    /// What something read off a value holding this holds.
-    fn read_off(self) -> Self {
-        match self {
-            Held::State => Held::Part,
-            other => other,
-        }
-    }
-}
-
-/// Whether what is done with a value only reads it, where it holds `held`.
-///
-/// A property read off the state, or what a collection hands out, may be used in
-/// place as a value: compared, put through arithmetic or into a string, tested,
-/// rendered as the child of an element of the platform's own or of a fragment, or
-/// used as a `key`. A component is handed its children as a prop, as it is handed
-/// every other, so rendering a value as the child of one passes it on. The state
-/// itself may only be read from, compared or tested. A local `const` that
-/// holds any of these, or that takes one apart, is followed to its own uses. So is
-/// the value an arrow returns where `returns` is that arrow's span, for a callback
-/// whose caller does no more with what it returns than with what it hands out.
-///
-/// Nothing obtained from the state may leave the expression it is read in. Which
-/// of its properties are actions, whose calls set the store, cannot be told here,
-/// so returning one, passing it on, storing it, spreading it, or calling it is
-/// taken as handing on an action, and is not a read. Nor is writing through it.
-/// The same holds for what a collection hands out, which may be an object other
-/// code could change.
-fn stays_read(
-    ctx: &Ctx<'_>,
-    value: NodeId,
-    mut held: Held,
-    returns: Option<OxcSpan>,
-    depth: usize,
-) -> bool {
-    let nodes = ctx.semantic.nodes();
-    let mut current = value;
-    loop {
-        let (outer, span) = through_wrappers(nodes, current);
-        match nodes.parent_kind(outer) {
-            AstKind::StaticMemberExpression(next) if next.object.span() == span => {}
-            AstKind::ComputedMemberExpression(next) if next.object.span() == span => {}
-            AstKind::ChainExpression(_) => {
-                current = nodes.parent_id(outer);
-                continue;
-            }
-            _ => break,
-        }
-        current = nodes.parent_id(outer);
-        held = held.read_off();
-    }
-
-    let (top, span) = through_wrappers(nodes, current);
-    let parent = nodes.parent_id(top);
-    match nodes.parent_kind(top) {
-        AstKind::BinaryExpression(_) => true,
-        AstKind::UnaryExpression(unary) => unary.operator != UnaryOperator::Delete,
-        AstKind::IfStatement(test) => test.test.span() == span,
-        AstKind::ConditionalExpression(test) => test.test.span() == span,
-        AstKind::ExpressionStatement(_) => true,
-        // An arrow's expression body is what it returns.
-        AstKind::ArrowFunctionExpression(arrow) => returns == Some(arrow.span),
-        // A template's values go to its tag, where it has one.
-        AstKind::TemplateLiteral(_) => !matches!(
-            nodes.parent_kind(parent),
-            AstKind::TaggedTemplateExpression(_)
-        ),
-        // The state itself is never rendered in place, since it holds the actions.
-        AstKind::JSXExpressionContainer(_) => {
-            held != Held::State && rendered_in_place(nodes, parent)
-        }
-        AstKind::VariableDeclarator(declarator)
-            if declarator
-                .init
-                .as_ref()
-                .is_some_and(|init| init.span() == span) =>
-        {
-            let declaration = nodes.parent_id(parent);
-            let local_const = matches!(
-                nodes.kind(declaration),
-                AstKind::VariableDeclaration(variable)
-                    if variable.kind == VariableDeclarationKind::Const
-            ) && !matches!(
-                nodes.parent_kind(declaration),
-                AstKind::ExportDeclaration(_)
-            );
-            local_const && binding_reads(ctx, &declarator.id, held, returns, depth)
-        }
-        _ => false,
-    }
-}
-
-/// Whether every binding a pattern declares is only read, as [`stays_read`] says,
-/// where what the pattern takes apart holds `held`. Taking apart anything past one
-/// level, or with a rest element or a default, is not followed.
-fn binding_reads(
-    ctx: &Ctx<'_>,
-    pattern: &BindingPattern<'_>,
-    held: Held,
-    returns: Option<OxcSpan>,
-    depth: usize,
-) -> bool {
-    if depth >= ALIAS_DEPTH {
-        return false;
-    }
-    match pattern {
-        BindingPattern::BindingIdentifier(identifier) => {
-            let Some(symbol) = identifier.symbol_id.get() else {
-                return false;
-            };
-            let scoping = ctx.semantic.scoping();
-            scoping.get_resolved_reference_ids(symbol).iter().all(|id| {
-                let reference = scoping.get_reference(*id);
-                !reference.is_write()
-                    && stays_read(ctx, reference.node_id(), held, returns, depth + 1)
-            })
-        }
-        BindingPattern::ObjectPattern(object) => {
-            object.rest.is_none()
-                && object.properties.iter().all(|property| {
-                    matches!(property.value, BindingPattern::BindingIdentifier(_))
-                        && binding_reads(ctx, &property.value, held.read_off(), returns, depth)
-                })
-        }
-        _ => false,
-    }
-}
-
-/// Whether a value in the JSX expression container at `container` is only
-/// rendered where it stands, rather than handed to code that could change it.
-///
-/// A component is handed its children as a prop, free to call them or change what
-/// they hold, as it is handed every other prop. An element of the platform's own,
-/// such as `<li>`, or a fragment, only renders its children. React takes `key` for
-/// itself, as a string, and hands it to no component. Any other prop is handed on,
-/// even by an element of the platform's own, which may call it as a handler.
-pub(crate) fn rendered_in_place(nodes: &AstNodes<'_>, container: NodeId) -> bool {
-    match nodes.parent_kind(container) {
-        AstKind::JSXElement(element) => {
-            matches!(element.opening_element.name, JSXElementName::Identifier(_))
-        }
-        AstKind::JSXFragment(_) => true,
-        AstKind::JSXAttribute(attribute) => attribute.is_key(),
-        _ => false,
-    }
-}
-
-/// Walks out through parentheses and type-only wrappers, which leave the value as
-/// it was, returning the outermost node standing for it and its span.
-pub(crate) fn through_wrappers(nodes: &AstNodes<'_>, node_id: NodeId) -> (NodeId, OxcSpan) {
-    let mut current = node_id;
-    let mut span = nodes.get_node(node_id).kind().span();
-    loop {
-        match nodes.parent_kind(current) {
-            AstKind::ParenthesizedExpression(_)
-            | AstKind::TSNonNullExpression(_)
-            | AstKind::TSAsExpression(_)
-            | AstKind::TSSatisfiesExpression(_)
-            | AstKind::TSTypeAssertion(_) => {
-                current = nodes.parent_id(current);
-                span = nodes.get_node(current).kind().span();
-            }
-            _ => return (current, span),
         }
     }
 }

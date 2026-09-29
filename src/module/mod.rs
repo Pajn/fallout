@@ -7,6 +7,7 @@
 pub mod cjs;
 pub mod compare;
 pub mod decls;
+mod escape;
 pub mod exports;
 mod factories;
 pub mod init;
