@@ -13,8 +13,9 @@
 //! [`Base::resolve`].
 
 use std::cell::RefCell;
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use ahash::AHashMap;
 
@@ -42,6 +43,117 @@ impl Earlier for AHashMap<PathBuf, String> {
 pub struct Base {
     reference: String,
     contents: RefCell<AHashMap<PathBuf, Option<String>>>,
+    batch: RefCell<BatchState>,
+}
+
+enum BatchState {
+    Pending,
+    Ready(Batch),
+    /// If this git cannot use the batch protocol, keep the original reader.
+    Disabled,
+}
+
+/// One object reader for the run. Requests are still lazy, so only the files
+/// needed by the change are read, but each does not start another git process.
+struct Batch {
+    root: PathBuf,
+    child: Child,
+    input: ChildStdin,
+    output: BufReader<ChildStdout>,
+}
+
+impl Batch {
+    fn open(directory: &Path) -> Option<Self> {
+        // Locate a normal checkout or worktree by its .git directory or file,
+        // without another git startup. Custom repository layouts retain the
+        // original reader, which asks git itself where each path belongs.
+        if std::env::var_os("GIT_DIR").is_some() || std::env::var_os("GIT_WORK_TREE").is_some() {
+            return None;
+        }
+        let root = directory
+            .ancestors()
+            .find(|directory| directory.join(".git").exists())?
+            .to_path_buf();
+        let mut child = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            // NUL framing permits whitespace and newlines in file names. Blob
+            // contents are framed by their byte length, not by their lines.
+            .args(["cat-file", "--batch", "-Z"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let input = child.stdin.take().expect("piped stdin");
+        let output = BufReader::new(child.stdout.take().expect("piped stdout"));
+        Some(Self {
+            root,
+            child,
+            input,
+            output,
+        })
+    }
+
+    fn text(&mut self, reference: &str, name: &str) -> io::Result<Option<String>> {
+        write!(self.input, "{reference}:{name}\0")?;
+        self.input.flush()?;
+        read_object(&mut self.output)
+    }
+
+    fn contains(&self, path: &Path) -> bool {
+        // The original reader asks the repository owning each path. A nested
+        // checkout must not accidentally be read from this reader's repository.
+        for directory in path.ancestors().skip(1) {
+            if directory == self.root {
+                return true;
+            }
+            if directory.join(".git").exists() {
+                return false;
+            }
+        }
+        false
+    }
+}
+
+impl Drop for Batch {
+    fn drop(&mut self) {
+        // Reap the reader on success and on a broken protocol alike. There is no
+        // outstanding request at the end of a successful read.
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn read_object(output: &mut impl BufRead) -> io::Result<Option<String>> {
+    let mut header = Vec::new();
+    output.read_until(0, &mut header)?;
+    if header.pop() != Some(0) {
+        return Err(io::Error::other("unterminated git object header"));
+    }
+    if header.ends_with(b" missing") {
+        return Ok(None);
+    }
+    let header = std::str::from_utf8(&header).map_err(io::Error::other)?;
+    let mut fields = header.split_whitespace();
+    let (_, Some("blob"), Some(size), None) =
+        (fields.next(), fields.next(), fields.next(), fields.next())
+    else {
+        return Err(io::Error::other("unexpected git object header"));
+    };
+    let size = size.parse::<usize>().map_err(io::Error::other)?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(size).map_err(io::Error::other)?;
+    bytes.resize(size, 0);
+    output.read_exact(&mut bytes)?;
+    let mut end = [0];
+    output.read_exact(&mut end)?;
+    if end != [0] {
+        return Err(io::Error::other("unterminated git object contents"));
+    }
+    // A non-text blob is absent to the analysis, but its whole response has been
+    // consumed so the next request still starts at its own header.
+    Ok(String::from_utf8(bytes).ok())
 }
 
 impl Base {
@@ -49,6 +161,7 @@ impl Base {
         Self {
             reference: reference.to_string(),
             contents: RefCell::new(AHashMap::default()),
+            batch: RefCell::new(BatchState::Pending),
         }
     }
 }
@@ -94,6 +207,33 @@ impl Base {
     }
 
     fn read(&self, path: &Path) -> Option<String> {
+        let mut batch = self.batch.borrow_mut();
+        if matches!(*batch, BatchState::Pending) {
+            let directory = path
+                .ancestors()
+                .skip(1)
+                .find(|directory| directory.is_dir())?;
+            *batch = Batch::open(directory).map_or(BatchState::Disabled, BatchState::Ready);
+        }
+        if let BatchState::Ready(reader) = &mut *batch
+            && let Ok(relative) = path.strip_prefix(&reader.root)
+            && reader.contains(path)
+            && let Some(name) = relative
+                .components()
+                .map(|component| component.as_os_str().to_str())
+                .collect::<Option<Vec<_>>>()
+        {
+            match reader.text(&self.reference, &name.join("/")) {
+                Ok(text) => return text,
+                // An old git without -Z, or a failed reader, is not evidence
+                // that the file was added. Retry with the original git reader.
+                Err(_) => *batch = BatchState::Disabled,
+            }
+        }
+        self.read_separately(path)
+    }
+
+    fn read_separately(&self, path: &Path) -> Option<String> {
         // Naming the file relative to its own directory saves working out where the
         // repository root is, and works the same from a worktree or a subdirectory.
         // A deleted file's directory may have gone with it, so the nearest one that
@@ -362,10 +502,20 @@ mod tests {
     #[test]
     fn a_resolved_revision_keeps_reading_the_commit_it_named() {
         let (_keep, repo) = repository(
-            &[("src/page.ts", b"export const page = 1;\n")],
-            &[("src/page.ts", b"export const page = 2;\n")],
+            &[
+                ("src/page.ts", b"export const page = 1;\n"),
+                ("src/other.ts", b"export const other = 1;\n"),
+            ],
+            &[
+                ("src/page.ts", b"export const page = 2;\n"),
+                ("src/other.ts", b"export const other = 2;\n"),
+            ],
         );
         let base = Base::resolve("HEAD", &repo).expect("HEAD names a commit");
+        assert_eq!(
+            base.text(&repo.join("src/other.ts")).as_deref(),
+            Some("export const other = 1;\n")
+        );
 
         git(&repo, &["add", "--all"]);
         git(&repo, &["commit", "--quiet", "--message", "moved"]);
@@ -373,6 +523,107 @@ mod tests {
         assert_eq!(
             base.text(&repo.join("src/page.ts")).as_deref(),
             Some("export const page = 1;\n")
+        );
+    }
+
+    #[test]
+    fn successive_reads_keep_their_boundaries_after_missing_and_non_text_files() {
+        let large = "export const text = '".to_owned() + &"x".repeat(128 * 1024) + "';\n";
+        let before: Vec<(&str, &[u8])> = vec![
+            ("src/empty.ts", b""),
+            ("src/binary.dat", &[0xff, 0, b'\n']),
+            ("src/with space.ts", b"export const space = 1;\n"),
+            ("src/unicode-é.ts", b"export const unicode = 1;\n"),
+            ("src/large.ts", large.as_bytes()),
+            ("src/after.ts", b"export const after = 1;\n"),
+        ];
+        // These names cannot be created on Windows, but Git's NUL protocol must
+        // still handle them on file systems that permit them.
+        #[cfg(unix)]
+        let before = {
+            let mut before = before;
+            before.push(("src/line\nbreak.ts", b"export const line = 1;\n"));
+            before
+        };
+        let (_keep, repo) = repository(&before, &[]);
+        let base = Base::resolve("HEAD", &repo).unwrap();
+        let reads = std::iter::once(("src/not-present.ts", None)).chain(
+            before
+                .iter()
+                .map(|(path, bytes)| (*path, std::str::from_utf8(bytes).ok())),
+        );
+        for (path, expected) in reads {
+            assert_eq!(base.text(&repo.join(path)).as_deref(), expected, "{path:?}");
+        }
+        // Read an existing file last, after all unusual responses, and from the
+        // cache again. The entire directory has been deleted from the checkout.
+        assert_eq!(
+            base.text(&repo.join("src/after.ts")).as_deref(),
+            Some("export const after = 1;\n")
+        );
+    }
+
+    #[test]
+    fn a_broken_batch_reader_retries_a_present_file_instead_of_reporting_it_absent() {
+        let (_keep, repo) = repository(
+            &[
+                ("one.ts", b"export const one = 1;\n"),
+                ("two.ts", b"export const two = 2;\n"),
+            ],
+            &[],
+        );
+        let base = Base::resolve("HEAD", &repo).unwrap();
+        assert!(base.text(&repo.join("one.ts")).is_some());
+        let mut batch = base.batch.borrow_mut();
+        if let BatchState::Ready(reader) = &mut *batch {
+            reader.child.kill().unwrap();
+            reader.child.wait().unwrap();
+        }
+        drop(batch);
+        assert_eq!(
+            base.text(&repo.join("two.ts")).as_deref(),
+            Some("export const two = 2;\n")
+        );
+    }
+
+    #[test]
+    fn a_truncated_object_response_is_an_error_not_a_missing_file() {
+        for response in [
+            b"".as_slice(),
+            b"oid blob 3",
+            b"oid blob nope\0",
+            b"oid blob 3\0ab",
+            b"oid blob 3\0abc",
+            b"oid blob 3\0abc\n",
+        ] {
+            assert!(read_object(&mut std::io::Cursor::new(response)).is_err());
+        }
+    }
+
+    #[test]
+    fn a_nested_repository_is_read_from_its_own_history() {
+        let (_keep, repo) = repository(
+            &[
+                ("root.ts", b"export const root = 1;\n"),
+                ("nested/page.ts", b"export const page = 'outer';\n"),
+            ],
+            &[
+                ("root.ts", b"export const root = 2;\n"),
+                ("nested/page.ts", b"export const page = 'inner';\n"),
+            ],
+        );
+        let nested = repo.join("nested");
+        git(&nested, &["init", "--quiet"]);
+        git(&nested, &["add", "--all"]);
+        git(&nested, &["commit", "--quiet", "--message", "nested"]);
+        let base = Base::new("HEAD");
+        assert_eq!(
+            base.text(&repo.join("root.ts")).as_deref(),
+            Some("export const root = 1;\n")
+        );
+        assert_eq!(
+            base.text(&nested.join("page.ts")).as_deref(),
+            Some("export const page = 'inner';\n")
         );
     }
 }
