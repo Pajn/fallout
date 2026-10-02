@@ -29,6 +29,9 @@ generation, output parsing, and checkout checks happen outside the timed child.
 Wall time is retained alongside CPU time, but a loaded machine is unsuitable for
 judging small wall-time differences. CPU time can also rise under contention;
 repeat a comparison on a quieter machine before assigning a release budget.
+Each child has a 300-second deadline, configurable with `--timeout`. Completion
+polling can add up to 10 ms to recorded wall time; CPU time and peak RSS come
+from the kernel's resource usage for the child.
 
 The JSON keeps individual samples, medians, selections, binary hashes, the app
 revision and worktree status. A changing selection within one build fails the

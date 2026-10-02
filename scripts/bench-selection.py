@@ -8,6 +8,7 @@ the harness are outside the measured interval. No checkout or install is done.
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -18,10 +19,12 @@ import time
 
 
 def git(root, *args):
+    """Run an unmeasured Git query in the app checkout."""
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
 
-def run(binary, root, anchors, diff, base):
+def run(binary, root, anchors, diff, base, timeout=300):
+    """Measure one child, rejecting hangs and incomplete anchor responses."""
     command = [str(binary), "--root", str(root), "--diff", str(diff),
                "--base", base, "--granularity", "symbol", "--only", "downstream", "--json"]
     for anchor in anchors:
@@ -30,10 +33,22 @@ def run(binary, root, anchors, diff, base):
         start = time.perf_counter()
         child = subprocess.Popen(command, cwd=root, stdout=output, stderr=errors)
         try:
-            _, status, usage = os.wait4(child.pid, 0)
+            deadline = start + timeout
+            while True:
+                pid, status, usage = os.wait4(child.pid, os.WNOHANG)
+                if pid:
+                    break
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    child.kill()
+                    _, status, usage = os.wait4(child.pid, 0)
+                    child.returncode = os.waitstatus_to_exitcode(status)
+                    raise TimeoutError(f"{binary} exceeded {timeout}s")
+                time.sleep(min(0.01, remaining))
         except BaseException:
-            child.kill()
-            child.wait()
+            if child.returncode is None:
+                child.kill()
+                child.wait()
             raise
         wall = time.perf_counter() - start
         child.returncode = os.waitstatus_to_exitcode(status)
@@ -43,7 +58,7 @@ def run(binary, root, anchors, diff, base):
         output.seek(0)
         answers = json.load(output)["anchors"]
         selection = {answer["anchor"]: answer["affected"] for answer in answers}
-        if len(answers) != len(anchors) or len(selection) != len(anchors):
+        if len(answers) != len(anchors) or set(selection) != set(anchors):
             raise RuntimeError(f"{binary} did not answer every anchor")
         rss_bytes = usage.ru_maxrss * (1 if platform.system() == "Darwin" else 1024)
         return selection, {"cpu_s": usage.ru_utime + usage.ru_stime,
@@ -51,6 +66,7 @@ def run(binary, root, anchors, diff, base):
 
 
 def main():
+    """Compare interleaved builds and write a report only complete on success."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--cases", required=True, type=Path, help="JSON array with source fields")
@@ -58,12 +74,16 @@ def main():
     parser.add_argument("--binary", action="append", required=True, metavar="LABEL=PATH")
     parser.add_argument("--commit", action="append", required=True)
     parser.add_argument("--runs", type=int, default=15)
+    parser.add_argument("--timeout", type=float, default=300,
+                        help="maximum seconds per measured child (default: 300)")
     parser.add_argument("--require-equal-selection", action="store_true",
                         help="fail if any build selects different anchors from the first")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be positive")
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error("--timeout must be finite and positive")
     binaries = {}
     for entry in args.binary:
         label, separator, path = entry.partition("=")
@@ -82,7 +102,7 @@ def main():
               "binaries": {label: str(path) for label, path in binaries.items()},
               "binary_sha256": {label: hashlib.sha256(path.read_bytes()).hexdigest()
                                 for label, path in binaries.items()},
-              "runs": args.runs, "commits": {}}
+              "runs": args.runs, "timeout_s": args.timeout, "commits": {}}
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     labels = list(binaries)
     with tempfile.TemporaryDirectory(prefix="fallout-bench-") as scratch:
@@ -95,13 +115,13 @@ def main():
             # Warm every build and establish its expected selection separately:
             # fixes between releases may legitimately change the selection.
             for label, binary in binaries.items():
-                selection, _ = run(binary, root, anchors, diff, base)
+                selection, _ = run(binary, root, anchors, diff, base, args.timeout)
                 results[label] = {"selection": selection, "samples": []}
             for repetition in range(args.runs):
                 # Rotate the first build to distribute drift and warm-cache effects.
                 order = labels[repetition % len(labels):] + labels[:repetition % len(labels)]
                 for label in order:
-                    selection, sample = run(binaries[label], root, anchors, diff, base)
+                    selection, sample = run(binaries[label], root, anchors, diff, base, args.timeout)
                     if selection != results[label]["selection"]:
                         changed = {anchor: [results[label]["selection"].get(anchor), affected]
                                    for anchor, affected in selection.items()

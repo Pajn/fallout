@@ -63,6 +63,7 @@ struct Batch {
 }
 
 impl Batch {
+    /// Start a reader for the nearest checkout, leaving custom layouts to Git.
     fn open(directory: &Path) -> Option<Self> {
         // Locate a normal checkout or worktree by its .git directory or file,
         // without another git startup. Custom repository layouts retain the
@@ -95,12 +96,14 @@ impl Batch {
         })
     }
 
+    /// Request one revision-relative path and consume its complete response.
     fn text(&mut self, reference: &str, name: &str) -> io::Result<Option<String>> {
         write!(self.input, "{reference}:{name}\0")?;
         self.input.flush()?;
         read_object(&mut self.output)
     }
 
+    /// Whether this checkout owns the path, excluding nested repositories.
     fn contains(&self, path: &Path) -> bool {
         // The original reader asks the repository owning each path. A nested
         // checkout must not accidentally be read from this reader's repository.
@@ -117,6 +120,7 @@ impl Batch {
 }
 
 impl Drop for Batch {
+    /// Stop and reap the child even after a failed request.
     fn drop(&mut self) {
         // Reap the reader on success and on a broken protocol alike. There is no
         // outstanding request at the end of a successful read.
@@ -125,6 +129,7 @@ impl Drop for Batch {
     }
 }
 
+/// Decode a NUL-framed blob, distinguishing absence from a broken protocol.
 fn read_object(output: &mut impl BufRead) -> io::Result<Option<String>> {
     let mut header = Vec::new();
     output.read_until(0, &mut header)?;
@@ -157,6 +162,7 @@ fn read_object(output: &mut impl BufRead) -> io::Result<Option<String>> {
 }
 
 impl Base {
+    /// Create a lazy reader for a revision, without validating it beforehand.
     pub fn new(reference: &str) -> Self {
         Self {
             reference: reference.to_string(),
@@ -167,6 +173,7 @@ impl Base {
 }
 
 impl Earlier for Base {
+    /// Read and cache an earlier version, including absent and non-text files.
     fn text(&self, path: &Path) -> Option<String> {
         if let Some(cached) = self.contents.borrow().get(path) {
             return cached.clone();
@@ -206,6 +213,7 @@ impl Base {
         Some(Self::new(commit.trim()))
     }
 
+    /// Use the shared reader when possible and retry failures through Git show.
     fn read(&self, path: &Path) -> Option<String> {
         let mut batch = self.batch.borrow_mut();
         if matches!(*batch, BatchState::Pending) {
@@ -233,6 +241,7 @@ impl Base {
         self.read_separately(path)
     }
 
+    /// Ask Git for one file from its nearest surviving parent directory.
     fn read_separately(&self, path: &Path) -> Option<String> {
         // Naming the file relative to its own directory saves working out where the
         // repository root is, and works the same from a worktree or a subdirectory.
@@ -500,6 +509,7 @@ mod tests {
     /// A ref can move while a run reads through it, as a fetch moves `origin/main`.
     /// Every file is read from the commit the ref named when the run began.
     #[test]
+    /// A moving ref must not change the commit used by a live reader.
     fn a_resolved_revision_keeps_reading_the_commit_it_named() {
         let (_keep, repo) = repository(
             &[
@@ -527,6 +537,7 @@ mod tests {
     }
 
     #[test]
+    /// Unusual names and contents must not desynchronize successive responses.
     fn successive_reads_keep_their_boundaries_after_missing_and_non_text_files() {
         let large = "export const text = '".to_owned() + &"x".repeat(128 * 1024) + "';\n";
         let before: Vec<(&str, &[u8])> = vec![
@@ -564,6 +575,7 @@ mod tests {
     }
 
     #[test]
+    /// A reader failure must preserve the earlier text through the fallback.
     fn a_broken_batch_reader_retries_a_present_file_instead_of_reporting_it_absent() {
         let (_keep, repo) = repository(
             &[
@@ -587,6 +599,7 @@ mod tests {
     }
 
     #[test]
+    /// Malformed responses must trigger fallback rather than claim absence.
     fn a_truncated_object_response_is_an_error_not_a_missing_file() {
         for response in [
             b"".as_slice(),
@@ -601,6 +614,7 @@ mod tests {
     }
 
     #[test]
+    /// A shared reader must not capture files owned by a nested repository.
     fn a_nested_repository_is_read_from_its_own_history() {
         let (_keep, repo) = repository(
             &[
