@@ -546,7 +546,8 @@ impl Resolver {
     /// What kind of name `specifier`, written in `from_file`, is. Asked only of one
     /// that resolved to nothing.
     pub fn unresolved_kind(&self, from_file: &Path, specifier: &str) -> UnresolvedKind {
-        if is_installed(from_file) {
+        // Only below the root: a checkout can itself sit under a `node_modules`.
+        if is_installed(from_file.strip_prefix(&self.root).unwrap_or(from_file)) {
             return UnresolvedKind::Installed;
         }
         let specifier = strip_inline_loaders(specifier).unwrap_or(specifier);
