@@ -933,6 +933,14 @@ Two kinds are left out, because they are answers rather than failures: Node buil
 (`fs`, `node:fs/promises`) and Sass modules (`@use "sass:math"`). Neither names a file
 and neither ever will.
 
+A relative path to a missing data file or asset, named by an extension such as `.json`,
+`.png` or `.woff2`, is left out too, such as an optional `../env.json` an app loads
+inside a `try`. Missing, it is not on the way to anything, and a change that deletes it
+is still found through the module importing it, so no edge is lost. Any other path is
+still reported, including one whose name merely has a dot in it, as `./utils.config`
+names `utils.config.ts`. So are aliases and paths from `/`, since each may name a file
+that is there somewhere else.
+
 The report covers what the run **reached**. A search that stops at the first change it
 finds has not looked at the rest of the graph and does not report on it, so the widest
 report comes from a run that finds nothing.

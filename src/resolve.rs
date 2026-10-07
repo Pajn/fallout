@@ -667,7 +667,9 @@ impl Resolver {
             // one this run could not find, and is not worth reporting as a failure.
             Found::NoFile => Arc::from([]),
             Found::NotFound => {
-                self.unresolved.note(from_file, specifier);
+                if !names_missing_leaf(specifier) {
+                    self.unresolved.note(from_file, specifier);
+                }
                 Arc::from([])
             }
         };
@@ -690,6 +692,33 @@ impl Resolver {
             .copied()
             .unwrap_or(SideEffects::Possible)
     }
+}
+
+/// Extensions that by convention name data or an asset, never a module: a request
+/// written with one is taken to name that file. Any other extension may be the
+/// start of a module's name, as `./utils.config` names `utils.config.ts`.
+const LEAF_EXTENSIONS: &[&str] = &[
+    "json", "png", "jpg", "jpeg", "gif", "webp", "avif", "ico", "bmp", "svg", "woff", "woff2",
+    "ttf", "otf", "eot", "mp3", "mp4", "webm", "wav", "ogg", "txt",
+];
+
+/// Whether `specifier`, which resolved to nothing, is a relative path to a missing
+/// data file or asset, such as `../env.json` or `./icon.png`.
+///
+/// Such a file is a leaf, never read for imports, so with it not there no change
+/// can pass through it, and a change to it would have put it there. A change that
+/// deletes it is found against the tree before, where it still is, through the
+/// module that imports it. So its edge is not a lost one. A path that could name a
+/// module or a stylesheet may lead on, and a bare name, an alias or a path from `/`
+/// may name a file that is there somewhere else, which could be the one that
+/// changed.
+fn names_missing_leaf(specifier: &str) -> bool {
+    let specifier = strip_inline_loaders(specifier).unwrap_or(specifier);
+    (specifier.starts_with("./") || specifier.starts_with("../"))
+        && Path::new(specifier)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| LEAF_EXTENSIONS.contains(&extension))
 }
 
 /// Resolves `request`, written in a Sass stylesheet with any leading `~` dropped,

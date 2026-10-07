@@ -725,6 +725,44 @@ fn unresolved_leaves_out_what_names_no_file_by_design() {
     }
 }
 
+/// A relative path to a data file or an asset, such as JSON, names a leaf: missing,
+/// it is on the way to nothing, so it is not a lost edge. A path that could name a
+/// module, including one whose name has a dot in it, and a name that may well be a
+/// file somewhere else, still are.
+#[test]
+fn unresolved_leaves_out_missing_leaves_at_relative_paths() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        r#"import local from "../env.json";
+import icon from "./icon.png";
+import rooted from "/rooted.json";
+import { gone } from "./gone.js";
+import { bare } from "./bare";
+import { config } from "./utils.config";
+import { other } from "./other";
+export const page = [local, icon, rooted, gone, bare, config, other];
+"#,
+    )
+    .unwrap();
+    fs::write(root.join("src/other.ts"), "export const other = 1;\n").unwrap();
+
+    let (code, stdout, stderr) =
+        run_is_affected_with(&root, &["src/page.ts"], &["src/elsewhere.ts"], &["--json"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let reported = ["./bare", "./gone.js", "./utils.config", "/rooted.json"]
+        .map(|specifier| {
+            format!(r#"{{"specifier":"{specifier}","kind":"path","in_repo":true,"from":["src/page.ts"]}}"#)
+        })
+        .join(",");
+    assert!(
+        stdout.contains(&format!(r#""unresolved":[{reported}]"#)),
+        "exactly the paths that could name a module or a file elsewhere: {stdout}"
+    );
+}
+
 /// A star whose path names no file has no file behind it for either level to
 /// reach, and is reported at both. The name it could have provided still reaches
 /// the page through the barrel, and a change to another module the barrel's stars
