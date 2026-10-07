@@ -929,12 +929,15 @@ and does not judge — the verdict and the exit code are the same with it and wi
 
 Two kinds are left out, because they are answers rather than failures: Node builtins
 (`fs`, `node:fs/promises`) and Sass modules (`@use "sass:math"`). Neither names a file
-and neither ever will. So is a relative path to a file of a kind never read for imports,
-such as an optional `../env.json` or `./icon.png`: missing, it is not on the way to
-anything, and a change that deletes it is still found through the module importing it,
-so no edge is lost. A path that could name a module or a
-stylesheet, an alias and a path from `/` are still reported, since each may lead on or
-name a file that is there somewhere else.
+and neither ever will.
+
+A relative path to a missing data file or asset, named by an extension such as `.json`,
+`.png` or `.woff2`, is left out too, such as an optional `../env.json` an app loads
+inside a `try`. Missing, it is not on the way to anything, and a change that deletes it
+is still found through the module importing it, so no edge is lost. Any other path is
+still reported, including one whose name merely has a dot in it, as `./utils.config`
+names `utils.config.ts`. So are aliases and paths from `/`, since each may name a file
+that is there somewhere else.
 
 The report covers what the run **reached**. A search that stops at the first change it
 finds has not looked at the rest of the graph and does not report on it, so the widest
