@@ -961,6 +961,79 @@ export const GapPage = () => 1;
     );
 }
 
+/// What an installed package's own files fail to place is the package's to answer
+/// for, not the repository's, whatever kind of name it is. Written in the
+/// repository too, the name is as in-repo as the repository's writer says.
+#[test]
+fn json_classes_what_installed_code_writes_as_installed() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_test_project(&root);
+    let package = root.join("node_modules/broken");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{"name": "broken", "main": "./index.js"}"#,
+    )
+    .unwrap();
+    fs::write(
+        package.join("index.js"),
+        "require(\"./gone\");\nrequire(\"./shared\");\nrequire(\"not-installed\");\nmodule.exports = 1;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/BrokenPage.tsx"),
+        "import \"broken\";\nimport \"./shared\";\nexport const BrokenPage = () => 1;\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &root,
+        &["src/pages/BrokenPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    for (specifier, kind, in_repo) in [
+        ("./gone", "installed", false),
+        ("not-installed", "installed", false),
+    ] {
+        let entry = format!(r#"{{"specifier":"{specifier}","kind":"{kind}","in_repo":{in_repo}"#);
+        assert!(stdout.contains(&entry), "{entry} in {stdout}");
+    }
+    assert!(
+        stdout.contains(r#"{"specifier":"./shared","kind":"path","in_repo":true"#),
+        "the page's own writer decides: {stdout}"
+    );
+}
+
+/// A checkout that sits below a `node_modules` directory still answers for
+/// its own files: only `node_modules` within it holds installed code.
+#[test]
+fn json_classes_a_checkout_under_node_modules_as_the_repository() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().join("node_modules/checkout");
+    fs::create_dir_all(&root).unwrap();
+    setup_test_project(&root);
+    fs::write(
+        root.join("src/pages/GonePage.tsx"),
+        "import \"./gone\";\nexport const GonePage = () => 1;\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &root,
+        &["src/pages/GonePage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--json"],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.contains(r#"{"specifier":"./gone","kind":"path","in_repo":true"#),
+        "{stdout}"
+    );
+}
+
 #[test]
 fn json_classes_a_specifier_by_its_most_in_repo_writer() {
     let temp = TempDir::new().unwrap();
