@@ -24,7 +24,7 @@ use oxc_resolver::{
 };
 
 use crate::config::{Chain, Configs, Lookup};
-use crate::module::is_style_file;
+use crate::module::{is_source_file, is_style_file};
 use crate::repoint::MovedImports;
 
 /// Modules Sass ships with.
@@ -658,7 +658,9 @@ impl Resolver {
             // one this run could not find, and is not worth reporting as a failure.
             Found::NoFile => Arc::from([]),
             Found::NotFound => {
-                self.unresolved.note(from_file, specifier);
+                if !names_missing_leaf(specifier) {
+                    self.unresolved.note(from_file, specifier);
+                }
                 Arc::from([])
             }
         };
@@ -681,6 +683,24 @@ impl Resolver {
             .copied()
             .unwrap_or(SideEffects::Possible)
     }
+}
+
+/// Whether `specifier`, which resolved to nothing, is a relative path to a file of a
+/// kind never read for imports, such as `../env.json` or `./icon.png`.
+///
+/// Such a file is a leaf, so with it not there no change can pass through it, and a
+/// change to it would have put it there. A change that deletes it is found against
+/// the tree before, where it still is, through the module that imports it. So its
+/// edge is not a lost one. A path that could name a module or a stylesheet may lead
+/// on, and a bare name, an alias or a path from `/` may name a file that is there
+/// somewhere else, which could be the one that changed.
+fn names_missing_leaf(specifier: &str) -> bool {
+    let specifier = strip_inline_loaders(specifier).unwrap_or(specifier);
+    let path = Path::new(specifier);
+    (specifier.starts_with("./") || specifier.starts_with("../"))
+        && path.extension().is_some()
+        && !is_source_file(path)
+        && !is_style_file(path)
 }
 
 /// Resolves `request`, written in a Sass stylesheet with any leading `~` dropped,

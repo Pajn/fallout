@@ -725,6 +725,49 @@ fn unresolved_leaves_out_what_names_no_file_by_design() {
     }
 }
 
+/// A relative path to a file of a kind never read for imports, such as JSON, names a
+/// leaf: missing, it is on the way to nothing, so it is not a lost edge. A path that could name a module, and a name that may well be a
+/// file somewhere else, still are.
+#[test]
+fn unresolved_leaves_out_missing_leaves_at_relative_paths() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/page.ts"),
+        r#"import local from "../env.json";
+import icon from "./icon.png";
+import rooted from "/rooted.json";
+import { gone } from "./gone.js";
+import { bare } from "./bare";
+import { other } from "./other";
+export const page = [local, icon, rooted, gone, bare, other];
+"#,
+    )
+    .unwrap();
+    fs::write(root.join("src/other.ts"), "export const other = 1;\n").unwrap();
+
+    let (_, stdout, _) = run_is_affected_with(
+        &root,
+        &["src/page.ts"],
+        &["src/elsewhere.ts"],
+        &["--unresolved"],
+    );
+
+    for leaf in ["../env.json", "./icon.png"] {
+        assert!(
+            !stdout.contains(leaf),
+            "{leaf} could only name a leaf: {stdout}"
+        );
+    }
+    for named in ["/rooted.json", "./gone.js", "./bare"] {
+        assert!(
+            stdout.contains(named),
+            "{named} is still reported: {stdout}"
+        );
+    }
+}
+
 /// A star whose path names no file has no file behind it for either level to
 /// reach, and is reported at both. The name it could have provided still reaches
 /// the page through the barrel, and a change to another module the barrel's stars

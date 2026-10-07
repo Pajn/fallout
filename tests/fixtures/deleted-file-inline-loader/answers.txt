@@ -28,7 +28,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/page.ts)
   ModuleInit(src/header.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[]}]}
 
 == src/page.ts [symbol] --include-types
 -- --explain: exit 0
@@ -38,7 +38,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/page.ts)
   ModuleInit(src/header.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[]}]}
 
 == src/page.ts [base]
 -- --explain: exit 0
@@ -48,7 +48,7 @@ Path (downstream, symbol granularity):
   ModuleInit(src/page.ts)
   ModuleInit(src/header.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[]}]}
 
 == src/page.ts [base] --include-types
 -- --explain: exit 0
@@ -58,4 +58,4 @@ Path (downstream, symbol granularity):
   ModuleInit(src/page.ts)
   ModuleInit(src/header.ts)
 -- --json: exit 0
-{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[{"specifier":"!!file-loader!./logo.svg","kind":"path","in_repo":true,"from":["src/header.ts"]}]}]}
+{"anchors":[{"anchor":"src/page.ts","affected":true,"direction":"downstream","changed":"src/header.ts","path":["File(src/page.ts)","ModuleInit(src/page.ts)","ModuleInit(src/header.ts)"],"granularity":"symbol","unresolved":[]}]}
