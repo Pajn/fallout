@@ -101,8 +101,8 @@ impl Unresolved {
 ///
 /// The first three name something in this repository — a file, or a name the
 /// project declared for one — so nothing resolving is a gap in the graph a caller may
-/// want to be told about. The last names a package nobody installed here, which is
-/// usually not a fault in the tree at all.
+/// want to be told about. The other two are not faults in the tree: a package nobody
+/// installed here, and a name an installed package's own code wrote.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum UnresolvedKind {
     /// A relative or absolute path to a file that is not there.
@@ -116,6 +116,10 @@ pub enum UnresolvedKind {
     Package,
     /// A package that is not installed.
     MissingPackage,
+    /// Any name an installed package's own file wrote. Whatever it names, the
+    /// package's authors answer for it, not this repository. Last, so that a name
+    /// the repository writes too is classed by the repository's writer.
+    Installed,
 }
 
 impl UnresolvedKind {
@@ -125,6 +129,7 @@ impl UnresolvedKind {
             UnresolvedKind::Alias => "alias",
             UnresolvedKind::Package => "package",
             UnresolvedKind::MissingPackage => "missing-package",
+            UnresolvedKind::Installed => "installed",
         }
     }
 
@@ -541,6 +546,9 @@ impl Resolver {
     /// What kind of name `specifier`, written in `from_file`, is. Asked only of one
     /// that resolved to nothing.
     pub fn unresolved_kind(&self, from_file: &Path, specifier: &str) -> UnresolvedKind {
+        if is_installed(from_file) {
+            return UnresolvedKind::Installed;
+        }
         let specifier = strip_inline_loaders(specifier).unwrap_or(specifier);
         if specifier.starts_with('.') || specifier.starts_with('/') {
             return UnresolvedKind::Path;

@@ -93,7 +93,9 @@ an in-repo gap as a reason to run the anchor anyway. Each specifier is classed:
 - `package` — a package that is installed or is one of the repository's own, where
   nothing it offers matches the bundler's [`[resolve]`](#package-entry-points)
   settings, or which the workspace has not linked;
-- `missing-package` — a package that is not installed.
+- `missing-package` — a package that is not installed;
+- `installed` — any name an installed package's own code wrote, which its authors
+  answer for rather than this repository.
 
 `in_repo` is true for the first three. In a stylesheet a bare name is a sibling file
 first, so it is a `path`, and a `~` names a package. A specifier several files write
