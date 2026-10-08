@@ -137,16 +137,22 @@ pub fn downstream(
 
     let mut read: AHashMap<PathBuf, Vec<String>> = AHashMap::default();
     while let Some(current) = queue.pop_front() {
-        // Reading a file depends on no other, so everything waiting is read at once
-        // and in parallel, while the walk itself keeps its order and its answer.
+        // Reading a file, and working out which of its imports moved, depends on no
+        // other file, so this is done for everything waiting at once and in
+        // parallel, while the walk itself keeps its order and its answer.
         if !read.contains_key(&current) && !files.knows(&current) {
             let waiting: Vec<&PathBuf> = std::iter::once(&current)
                 .chain(&queue)
                 .filter(|file| !read.contains_key(*file) && !files.knows(file))
                 .collect();
+            let resolver = files.resolver();
             let found: Vec<Vec<String>> = waiting
                 .par_iter()
-                .map(|file| imported_specifiers(file, reading).unwrap_or_default())
+                .map(|file| {
+                    let specifiers = imported_specifiers(file, reading).unwrap_or_default();
+                    resolver.read_ahead_moved(file, &specifiers);
+                    specifiers
+                })
                 .collect();
             read.extend(waiting.into_iter().cloned().zip(found));
         }

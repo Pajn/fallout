@@ -17,7 +17,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use oxc_resolver::{
     FileSystem, FileSystemOs, PackageJson, Resolution, ResolveError, ResolveOptions,
     ResolverGeneric, SideEffects as Declared, TsConfig, TsconfigDiscovery,
@@ -207,9 +207,13 @@ pub struct Tree<Fs> {
     resolvers: RwLock<Resolvers<Fs>>,
     /// The directories whose tsconfigs have been checked for one that cannot be
     /// read, by where the walk up from them started and the tsconfig that claims
-    /// the file it started for.
-    checked: RwLock<AHashSet<(PathBuf, Option<PathBuf>)>>,
+    /// the file it started for, with the one found, which is noted on every check.
+    checked: RwLock<Checked>,
 }
+
+/// Tsconfig checks by where the walk up started and the tsconfig that claims the
+/// file, with the tsconfig found that could not be read and why.
+type Checked = AHashMap<(PathBuf, Option<PathBuf>), Option<(PathBuf, String)>>;
 
 /// Resolvers by dialect and by the config directories that produced their aliases.
 type Resolvers<Fs> = AHashMap<(Dialect, Vec<PathBuf>), Arc<ResolverGeneric<Fs>>>;
@@ -221,7 +225,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             lookup,
             fs,
             resolvers: RwLock::new(AHashMap::default()),
-            checked: RwLock::new(AHashSet::default()),
+            checked: RwLock::new(AHashMap::default()),
         }
     }
 
@@ -310,14 +314,32 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             .ok()
             .flatten()
             .map(|tsconfig| tsconfig.path().to_path_buf());
-        if !self
-            .checked
-            .write()
-            .unwrap()
-            .insert((start.to_path_buf(), owner.clone()))
-        {
-            return;
+        let key = (start.to_path_buf(), owner);
+        let cached = self.checked.read().unwrap().get(&key).cloned();
+        let unreadable = match cached {
+            Some(unreadable) => unreadable,
+            None => {
+                let unreadable = self.unreadable_tsconfig(resolver, start, key.1.as_deref());
+                self.checked
+                    .write()
+                    .unwrap()
+                    .insert(key, unreadable.clone());
+                unreadable
+            }
+        };
+        if let Some((path, detail)) = unreadable {
+            self.configs.note_unreadable_tsconfig(&path, detail);
         }
+    }
+
+    /// The first tsconfig from `start` up that is there and cannot be read, where
+    /// the walk does not stop first at one that claims the file `owner` stands for.
+    fn unreadable_tsconfig(
+        &self,
+        resolver: &ResolverGeneric<Fs>,
+        start: &Path,
+        owner: Option<&Path>,
+    ) -> Option<(PathBuf, String)> {
         for directory in start.ancestors() {
             let tsconfig = directory.join("tsconfig.json");
             if !self
@@ -331,16 +353,15 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
                 // One that cannot be parsed is the resolver's own error, which the
                 // run reports where it resolves; one that cannot be read it skips.
                 Err(ResolveError::TsconfigLoadFailed { path, source }) => {
-                    if let ResolveError::IOError(error) = source.as_ref() {
-                        self.configs.note_unreadable_tsconfig(
-                            &path,
-                            std::io::Error::from(error.clone()).to_string(),
-                        );
-                    }
-                    return;
+                    return match source.as_ref() {
+                        ResolveError::IOError(error) => {
+                            Some((path, std::io::Error::from(error.clone()).to_string()))
+                        }
+                        _ => None,
+                    };
                 }
                 Ok(read) => {
-                    let claims = owner.as_deref().is_some_and(|owner| {
+                    let claims = owner.is_some_and(|owner| {
                         read.path() == owner
                             || read
                                 .references_resolved
@@ -348,20 +369,20 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
                                 .any(|referenced| referenced.path() == owner)
                     });
                     if claims {
-                        return;
+                        return None;
                     }
                 }
-                Err(_) => return,
+                Err(_) => return None,
             }
         }
+        None
     }
 
     /// Notes, for the run to refuse an answer on, a config at `path` that a
     /// tsconfig reads and that is there but cannot be read. See
     /// `check_tsconfigs`.
-    pub fn note_unreadable_config(&self, path: &Path, error: &std::io::Error) {
-        self.configs
-            .note_unreadable_tsconfig(path, error.to_string());
+    pub fn note_unreadable_config(&self, path: &Path, detail: String) {
+        self.configs.note_unreadable_tsconfig(path, detail);
     }
 
     /// The resolver for one dialect and chain of config directories, built on first
@@ -536,6 +557,12 @@ impl Resolver {
         specifiers: impl FnOnce() -> S,
     ) -> Arc<[usize]> {
         self.moved.moved(file, specifiers)
+    }
+
+    /// Works out ahead of the walk which imports of `file` moved. See
+    /// [`MovedImports::read_ahead`].
+    pub fn read_ahead_moved(&self, file: &Path, specifiers: &[String]) {
+        self.moved.read_ahead(file, specifiers);
     }
 
     /// The specifiers this resolver could not place.
