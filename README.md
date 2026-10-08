@@ -60,6 +60,12 @@ tsconfig could not be read, or git finds no commit by the `--base` revision from
 written to stderr. With `--json` the answers are in the output,
 so the exit code is `0` for any answer and `2` for none.
 
+At file granularity, files are read on several threads: as many as the machine
+runs at once, up to six. Past that, opening files contends in the kernel and costs
+CPU without finishing sooner. Set `FALLOUT_THREADS` to a positive number to use
+another count, for example `1` on a runner shared by other jobs. Any other value
+is no answer.
+
 ### One answer per anchor
 
 `--json` answers every anchor on its own rather than the set as a whole, in one run.
