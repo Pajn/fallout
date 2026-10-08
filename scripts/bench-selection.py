@@ -69,8 +69,8 @@ def main():
     """Compare interleaved builds and write a report only complete on success."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
-    parser.add_argument("--cases", required=True, type=Path, help="JSON array with source fields")
-    parser.add_argument("--anchor-prefix", default="apps/mobile")
+    parser.add_argument("--anchor", action="append", required=True,
+                        help="anchor path relative to --root; repeatable")
     parser.add_argument("--binary", action="append", required=True, metavar="LABEL=PATH")
     parser.add_argument("--commit", action="append", required=True)
     parser.add_argument("--runs", type=int, default=15)
@@ -91,10 +91,7 @@ def main():
             parser.error("each binary must have a unique LABEL=PATH")
         binaries[label] = Path(path).resolve(strict=True)
     root = args.root.resolve(strict=True)
-    anchors = list(dict.fromkeys(str(Path(args.anchor_prefix) / case["source"])
-                                for case in json.loads(args.cases.read_text())))
-    if not anchors:
-        parser.error("cases must contain at least one anchor")
+    anchors = list(dict.fromkeys(args.anchor))
     commits = [git(root, "rev-parse", f"{commit}^{{commit}}") for commit in args.commit]
     report = {"complete": False, "app_head": git(root, "rev-parse", "HEAD"),
               "app_status": git(root, "status", "--porcelain"),
