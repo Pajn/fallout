@@ -25,6 +25,7 @@
 //! Without a base revision there is no earlier text for a changed config. It is then
 //! taken to move every import of the files it governs.
 
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -54,6 +55,10 @@ pub struct Before {
     files: AHashMap<PathBuf, Option<Arc<[u8]>>>,
     /// Directories that were there only because a file in `files` was.
     dirs: AHashSet<PathBuf>,
+    /// The last component of every path in `files` and `dirs`, which a path keeps
+    /// when it is spelled canonically, so a path whose name is not here is in
+    /// neither however it is spelled.
+    names: AHashSet<OsString>,
 }
 
 impl Repointing {
@@ -90,8 +95,11 @@ impl Before {
                 if is_dir(directory) || !self.dirs.insert(directory.to_path_buf()) {
                     break;
                 }
+                self.names
+                    .extend(directory.file_name().map(OsStr::to_os_string));
             }
         }
+        self.names.extend(path.file_name().map(OsStr::to_os_string));
         self.files.insert(path, content);
     }
 }
@@ -494,6 +502,18 @@ impl<Fs: FileSystem> BeforeFs<Fs> {
             return Some(entry);
         }
         if self.base.symlink_metadata(path).is_ok() {
+            return None;
+        }
+        // Spelled without `.` or `..`, a path the disk does not have keeps its name
+        // canonically, where only the directories it is in can be spelled another way.
+        let plain = path
+            .components()
+            .all(|component| !matches!(component, Component::CurDir | Component::ParentDir));
+        if plain
+            && path
+                .file_name()
+                .is_some_and(|name| !self.before.names.contains(name))
+        {
             return None;
         }
         look(&canonical_in(&self.base, path))
