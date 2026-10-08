@@ -18,6 +18,7 @@ pub mod marks;
 #[cfg(test)]
 mod memory_fs;
 pub mod module;
+mod pool;
 pub mod pure;
 pub mod query;
 pub mod repoint;

@@ -175,6 +175,10 @@ fn answer(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
+    if let Err(message) = crate::pool::requested_threads() {
+        say_error!(err, "Error: {}", message);
+        return NO_ANSWER;
+    }
     let diff = match cli.diff.as_deref().map(read_diff) {
         Some(Ok(text)) => Some(text),
         Some(Err(message)) => {

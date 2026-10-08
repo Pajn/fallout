@@ -14,6 +14,7 @@ use crate::change::Change;
 use crate::graph::{Graph, Node};
 use crate::marks::Marks;
 use crate::module::{Reading, imported_specifiers};
+use crate::pool;
 use crate::resolve::Resolver;
 
 /// Which way to walk the import graph between the anchor and a changed file.
@@ -146,14 +147,16 @@ pub fn downstream(
                 .filter(|file| !read.contains_key(*file) && !files.knows(file))
                 .collect();
             let resolver = files.resolver();
-            let found: Vec<Vec<String>> = waiting
-                .par_iter()
-                .map(|file| {
-                    let specifiers = imported_specifiers(file, reading).unwrap_or_default();
-                    resolver.read_ahead_moved(file, &specifiers);
-                    specifiers
-                })
-                .collect();
+            let found: Vec<Vec<String>> = pool::pool().install(|| {
+                waiting
+                    .par_iter()
+                    .map(|file| {
+                        let specifiers = imported_specifiers(file, reading).unwrap_or_default();
+                        resolver.read_ahead_moved(file, &specifiers);
+                        specifiers
+                    })
+                    .collect()
+            });
             read.extend(waiting.into_iter().cloned().zip(found));
         }
         // Read once, for both questions that need them, and only if one does.

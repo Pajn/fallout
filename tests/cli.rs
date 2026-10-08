@@ -558,3 +558,54 @@ fn an_unreadable_tsconfig_is_no_answer() {
         }
     }
 }
+
+/// The command line with `FALLOUT_THREADS` set to `threads`.
+fn run_with_threads(root: &Path, threads: &str) -> Said {
+    let output = Command::new(BINARY)
+        .current_dir(root)
+        .env("FALLOUT_THREADS", threads)
+        .args(["--anchor", "src/pages/CheckoutPage.tsx"])
+        .args(["--changed", "src/components/Button.tsx"])
+        .arg("--root")
+        .arg(root)
+        .output()
+        .expect("the binary runs");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+/// Reading files on one thread gives the answer the default pool gives.
+#[test]
+fn one_thread_gives_the_same_answer() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_test_project(root);
+
+    let (code, stdout, stderr) = run_with_threads(root, "1");
+    let default = run_is_affected_with(
+        root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &[],
+    );
+
+    assert_eq!((code, stdout), (default.0, default.1), "{stderr}");
+    assert_eq!(code, 0);
+}
+
+/// A thread count that is not one is no answer, rather than quietly the default.
+#[test]
+fn a_thread_count_that_is_not_one_is_refused() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    setup_test_project(root);
+
+    for threads in ["0", "many", "-2"] {
+        let (code, _, stderr) = run_with_threads(root, threads);
+        assert_eq!(code, 2, "{threads}: {stderr}");
+        assert!(stderr.contains("FALLOUT_THREADS"), "{threads}: {stderr}");
+    }
+}
