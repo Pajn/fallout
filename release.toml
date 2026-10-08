@@ -1,0 +1,18 @@
+# cargo-release cuts the release; .github/workflows/release.yml ships it.
+# `cargo release <level> --execute` sets the version, commits, tags and pushes,
+# and the pushed tag starts the workflow that tests every target and publishes.
+
+# The workflow publishes to crates.io once every target's tests have passed, by
+# OIDC rather than a token. Publishing from here would skip both.
+publish = false
+
+# The workflow starts on `v*` tags and checks the tag against Cargo.toml.
+tag-name = "v{{version}}"
+tag-message = "{{crate_name}} {{version}}"
+
+# The changelog leaves out commits matching `^Release [0-9]`, so this one has
+# to keep that shape.
+pre-release-commit-message = "Release {{version}}"
+
+# Releases are cut from main, the branch the changelog's history runs along.
+allow-branch = ["main"]
