@@ -395,5 +395,5 @@ pub fn analyse(path: &Path, reading: &Reading) -> Option<(ModuleAnalysis, LineTa
 /// read can: an `import type` is not an import at all, and with `--ignore-types` it
 /// is gone before anything counts the specifiers.
 pub fn imported_specifiers(path: &Path, reading: &Reading) -> Option<Vec<String>> {
-    Some(analyse(path, reading)?.0.sources().to_vec())
+    parse::file_sources(path, reading)
 }

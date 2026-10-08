@@ -7,7 +7,7 @@ use ahash::AHashSet;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
-use oxc_parser::Parser as OxcParser;
+use oxc_parser::{Parser as OxcParser, ParserReturn};
 use oxc_semantic::{Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
@@ -139,6 +139,76 @@ pub fn analyse_file(path: &Path, reading: &Reading) -> Option<(ModuleAnalysis, L
     analyse_source(path, &fs::read_to_string(path).ok()?, reading)
 }
 
+/// The import specifiers [`analyse_file`] would find in `path`, without the rest of
+/// its analysis, which following imports file by file has no use for.
+pub fn file_sources(path: &Path, reading: &Reading) -> Option<Vec<String>> {
+    if super::style::is_style_file(path) {
+        let source = fs::read_to_string(path).ok()?;
+        return Some(super::style::analyse(path, &source)?.sources().to_vec());
+    }
+    if !is_source_file(path) {
+        return None;
+    }
+    let source_text = fs::read_to_string(path).ok()?;
+    let allocator = Allocator::default();
+    let read = read_source(&allocator, path, &source_text, reading);
+    Some(collect_sources(&read.parsed.program))
+}
+
+/// A file's text parsed the way a run reads it.
+struct Read<'a> {
+    parsed: ParserReturn<'a>,
+    /// The text with its types erased, when that is what was parsed.
+    erased: Option<&'a str>,
+}
+
+/// Parses `source_text` as the contents of `path`, with its types erased when the
+/// run ignores them and erasing leaves something that still parses.
+fn read_source<'a>(
+    allocator: &'a Allocator,
+    path: &Path,
+    source_text: &'a str,
+    reading: &Reading,
+) -> Read<'a> {
+    let source_type = SourceType::from_path(path).unwrap_or_default();
+    let parsed = OxcParser::new(allocator, source_text, source_type).parse();
+
+    // A parse error means the AST is a guess, so nothing finer than the file is safe.
+    if !parsed.diagnostics.is_empty() {
+        return Read {
+            parsed,
+            erased: None,
+        };
+    }
+
+    // Erasing leaves the file the same length and the same shape, so everything below
+    // reads spans and lines exactly as it would have. What it must not do is leave
+    // behind something that is no longer the language: if it has, read the original.
+    let Some(erased) = reading
+        .ignore_types
+        .then(|| types::erase(source_text, &parsed.program))
+        .flatten()
+    else {
+        return Read {
+            parsed,
+            erased: None,
+        };
+    };
+    let erased = allocator.alloc_str(&erased);
+    let reparsed = OxcParser::new(allocator, erased, source_type).parse();
+    if reparsed.diagnostics.is_empty() {
+        Read {
+            parsed: reparsed,
+            erased: Some(erased),
+        }
+    } else {
+        Read {
+            parsed,
+            erased: None,
+        }
+    }
+}
+
 /// Analyses text as if it were the contents of `path`.
 ///
 /// `path` decides the dialect and nothing else, so an earlier version of a file can
@@ -153,10 +223,9 @@ pub fn analyse_source(
     }
 
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path).unwrap_or_default();
-    let parsed = OxcParser::new(&allocator, source_text, source_type).parse();
+    let Read { parsed, erased } = read_source(&allocator, path, source_text, reading);
+    let parsed = &parsed;
 
-    // A parse error means the AST is a guess, so nothing finer than the file is safe.
     if !parsed.diagnostics.is_empty() {
         return Some((
             ModuleAnalysis::Coarse {
@@ -166,24 +235,7 @@ pub fn analyse_source(
         ));
     }
 
-    // Erasing leaves the file the same length and the same shape, so everything below
-    // reads spans and lines exactly as it would have. What it must not do is leave
-    // behind something that is no longer the language: if it has, read the original.
-    let erased = reading
-        .ignore_types
-        .then(|| types::erase(source_text, &parsed.program))
-        .flatten();
-    let reparsed = erased
-        .as_deref()
-        .map(|erased| OxcParser::new(&allocator, erased, source_type).parse());
-    let (erased_text, parsed) = match (&erased, &reparsed) {
-        (Some(erased), Some(reparsed)) if reparsed.diagnostics.is_empty() => {
-            (Some(erased.as_str()), reparsed)
-        }
-        _ => (None, &parsed),
-    };
-
-    let line_table = match erased_text {
+    let line_table = match erased {
         Some(erased) => LineTable::erased(erased),
         None => LineTable::new(source_text),
     };
