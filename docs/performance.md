@@ -12,6 +12,10 @@ Build each revision with `cargo build --release --locked` and copy its binary to
 a separate path before building another. Use an isolated app worktree so another
 task cannot switch branches or edit its source during the measurement.
 
+The command below shows the shape of a run. Pass one `--anchor` per page the
+comparison covers; the results below used seven anchors of one app, so a run
+with other anchors or another app measures a different workload.
+
 ```sh
 python3 scripts/bench-selection.py \
   --root /path/to/pinned-app \
