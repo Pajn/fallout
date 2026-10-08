@@ -29,7 +29,7 @@ jobs:
   version:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the tag against the declared version
         run: |
@@ -49,14 +49,17 @@ jobs:
       # rather than publish a launcher that is quietly short a platform.
       fail-fast: true
       matrix:
+        # A Linux binary needs at least the glibc it was linked against, so
+        # the Ubuntu a target is built on is the oldest one it runs on. Moving
+        # these to a newer release drops every system older than it.
         include:
           - { target: x86_64-unknown-linux-gnu, runner: ubuntu-24.04 }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm }
-          - { target: aarch64-apple-darwin, runner: macos-15 }
+          - { target: aarch64-apple-darwin, runner: macos-26 }
           - { target: x86_64-pc-windows-msvc, runner: windows-2025, ext: .exe }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - run: rustup target add ${{ matrix.target }}
 
@@ -71,7 +74,7 @@ jobs:
 
       - run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: target/${{ matrix.target }}/release/fallout${{ matrix.ext }}
@@ -88,9 +91,9 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
 
@@ -102,7 +105,7 @@ jobs:
 
       - run: cargo install cargo-npm --locked --version ${{ env.CARGO_NPM_VERSION }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -160,7 +163,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: Swatinem/rust-cache@v2
 
@@ -199,7 +202,7 @@ jobs:
     steps:
       # The whole history and every tag, to find where the previous release was
       # cut and to list what landed since.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -228,7 +231,7 @@ jobs:
           cat changelog.md
 
       # The same binaries npm shipped, from the build jobs of this run.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
