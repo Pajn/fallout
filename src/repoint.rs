@@ -36,6 +36,7 @@ use oxc_resolver::{
 };
 
 use crate::base::Earlier;
+use crate::config;
 use crate::diff::{ChangeSet, FileChange};
 use crate::resolve::Tree;
 
@@ -207,7 +208,7 @@ pub struct MovedImports<Fs = FileSystemOs> {
     /// Where the `tsconfig.json` files above a file stop being looked for.
     root: PathBuf,
     /// The configuration files each tsconfig reads, itself first.
-    tsconfig_reads: RwLock<AHashMap<PathBuf, Arc<[PathBuf]>>>,
+    tsconfig_reads: RwLock<AHashMap<PathBuf, TsconfigReads>>,
     /// Finds the config a package `extends` entry names in the tree as it is, built
     /// on first use.
     extends: OnceLock<ResolverGeneric<Fs>>,
@@ -253,9 +254,34 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
         if let Some(known) = self.indices.read().unwrap().get(file) {
             return known.clone();
         }
-        let specifiers = specifiers();
-        let specifiers = specifiers.as_ref();
-        let moved: Arc<[usize]> = if self.governed_by_unknown_config(file) {
+        let moved = self.find_moved(file, specifiers().as_ref());
+        self.indices
+            .write()
+            .unwrap()
+            .insert(file.to_path_buf(), moved.clone());
+        moved
+    }
+
+    /// Works out ahead of the walk which of `specifiers`, the imports of `file`,
+    /// moved, keeping the answer for [`Self::moved`] unless the work met a file
+    /// that could not be read. That is the run's failure only if the walk gets to
+    /// `file`, and asking again then notes it.
+    pub fn read_ahead(&self, file: &Path, specifiers: &[String]) {
+        if self.repointing.is_empty() || self.indices.read().unwrap().contains_key(file) {
+            return;
+        }
+        let (moved, met_failure) = config::speculate(|| self.find_moved(file, specifiers));
+        if !met_failure {
+            self.indices
+                .write()
+                .unwrap()
+                .insert(file.to_path_buf(), moved);
+        }
+    }
+
+    /// Which of `specifiers`, the imports of `file`, moved, worked out afresh.
+    fn find_moved(&self, file: &Path, specifiers: &[String]) -> Arc<[usize]> {
+        if self.governed_by_unknown_config(file) {
             (0..specifiers.len()).collect()
         } else if !self.repointing.has_before() {
             Arc::from([])
@@ -269,12 +295,7 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
                 })
                 .map(|(index, _)| index)
                 .collect()
-        };
-        self.indices
-            .write()
-            .unwrap()
-            .insert(file.to_path_buf(), moved.clone());
-        moved
+        }
     }
 
     /// Whether a changed config whose earlier version is not known may govern
@@ -330,9 +351,24 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
     /// Every configuration file the tsconfig at `path` reads: itself, what it
     /// extends, and what it references, however far.
     fn tsconfig_reads(&self, path: &Path) -> Arc<[PathBuf]> {
-        if let Some(known) = self.tsconfig_reads.read().unwrap().get(path) {
-            return known.clone();
+        let known = self.tsconfig_reads.read().unwrap().get(path).cloned();
+        let known = known.unwrap_or_else(|| {
+            let known = self.read_tsconfigs(path);
+            self.tsconfig_reads
+                .write()
+                .unwrap()
+                .insert(path.to_path_buf(), known.clone());
+            known
+        });
+        for (config, detail) in known.unreadable.iter() {
+            self.now.note_unreadable_config(config, detail.clone());
         }
+        known.reads
+    }
+
+    /// What [`Self::tsconfig_reads`] answers, read from disk.
+    fn read_tsconfigs(&self, path: &Path) -> TsconfigReads {
+        let mut unreadable = Vec::new();
         let mut reads = vec![path.to_path_buf()];
         let mut next = 0;
         while let Some(config) = reads.get(next).cloned() {
@@ -351,7 +387,7 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
                         error.kind(),
                         ErrorKind::NotFound | ErrorKind::NotADirectory | ErrorKind::IsADirectory
                     ) {
-                        self.now.note_unreadable_config(&config, &error);
+                        unreadable.push((config.clone(), error.to_string()));
                     }
                     continue;
                 }
@@ -388,12 +424,10 @@ impl<Fs: FileSystem + Clone + 'static> MovedImports<Fs> {
                 }
             }
         }
-        let reads: Arc<[PathBuf]> = reads.into();
-        self.tsconfig_reads
-            .write()
-            .unwrap()
-            .insert(path.to_path_buf(), reads.clone());
-        reads
+        TsconfigReads {
+            reads: reads.into(),
+            unreadable: unreadable.into(),
+        }
     }
 
     /// The files an `extends` entry of the tsconfig at `config` may name, whether or
@@ -465,6 +499,15 @@ fn extends_options() -> ResolveOptions {
         main_files: vec!["tsconfig".to_string()],
         ..ResolveOptions::default()
     }
+}
+
+/// The configuration files a tsconfig reads, itself first, and those of them that
+/// are there and could not be read, with why, which are noted each time it is asked
+/// about.
+#[derive(Clone)]
+struct TsconfigReads {
+    reads: Arc<[PathBuf]>,
+    unreadable: Arc<[(PathBuf, String)]>,
 }
 
 /// The tree before the change, for a resolver to look at: the tree as it is, with

@@ -55,6 +55,7 @@
 //! question it was asked. A malformed file in a subtree the run never enters is never
 //! reported, and could not have changed the answer if it had been.
 
+use std::cell::Cell;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -220,9 +221,10 @@ impl Chain {
 pub struct Configs {
     root: PathBuf,
     /// One directory's own file, or `None` if it has not got one.
-    declared: RwLock<AHashMap<PathBuf, Option<Arc<Declared>>>>,
-    /// What a directory inherits, once worked out.
-    chains: RwLock<AHashMap<PathBuf, Arc<Chain>>>,
+    declared: RwLock<AHashMap<PathBuf, Declaration>>,
+    /// What a directory inherits, once worked out, with the first of its files that
+    /// could not be read.
+    chains: RwLock<AHashMap<PathBuf, Inherited>>,
     /// The first thing that could not be read.
     ///
     /// Held rather than returned because the answers are wanted deep inside the
@@ -236,6 +238,13 @@ pub struct Configs {
     /// reaches through this, and the run checks it before reporting a verdict.
     unreadable_tsconfig: RwLock<Option<(PathBuf, String)>>,
 }
+
+/// One directory's own file, `None` if it has not got one, or why it could not be
+/// read.
+type Declaration = Result<Option<Arc<Declared>>, Error>;
+
+/// What a directory inherits, with the first file on the way that could not be read.
+type Inherited = (Arc<Chain>, Option<Error>);
 
 impl Configs {
     pub fn new(root: &Path) -> Self {
@@ -254,16 +263,26 @@ impl Configs {
             Some(parent) if !file.is_dir() => parent.to_path_buf(),
             _ => file.to_path_buf(),
         };
-        if let Some(cached) = self.chains.read().unwrap().get(&start) {
+        if let Some((cached, failure)) = self.chains.read().unwrap().get(&start) {
+            if let Some(failure) = failure {
+                self.note(failure.clone());
+            }
             return cached.clone();
         }
 
         let mut dirs = Vec::new();
         let mut declared = Vec::new();
+        let mut failure = None;
         for dir in self.upwards(&start) {
-            if let Some(found) = self.declared(&dir) {
-                dirs.push(dir);
-                declared.push(found);
+            match self.declared(&dir) {
+                Ok(Some(found)) => {
+                    dirs.push(dir);
+                    declared.push(found);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
             }
         }
 
@@ -306,7 +325,10 @@ impl Configs {
             dirs,
         });
 
-        self.chains.write().unwrap().insert(start, chain.clone());
+        self.chains
+            .write()
+            .unwrap()
+            .insert(start, (chain.clone(), failure));
         chain
     }
 
@@ -327,6 +349,9 @@ impl Configs {
     /// Records that the tsconfig at `path` is there and could not be read, unless
     /// one already was.
     pub fn note_unreadable_tsconfig(&self, path: &Path, detail: String) {
+        if speculating() {
+            return;
+        }
         let mut unreadable = self.unreadable_tsconfig.write().unwrap();
         if unreadable.is_none() {
             *unreadable = Some((path.to_path_buf(), detail));
@@ -359,30 +384,68 @@ impl Configs {
         vec![self.root.clone()]
     }
 
-    fn declared(&self, dir: &Path) -> Option<Arc<Declared>> {
-        if let Some(cached) = self.declared.read().unwrap().get(dir) {
-            return cached.clone();
-        }
-        let found = match read(&dir.join(FILE), dir) {
-            Ok(found) => found.map(Arc::new),
-            Err(error) => {
-                self.note(error);
-                None
+    /// One directory's own file, noting it as the run's failure if it could not be
+    /// read, every time it is asked for.
+    fn declared(&self, dir: &Path) -> Declaration {
+        let cached = self.declared.read().unwrap().get(dir).cloned();
+        let found = match cached {
+            Some(found) => found,
+            None => {
+                let found = read(&dir.join(FILE), dir).map(|found| found.map(Arc::new));
+                self.declared
+                    .write()
+                    .unwrap()
+                    .insert(dir.to_path_buf(), found.clone());
+                found
             }
         };
-        self.declared
-            .write()
-            .unwrap()
-            .insert(dir.to_path_buf(), found.clone());
+        if let Err(error) = &found {
+            self.note(error.clone());
+        }
         found
     }
 
     fn note(&self, error: Error) {
+        if speculating() {
+            return;
+        }
         let mut failure = self.failure.write().unwrap();
         if failure.is_none() {
             *failure = Some(error);
         }
     }
+}
+
+thread_local! {
+    /// Whether this thread is working ahead of a walk, and if so whether that work
+    /// met something that could not be read.
+    static SPECULATION: Cell<Option<bool>> = const { Cell::new(None) };
+}
+
+/// Runs `work` ahead of the walk that will want it, and says whether it met a file
+/// that could not be read.
+///
+/// Such a file is the run's failure only if the walk itself gets there, and it may
+/// stop first, so while `work` runs nothing is noted. Every cache that a failure
+/// is met through notes it again on each later hit, so the walk notes it, in its
+/// own order, when it repeats work whose result was set aside for this reason.
+pub fn speculate<R>(work: impl FnOnce() -> R) -> (R, bool) {
+    SPECULATION.with(|state| state.set(Some(false)));
+    let result = work();
+    let met = SPECULATION.with(|state| state.take()) == Some(true);
+    (result, met)
+}
+
+/// Whether a failure about to be noted is met while working ahead, which it then
+/// only records as met.
+fn speculating() -> bool {
+    SPECULATION.with(|state| {
+        let speculating = state.get().is_some();
+        if speculating {
+            state.set(Some(true));
+        }
+        speculating
+    })
 }
 
 /// Reads one file. `None` when there is not one here.

@@ -674,6 +674,56 @@ fn unread_config_does_not_fail_the_run() {
     assert_eq!(code, 0, "still a verdict: {stdout}{stderr}");
 }
 
+/// A page importing `changed.ts` before a subtree whose config cannot be read, in a
+/// change that also deletes a file, so every import reached is checked for having
+/// moved. The walk reads ahead into the subtree while it is still on its way to
+/// `changed.ts`.
+fn setup_broken_subtree(root: &Path, page_imports_changed: bool) {
+    fs::create_dir_all(root.join("src/later")).unwrap();
+    let mut page = String::new();
+    if page_imports_changed {
+        page.push_str("import { changed } from \"./changed\";\n");
+    }
+    page.push_str("import { later } from \"./later/x\";\nexport const page = 1;\n");
+    fs::write(root.join("src/page.ts"), page).unwrap();
+    fs::write(root.join("src/changed.ts"), "export const changed = 1;\n").unwrap();
+    fs::write(
+        root.join("src/later/x.ts"),
+        "import { y } from \"./y\";\nexport const later = y;\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/later/y.ts"), "export const y = 1;\n").unwrap();
+    fs::write(root.join("src/later/fallout.toml"), "inline-requires = 3\n").unwrap();
+}
+
+/// Reading ahead into a subtree the walk never gets to, because it is affected
+/// first, cannot make the run fail on that subtree's config.
+#[test]
+fn a_config_read_only_ahead_of_the_walk_does_not_fail_the_run() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_broken_subtree(&root, true);
+
+    let (code, stdout, stderr) =
+        run_is_affected(&root, &["src/page.ts"], &["src/changed.ts", "src/gone.ts"]);
+
+    assert_eq!(code, 0, "affected through changed.ts: {stdout}{stderr}");
+}
+
+/// The same subtree, when the walk does get to it, fails the run as before.
+#[test]
+fn a_config_the_walk_reaches_still_fails_the_run() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_broken_subtree(&root, false);
+
+    let (code, stdout, stderr) =
+        run_is_affected(&root, &["src/page.ts"], &["src/changed.ts", "src/gone.ts"]);
+
+    assert_eq!(code, 2, "no answer: {stdout}{stderr}");
+    assert!(stderr.contains("fallout.toml"), "{stderr}");
+}
+
 #[test]
 fn unresolved_lists_what_named_no_file() {
     let temp = TempDir::new().unwrap();
