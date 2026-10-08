@@ -158,6 +158,41 @@ anchors' app or its workspace packages. The release test suite and Clippy
 passed, including the test of a deleted file reached through a workspace
 package's `node_modules` link.
 
+## Reading imports only, in parallel, at file granularity
+
+A file-granularity run asks only which files each file imports, but it read
+every file through the full module analysis built for symbol granularity:
+CommonJS export tables, the coarsening check, semantic analysis and reference
+linking, all discarded once the import list was taken. This is the shape of a
+caller asking per project whether its entry points import a change, where an
+answer of not affected walks the whole application.
+
+The measurement replays that call: four anchors of one application, file
+granularity, downstream only, the changed paths with `--changed` and the
+commit's parent as `--base`, on each commit's own tree.
+
+Reading for imports now stops after parsing and type erasure, which the full
+analysis shares, so both read the same specifiers. Reading a file depends on
+no other, so the walk also reads every file waiting in its queue at once, on
+the thread pool, before going on in its usual order. The answer, and the chain
+it reports, are those of the serial walk; a hit found early only wastes the
+reads of files the walk does not reach. Reading for imports consults no
+configuration, so reading ahead cannot record a failure that the serial walk
+would not.
+
+One run per build on each of the 100 most recent first-parent commits:
+
+| Build | Median wall | Slowest wall | Total CPU |
+| --- | ---: | ---: | ---: |
+| Before | 0.638 s | 1.430 s | 63.2 s |
+| Imports only | 0.469 s | 0.999 s | 42.0 s |
+| Imports only, parallel | 0.319 s | 0.806 s | 79.4 s |
+
+Answers matched on every commit. Parallel reads trade CPU for wall time: the
+thread pool costs more CPU in total than the serial reads it replaces, and the
+resolver remains serial, which bounds the gain. Symbol granularity reads files
+through the graph instead and is unchanged.
+
 ## Next investigations
 
 - Separate CPU spent in resolution from filesystem waiting before adding caches.
@@ -167,8 +202,10 @@ package's `node_modules` link.
 - Comparing imports across the two trees still takes about a fifth of a run.
   The tree before has its own resolver cache, so it repeats every probe the
   tree as it is already made, including for paths the change did not touch.
-- The run is single-threaded. Parsing and analysis of files the walk will reach
-  could proceed in parallel; this would cut wall time rather than CPU.
+- Symbol granularity is still single-threaded. Its graph reads files lazily
+  through shared, unsynchronized caches, so reading ahead there needs the
+  analysis split from the graph first.
+- Resolution is serial in both walks and now bounds the file-granularity one.
 - Profile module analysis after the filesystem costs are separated. Shared-value
   access classification, local-helper proofs and repeated factory resolution are
   plausible targets from code inspection, but these samples do not establish

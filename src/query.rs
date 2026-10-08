@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use ahash::{AHashMap, AHashSet};
 use clap::ValueEnum;
+use rayon::prelude::*;
 
 use crate::change::Change;
 use crate::graph::{Graph, Node};
@@ -79,6 +80,11 @@ pub struct FileGraph {
 }
 
 impl FileGraph {
+    /// Whether `file`'s imports are already resolved, so reading it would be wasted.
+    fn knows(&self, file: &Path) -> bool {
+        self.imports.borrow().contains_key(file)
+    }
+
     pub fn new(resolver: Arc<Resolver>) -> Self {
         Self {
             resolver,
@@ -129,9 +135,26 @@ pub fn downstream(
         }
     }
 
+    let mut read: AHashMap<PathBuf, Vec<String>> = AHashMap::default();
     while let Some(current) = queue.pop_front() {
+        // Reading a file depends on no other, so everything waiting is read at once
+        // and in parallel, while the walk itself keeps its order and its answer.
+        if !read.contains_key(&current) && !files.knows(&current) {
+            let waiting: Vec<&PathBuf> = std::iter::once(&current)
+                .chain(&queue)
+                .filter(|file| !read.contains_key(*file) && !files.knows(file))
+                .collect();
+            let found: Vec<Vec<String>> = waiting
+                .par_iter()
+                .map(|file| imported_specifiers(file, reading).unwrap_or_default())
+                .collect();
+            read.extend(waiting.into_iter().cloned().zip(found));
+        }
         // Read once, for both questions that need them, and only if one does.
         let specifiers = OnceCell::new();
+        if let Some(found) = read.remove(&current) {
+            let _ = specifiers.set(found);
+        }
         let specifiers = || {
             specifiers
                 .get_or_init(|| imported_specifiers(&current, reading).unwrap_or_default())
