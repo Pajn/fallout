@@ -43,6 +43,11 @@ const SASS_BUILTINS: &[&str] = &[
     "sass:string",
 ];
 
+/// The extensions a module specifier may leave off, in the order they are tried.
+const MODULE_EXTENSIONS: &[&str] = &[
+    ".tsx", ".ts", ".cts", ".mts", ".jsx", ".js", ".mjs", ".cjs", ".json",
+];
+
 /// Specifiers a run asked for and could not place on disk.
 ///
 /// Resolving to nothing is the quietest way this tool can be wrong. The edge is
@@ -53,8 +58,8 @@ const SASS_BUILTINS: &[&str] = &[
 /// what was asked for, so a whole app's worth of lost edges is something a person can
 /// go and look at rather than something they have to already suspect.
 ///
-/// Specifiers that name no file *by design* are not recorded: a Node builtin and a
-/// `sass:` module are answers, not failures.
+/// Specifiers that name no file *by design* are not recorded: a Node builtin, a
+/// `sass:` module and a package made only of types are answers, not failures.
 #[derive(Debug, Default)]
 pub struct Unresolved {
     seen: RwLock<AHashMap<String, Vec<PathBuf>>>,
@@ -165,8 +170,8 @@ pub enum Found {
     /// A build output `[outputs]` declares, standing for the files it is built
     /// from that are in this tree. See [`Tree::built`].
     Built(Vec<PathBuf>),
-    /// A name that names no file by design, such as a Node builtin or a `sass:`
-    /// module: an answer, not a failure.
+    /// A name that names no file by design, such as a Node builtin, a `sass:`
+    /// module or a package made only of types: an answer, not a failure.
     NoFile,
     /// Nothing, where something was asked for.
     NotFound,
@@ -280,12 +285,19 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
         match attempt {
             Ok(resolution) => Found::Files(vec![resolution]),
             Err(ResolveError::Builtin { .. }) => Found::NoFile,
-            // Only a name that is not there can be an output not yet built. Any other
-            // failure, such as a tsconfig that cannot be read, stays one.
-            Err(ResolveError::NotFound(_) | ResolveError::ExtensionAlias(..)) => self.built(
-                from_file,
-                strip_inline_loaders(specifier).unwrap_or(specifier),
-            ),
+            // Only a name that is not there can be an output not yet built, or a
+            // package made only of types. Any other failure, such as a tsconfig
+            // that cannot be read, stays one.
+            Err(ResolveError::NotFound(_) | ResolveError::ExtensionAlias(..)) => {
+                match self.built(
+                    from_file,
+                    strip_inline_loaders(specifier).unwrap_or(specifier),
+                ) {
+                    Found::NotFound if self.types_only(from_file, specifier) => Found::NoFile,
+                    found => found,
+                }
+            }
+            Err(_) if self.types_only(from_file, specifier) => Found::NoFile,
             Err(_) => Found::NotFound,
         }
     }
@@ -340,6 +352,84 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
         } else {
             Found::Built(files)
         }
+    }
+
+    /// Whether `tsconfig` maps `specifier`: a `paths` entry matches it, or there is
+    /// a file or directory where `baseUrl` would look for it. A `baseUrl` offers a
+    /// place for every bare name, so it maps only the names it has something for.
+    fn tsconfig_maps(&self, tsconfig: &TsConfig, specifier: &str) -> bool {
+        let options = &tsconfig.compiler_options;
+        let in_paths = options.paths.as_ref().is_some_and(|paths| {
+            paths.keys().any(|key| match key.split_once('*') {
+                Some((prefix, suffix)) => {
+                    specifier.len() >= prefix.len() + suffix.len()
+                        && specifier.starts_with(prefix)
+                        && specifier.ends_with(suffix)
+                }
+                None => key == specifier,
+            })
+        });
+        in_paths
+            || options.base_url.as_ref().is_some_and(|base| {
+                let candidate = base.join(specifier);
+                let stem = candidate.to_string_lossy().into_owned();
+                std::iter::once(candidate.clone())
+                    .chain(
+                        MODULE_EXTENSIONS
+                            .iter()
+                            .map(|ext| PathBuf::from(format!("{stem}{ext}"))),
+                    )
+                    .any(|path| self.fs.metadata(&path).is_ok())
+            })
+    }
+
+    /// Whether `specifier`, which resolved to nothing, names an installed package
+    /// made only of types: one that declares `types` or `typings`, and neither
+    /// `exports` nor a file in any field the bundler reads an entry from. Nothing in
+    /// it is a module a bundler could load, and the names it offers are types, which
+    /// TypeScript drops from the import that names them. A package with no entry and
+    /// no typings, or an entry naming a file that is not there, is still lost. So is
+    /// a name the project maps, through an alias or a `tsconfig.json` path, since the
+    /// mapping rather than the package is what failed.
+    fn types_only(&self, from_file: &Path, specifier: &str) -> bool {
+        if package_name(specifier).as_deref() != Some(specifier) {
+            return false;
+        }
+        let aliased = self
+            .configs
+            .chain(from_file)
+            .aliases()
+            .iter()
+            .any(|(name, _)| alias_matches(name, specifier));
+        let mapped = self
+            .tsconfig_for(from_file)
+            .ok()
+            .flatten()
+            .is_some_and(|tsconfig| self.tsconfig_maps(&tsconfig, specifier));
+        if aliased || mapped {
+            return false;
+        }
+        let Some(text) = from_file.ancestors().skip(1).find_map(|dir| {
+            let manifest = dir
+                .join("node_modules")
+                .join(specifier)
+                .join("package.json");
+            self.fs.read_to_string(&manifest).ok()
+        }) else {
+            return false;
+        };
+        let typed = ["types", "typings"]
+            .iter()
+            .any(|key| top_level_string(&text, key).is_some_and(|value| !value.is_empty()));
+        // An entry field that is absent or `""` names no file.
+        let names_entry =
+            |key: &str| top_level(&text, key).is_some_and(|value| !value.starts_with("\"\""));
+        typed
+            && top_level(&text, "exports").is_none()
+            && !["main", "module"]
+                .into_iter()
+                .chain(self.lookup.main_fields.iter().map(String::as_str))
+                .any(names_entry)
     }
 
     /// The tsconfig that governs `file` in this tree, found the way resolving an
@@ -468,17 +558,10 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
     fn options(&self, dialect: Dialect, chain: &Chain) -> ResolveOptions {
         match dialect {
             Dialect::Module => ResolveOptions {
-                extensions: vec![
-                    ".tsx".to_string(),
-                    ".ts".to_string(),
-                    ".cts".to_string(),
-                    ".mts".to_string(),
-                    ".jsx".to_string(),
-                    ".js".to_string(),
-                    ".mjs".to_string(),
-                    ".cjs".to_string(),
-                    ".json".to_string(),
-                ],
+                extensions: MODULE_EXTENSIONS
+                    .iter()
+                    .map(|ext| ext.to_string())
+                    .collect(),
                 tsconfig: Some(TsconfigDiscovery::Auto),
                 alias: chain.aliases().clone(),
                 condition_names: self.lookup.conditions.clone(),
@@ -1050,9 +1133,22 @@ fn package_name(specifier: &str) -> Option<String> {
     }
 }
 
-/// The top-level `name` a `package.json` declares, read without a JSON parser: the
-/// first `"name"` key at the first level of nesting.
+/// The top-level `name` a `package.json` declares.
 fn declared_name(text: &str) -> Option<String> {
+    top_level_string(text, "name").map(str::to_string)
+}
+
+/// The value of a top-level string field of a `package.json`, `None` when the
+/// first top-level `key` holds anything else or there is none.
+fn top_level_string<'t>(text: &'t str, key: &str) -> Option<&'t str> {
+    let value = top_level(text, key)?.strip_prefix('"')?;
+    Some(&value[..value.find('"')?])
+}
+
+/// The first top-level `key` of a `package.json`'s value, from its first character
+/// to the end of the text, read without a JSON parser: the first `"key"` at the
+/// first level of nesting that is followed by a colon.
+fn top_level<'t>(text: &'t str, key: &str) -> Option<&'t str> {
     let mut depth = 0usize;
     let mut chars = text.char_indices().peekable();
     while let Some((at, character)) = chars.next() {
@@ -1073,17 +1169,12 @@ fn declared_name(text: &str) -> Option<String> {
                         break;
                     }
                 }
-                if depth != 1 || &text[start..end] != "name" {
+                if depth != 1 || &text[start..end] != key {
                     continue;
                 }
-                // A `"name"` that is a value, or a key whose value is not a string,
-                // is not the package's name, which may still come later.
-                let value = text[end + 1..]
-                    .trim_start()
-                    .strip_prefix(':')
-                    .and_then(|rest| rest.trim_start().strip_prefix('"'));
-                if let Some(name) = value.and_then(|value| Some(&value[..value.find('"')?])) {
-                    return Some(name.to_string());
+                // The same text as a value, as in `"main": "main"`, is not the key.
+                if let Some(value) = text[end + 1..].trim_start().strip_prefix(':') {
+                    return Some(value.trim_start());
                 }
             }
             _ => {}
