@@ -1155,7 +1155,9 @@ nothing that is there names no file, and is not reported as unresolved.
 The globs are matched against the files of the checkout, outside `node_modules` and
 hidden directories, and in the tree before a change only the files it has are kept,
 so a page the change added is not among them there. A page the change deleted is not
-among them in either tree. The output's own files are never read: the declaration is
+among them in either tree. A directory the globs could reach that cannot be listed
+stops the run with an error, as an unreadable `fallout.toml` does, rather than leaving
+its files out. The output's own files are never read: the declaration is
 the whole answer, which is why it lists what the build reads rather than what it
 writes.
 

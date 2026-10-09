@@ -81,6 +81,9 @@ pub enum Error {
     BadAlias { path: String, name: String },
     /// An output names something that is not a list of globs.
     BadOutput { path: String, name: String },
+    /// A directory an output's sources could be in could not be listed, so the
+    /// files the output is built from may be missing some.
+    Unlisted { path: String, detail: String },
     /// A setting that is either on or off was written as something else.
     NotABoolean { path: String, key: String },
     /// A setting that is a list of names was written as something else.
@@ -103,9 +106,14 @@ impl fmt::Display for Error {
             ),
             Error::BadOutput { path, name } => write!(
                 f,
-                "{path}: output `{name}` must be a glob or a list of globs naming the files \
-                 it is built from, relative to this file — for example \
+                "{path}: output `{name}` must be a valid glob, with a glob or a list of globs \
+                 naming the files it is built from, relative to this file — for example \
                  \".next/server.js\" = [\"pages/**/*.tsx\"]"
+            ),
+            Error::Unlisted { path, detail } => write!(
+                f,
+                "{path}: could not be listed ({detail}), and an output declared under \
+                 [outputs] may be built from files in it"
             ),
             Error::NotABoolean { path, key } => {
                 write!(f, "{path}: `{key}` must be true or false")
@@ -152,6 +160,20 @@ pub struct Output {
     pub path: String,
     /// Globs naming the files it is built from; those starting with `!` exclude.
     pub sources: Vec<String>,
+}
+
+/// The files under `--root`, and the directories that could not be listed, with why.
+#[derive(Debug, Default)]
+struct Listing {
+    files: Vec<String>,
+    unlisted: Vec<(String, String)>,
+}
+
+/// The directories a glob is certain to be under: everything before the segment
+/// holding its first wildcard.
+fn literal_prefix(glob: &str) -> &str {
+    let wild = glob.find(['*', '?', '[', '{']).unwrap_or(glob.len());
+    glob[..wild].rfind('/').map_or("", |slash| &glob[..slash])
 }
 
 /// How the bundler of an app finds a file for a package specifier.
@@ -268,7 +290,7 @@ pub struct Configs {
     unreadable_tsconfig: RwLock<Option<(PathBuf, String)>>,
     /// Every file under `--root` outside `node_modules` and hidden directories,
     /// canonical, listed when an output is first expanded.
-    files: std::sync::OnceLock<Vec<String>>,
+    files: std::sync::OnceLock<Listing>,
 }
 
 /// One directory's own file, `None` if it has not got one, or why it could not be
@@ -293,22 +315,49 @@ impl Configs {
     /// Every file under `--root`, outside `node_modules` and hidden directories, by
     /// its canonical path with `/` separators, which is how the resolver names the
     /// files it finds. Listed once, when an output is first expanded.
-    pub fn files(&self) -> &[String] {
-        self.files.get_or_init(|| {
+    ///
+    /// A directory that could not be listed is the run's failure when one of
+    /// `included` could match a file in it: the output would be built from fewer
+    /// files than are there, and an edge would be lost without a word.
+    pub fn files_for(&self, included: &[&String]) -> &[String] {
+        let listing = self.files.get_or_init(|| {
             let root = dunce::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
-            let mut files: Vec<String> = walkdir::WalkDir::new(&root)
+            let mut listing = Listing::default();
+            let walk = walkdir::WalkDir::new(&root)
                 .into_iter()
                 .filter_entry(|entry| {
                     let name = entry.file_name().to_string_lossy();
-                    name != "node_modules" && !(entry.depth() > 0 && name.starts_with('.'))
-                })
-                .filter_map(Result::ok)
-                .filter(|entry| entry.file_type().is_file())
-                .map(|entry| slashed(entry.path()))
-                .collect();
-            files.sort();
-            files
-        })
+                    !(entry.file_type().is_dir()
+                        && (name == "node_modules" || (entry.depth() > 0 && name.starts_with('.'))))
+                });
+            for entry in walk {
+                match entry {
+                    Ok(entry) if entry.file_type().is_file() => {
+                        listing.files.push(slashed(entry.path()));
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        let path = error.path().map_or_else(|| slashed(&root), slashed);
+                        listing.unlisted.push((path, error.to_string()));
+                    }
+                }
+            }
+            listing.files.sort();
+            listing
+        });
+        for (dir, detail) in &listing.unlisted {
+            let reachable = included.iter().any(|glob| {
+                let prefix = literal_prefix(glob);
+                dir.starts_with(prefix) || prefix.starts_with(&format!("{dir}/"))
+            });
+            if reachable {
+                self.note(Error::Unlisted {
+                    path: dir.clone(),
+                    detail: detail.clone(),
+                });
+            }
+        }
+        &listing.files
     }
 
     /// What `file` inherits, from the directory holding it up to `--root`.
@@ -677,18 +726,25 @@ fn outputs(value: Option<&toml::Value>, dir: &Path, shown: &str) -> Result<Vec<O
         name: name.to_string(),
     };
     let dir = slashed(dir);
-    let within = |glob: &str| match glob.strip_prefix('!') {
-        Some(excluded) => format!("!{dir}/{excluded}"),
-        None => format!("{dir}/{glob}"),
+    // A glob is made absolute and its `.` and `..` worked out, since the paths it
+    // is matched against have neither. One that cannot be read is refused rather
+    // than matching nothing.
+    let within = |glob: &str| {
+        let (bang, glob) = glob
+            .strip_prefix('!')
+            .map_or(("", glob), |glob| ("!", glob));
+        let glob = normal_glob(&format!("{dir}/{glob}"));
+        fast_glob::validate(&glob).ok()?;
+        Some(format!("{bang}{glob}"))
     };
     outputs
         .iter()
         .map(|(name, value)| {
             let sources = match value {
-                toml::Value::String(one) => vec![within(one)],
+                toml::Value::String(one) => vec![within(one).ok_or_else(|| bad(name))?],
                 toml::Value::Array(many) => many
                     .iter()
-                    .map(|each| each.as_str().map(within).ok_or_else(|| bad(name)))
+                    .map(|each| each.as_str().and_then(within).ok_or_else(|| bad(name)))
                     .collect::<Result<_, _>>()?,
                 _ => return Err(bad(name)),
             };
@@ -696,11 +752,26 @@ fn outputs(value: Option<&toml::Value>, dir: &Path, shown: &str) -> Result<Vec<O
                 return Err(bad(name));
             }
             Ok(Output {
-                path: within(name),
+                path: within(name).ok_or_else(|| bad(name))?,
                 sources,
             })
         })
         .collect()
+}
+
+/// `glob` with its `.` segments dropped and each `..` taking the segment before it.
+fn normal_glob(glob: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in glob.split('/') {
+        match segment {
+            "." => {}
+            ".." if segments.len() > 1 => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    segments.join("/")
 }
 
 /// `path` with `/` separators, as globs are written.
@@ -892,6 +963,94 @@ mod tests {
                 configs.failure()
             );
         }
+    }
+
+    #[test]
+    fn output_globs_lose_their_dot_segments() {
+        let (dir, configs) = tree(&[(
+            "apps/web",
+            "[outputs]\n\"./dist/../.next/worker.js\" = [\"./pages/**/*.tsx\", \"!./pages/x.tsx\"]\n",
+        )]);
+        let chain = configs.chain(&dir.path().join("apps/web/worker.ts"));
+        let web = slashed(&dir.path().join("apps/web"));
+        assert_eq!(chain.outputs()[0].path, format!("{web}/.next/worker.js"));
+        assert_eq!(
+            chain.outputs()[0].sources,
+            [
+                format!("{web}/pages/**/*.tsx"),
+                format!("!{web}/pages/x.tsx")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_glob_that_cannot_be_read_is_refused() {
+        for body in [
+            "[outputs]\n\"dist/x.js\" = \"src/[pages\"\n",
+            "[outputs]\n\"dist/[x.js\" = \"src/**\"\n",
+        ] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.ts"));
+            assert!(
+                matches!(configs.failure(), Some(Error::BadOutput { .. })),
+                "{body}: {:?}",
+                configs.failure()
+            );
+        }
+    }
+
+    #[test]
+    fn a_glob_is_certainly_under_what_comes_before_its_first_wildcard() {
+        assert_eq!(
+            literal_prefix("/r/apps/web/pages/**/*.tsx"),
+            "/r/apps/web/pages"
+        );
+        assert_eq!(literal_prefix("/r/src/x.tsx"), "/r/src");
+        assert_eq!(literal_prefix("/r/src/{a,b}/x.tsx"), "/r/src");
+    }
+
+    #[test]
+    fn hidden_files_are_listed_and_hidden_directories_are_not() {
+        let (dir, configs) = tree(&[]);
+        std::fs::create_dir_all(dir.path().join("src/.cache")).unwrap();
+        std::fs::write(dir.path().join("src/.env.ts"), "").unwrap();
+        std::fs::write(dir.path().join("src/.cache/x.ts"), "").unwrap();
+        let root = slashed(&dunce::canonicalize(dir.path()).unwrap());
+        let glob = format!("{root}/src/**");
+        let files = configs.files_for(&[&glob]);
+        assert!(files.contains(&format!("{root}/src/.env.ts")), "{files:?}");
+        assert!(
+            !files.contains(&format!("{root}/src/.cache/x.ts")),
+            "{files:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_directory_an_output_could_be_built_from_must_be_listed() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, configs) = tree(&[]);
+        let locked = dir.path().join("src/locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Whoever can read it anyway, such as root, has nothing to test.
+        let readable = std::fs::read_dir(&locked).is_ok();
+        let root = slashed(&dunce::canonicalize(dir.path()).unwrap());
+        let elsewhere = format!("{root}/lib/**");
+        configs.files_for(&[&elsewhere]);
+        let unrelated = configs.failure();
+        let within = format!("{root}/src/**/*.ts");
+        configs.files_for(&[&within]);
+        let related = configs.failure();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if readable {
+            return;
+        }
+        assert!(unrelated.is_none(), "{unrelated:?}");
+        assert!(
+            matches!(related, Some(Error::Unlisted { .. })),
+            "{related:?}"
+        );
     }
 
     #[test]

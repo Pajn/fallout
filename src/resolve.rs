@@ -319,7 +319,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             .partition(|glob| glob.starts_with('!'));
         let files: Vec<PathBuf> = self
             .configs
-            .files()
+            .files_for(&included)
             .iter()
             .filter(|file| {
                 included
