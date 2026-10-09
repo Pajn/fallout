@@ -14,7 +14,7 @@
 //! one name; the aliases are baked into a resolver when it is built, so resolvers are
 //! cached by the chain of config directories that produced them. Most trees have one.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use ahash::AHashMap;
@@ -23,7 +23,7 @@ use oxc_resolver::{
     ResolverGeneric, SideEffects as Declared, TsConfig, TsconfigDiscovery,
 };
 
-use crate::config::{Chain, Configs, Lookup};
+use crate::config::{Chain, Configs, Lookup, slashed};
 use crate::module::is_style_file;
 use crate::repoint::MovedImports;
 
@@ -162,6 +162,9 @@ pub enum Found {
     /// `package.json` it read. Never empty, and one file for anything but a Sass
     /// URL that more than one file answers: see `resolve_sass`.
     Files(Vec<Resolution>),
+    /// A build output `[outputs]` declares, standing for the files it is built
+    /// from that are in this tree. See [`Tree::built`].
+    Built(Vec<PathBuf>),
     /// A name that names no file by design, such as a Node builtin or a `sass:`
     /// module: an answer, not a failure.
     NoFile,
@@ -174,6 +177,7 @@ impl Found {
     pub fn paths(&self) -> Vec<&Path> {
         match self {
             Found::Files(resolutions) => resolutions.iter().map(Resolution::path).collect(),
+            Found::Built(paths) => paths.iter().map(PathBuf::as_path).collect(),
             Found::NoFile | Found::NotFound => Vec::new(),
         }
     }
@@ -260,7 +264,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
                 found.extend(resolve_style(&resolver, from_file, request));
             }
             return if found.is_empty() {
-                Found::NotFound
+                self.built(from_file, request)
             } else {
                 Found::Files(found)
             };
@@ -276,7 +280,62 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
         match attempt {
             Ok(resolution) => Found::Files(vec![resolution]),
             Err(ResolveError::Builtin { .. }) => Found::NoFile,
-            Err(_) => Found::NotFound,
+            Err(_) => self.built(
+                from_file,
+                strip_inline_loaders(specifier).unwrap_or(specifier),
+            ),
+        }
+    }
+
+    /// What a relative `specifier` that resolved to nothing stands for when the path
+    /// it names is a build output `[outputs]` declares: every file it is built from
+    /// that this tree has, so an import of the output reaches what the build reads.
+    /// An output built from nothing in this tree names no file, by declaration.
+    /// Anything else is not found.
+    ///
+    /// The sources are matched against the files of the checkout, and kept where
+    /// this tree has them, so a file the change added is not among them in the tree
+    /// before it. One the change deleted is not among them in either.
+    fn built(&self, from_file: &Path, specifier: &str) -> Found {
+        let path = specifier.split(['?', '#']).next().unwrap_or(specifier);
+        if !(path.starts_with("./") || path.starts_with("../")) {
+            return Found::NotFound;
+        }
+        let Some(dir) = from_file.parent() else {
+            return Found::NotFound;
+        };
+        let named = slashed(&lexically_normal(&dir.join(path)));
+        let chain = self.configs.chain(from_file);
+        let mut sources = chain
+            .outputs()
+            .iter()
+            .filter(|output| fast_glob::glob_match(&output.path, &named))
+            .peekable();
+        if sources.peek().is_none() {
+            return Found::NotFound;
+        }
+        let (excluded, included): (Vec<&String>, Vec<&String>) = sources
+            .flat_map(|output| output.sources.iter())
+            .partition(|glob| glob.starts_with('!'));
+        let files: Vec<PathBuf> = self
+            .configs
+            .files()
+            .iter()
+            .filter(|file| {
+                included
+                    .iter()
+                    .any(|glob| fast_glob::glob_match(glob, file))
+                    && !excluded
+                        .iter()
+                        .any(|glob| fast_glob::glob_match(&glob[1..], file))
+            })
+            .map(PathBuf::from)
+            .filter(|file| self.fs.metadata(file).is_ok_and(|meta| meta.is_file()))
+            .collect();
+        if files.is_empty() {
+            Found::NoFile
+        } else {
+            Found::Built(files)
         }
     }
 
@@ -690,6 +749,9 @@ impl Resolver {
                     })
                     .collect()
             }
+            // Files a build output is built from. Their `sideEffects` is not known
+            // from here, so each stays `Possible`.
+            Found::Built(paths) => Arc::from(paths),
             // A specifier that names no file *by design* is a different thing from
             // one this run could not find, and is not worth reporting as a failure.
             Found::NoFile => Arc::from([]),
@@ -938,6 +1000,22 @@ fn alias_matches(name: &str, specifier: &str) -> bool {
         || specifier
             .strip_prefix(name)
             .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// `path` with `.` and `..` worked out from its own components, without asking the
+/// disk, which is how a path to a file that is not there can still be compared.
+fn lexically_normal(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normal.pop();
+            }
+            other => normal.push(other),
+        }
+    }
+    normal
 }
 
 /// Whether `path` belongs to an installed package, somewhere below a `node_modules`

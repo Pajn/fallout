@@ -25,6 +25,9 @@
 //!   root alone, and a name that resolves to nothing loses an edge. Within one file
 //!   the more specific key is tried first, so `#app/assets/*` beats `#app/*` however
 //!   the two were written down.
+//! - **Outputs accumulate** too: a path declared to be built from some files is
+//!   answered by them wherever it is declared, and a missing declaration loses the
+//!   edges an import of the output stands for.
 //! - **`pure` accumulates** the same way, and an entry applies only below the file
 //!   that wrote it. A package calling its own factory pure cannot quiet a call in an
 //!   app that never made the claim.
@@ -76,6 +79,8 @@ pub enum Error {
     NotATable { path: String, key: String },
     /// An alias points at something that is not a path or a list of them.
     BadAlias { path: String, name: String },
+    /// An output names something that is not a list of globs.
+    BadOutput { path: String, name: String },
     /// A setting that is either on or off was written as something else.
     NotABoolean { path: String, key: String },
     /// A setting that is a list of names was written as something else.
@@ -95,6 +100,12 @@ impl fmt::Display for Error {
                 f,
                 "{path}: alias `{name}` must be a path or a list of paths, relative to \
                  this file — for example sass = \"app/sass\""
+            ),
+            Error::BadOutput { path, name } => write!(
+                f,
+                "{path}: output `{name}` must be a glob or a list of globs naming the files \
+                 it is built from, relative to this file — for example \
+                 \".next/server.js\" = [\"pages/**/*.tsx\"]"
             ),
             Error::NotABoolean { path, key } => {
                 write!(f, "{path}: `{key}` must be true or false")
@@ -123,6 +134,7 @@ impl fmt::Display for Error {
 struct Declared {
     aliases: Alias,
     style_aliases: Alias,
+    outputs: Vec<Output>,
     pure: Vec<PureCall>,
     /// `None` when the file did not say, which is what lets the nearest file that
     /// did say decide for a whole subtree.
@@ -130,6 +142,16 @@ struct Declared {
     inline_requires: Option<bool>,
     conditions: Option<Vec<String>>,
     main_fields: Option<Vec<String>>,
+}
+
+/// A build output an import may name before it is built, and the files it is built
+/// from, as `[outputs]` declares them. Every path is absolute, with `/` separators.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Output {
+    /// A glob matching the output's path.
+    pub path: String,
+    /// Globs naming the files it is built from; those starting with `!` exclude.
+    pub sources: Vec<String>,
 }
 
 /// How the bundler of an app finds a file for a package specifier.
@@ -175,6 +197,7 @@ pub struct Chain {
     dirs: Vec<PathBuf>,
     aliases: Alias,
     style_aliases: Alias,
+    outputs: Vec<Output>,
     pure: PureList,
     inline_requires: bool,
     lookup: Lookup,
@@ -201,6 +224,12 @@ impl Chain {
     /// name meaning one thing in Sass and another in JavaScript can say so.
     pub fn style_aliases(&self) -> &Alias {
         &self.style_aliases
+    }
+
+    /// Build outputs and what they are built from, nearest first. They accumulate,
+    /// as aliases do.
+    pub fn outputs(&self) -> &[Output] {
+        &self.outputs
     }
 
     pub fn pure(&self) -> &PureList {
@@ -237,6 +266,9 @@ pub struct Configs {
     /// reason: it is met deep inside the resolver, which every resolver of a run
     /// reaches through this, and the run checks it before reporting a verdict.
     unreadable_tsconfig: RwLock<Option<(PathBuf, String)>>,
+    /// Every file under `--root` outside `node_modules` and hidden directories,
+    /// canonical, listed when an output is first expanded.
+    files: std::sync::OnceLock<Vec<String>>,
 }
 
 /// One directory's own file, `None` if it has not got one, or why it could not be
@@ -254,7 +286,29 @@ impl Configs {
             chains: RwLock::new(AHashMap::default()),
             failure: RwLock::new(None),
             unreadable_tsconfig: RwLock::new(None),
+            files: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Every file under `--root`, outside `node_modules` and hidden directories, by
+    /// its canonical path with `/` separators, which is how the resolver names the
+    /// files it finds. Listed once, when an output is first expanded.
+    pub fn files(&self) -> &[String] {
+        self.files.get_or_init(|| {
+            let root = dunce::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
+            let mut files: Vec<String> = walkdir::WalkDir::new(&root)
+                .into_iter()
+                .filter_entry(|entry| {
+                    let name = entry.file_name().to_string_lossy();
+                    name != "node_modules" && !(entry.depth() > 0 && name.starts_with('.'))
+                })
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().is_file())
+                .map(|entry| slashed(entry.path()))
+                .collect();
+            files.sort();
+            files
+        })
     }
 
     /// What `file` inherits, from the directory holding it up to `--root`.
@@ -294,6 +348,10 @@ impl Configs {
             style_aliases: declared
                 .iter()
                 .flat_map(|one| one.style_aliases.iter().chain(one.aliases.iter()).cloned())
+                .collect(),
+            outputs: declared
+                .iter()
+                .flat_map(|one| one.outputs.iter().cloned())
                 .collect(),
             pure: PureList::of(
                 declared
@@ -465,6 +523,7 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
     Ok(Some(Declared {
         aliases: table(document.get("aliases"), dir, &shown, "aliases")?,
         style_aliases: style_aliases(&document, dir, &shown)?,
+        outputs: outputs(document.get("outputs"), dir, &shown)?,
         pure,
         builtin_pure,
         inline_requires: flag(&document, "inline-requires", &shown)?,
@@ -603,6 +662,52 @@ fn specificity(name: &str) -> (u8, std::cmp::Reverse<usize>, String) {
     (exact, std::cmp::Reverse(literal), name.to_string())
 }
 
+/// The `[outputs]` table: each output's path and the globs naming its sources, all
+/// made absolute from the file that declares them.
+fn outputs(value: Option<&toml::Value>, dir: &Path, shown: &str) -> Result<Vec<Output>, Error> {
+    let Some(outputs) = value else {
+        return Ok(Vec::new());
+    };
+    let outputs = outputs.as_table().ok_or_else(|| Error::NotATable {
+        path: shown.to_string(),
+        key: "outputs".to_string(),
+    })?;
+    let bad = |name: &str| Error::BadOutput {
+        path: shown.to_string(),
+        name: name.to_string(),
+    };
+    let dir = slashed(dir);
+    let within = |glob: &str| match glob.strip_prefix('!') {
+        Some(excluded) => format!("!{dir}/{excluded}"),
+        None => format!("{dir}/{glob}"),
+    };
+    outputs
+        .iter()
+        .map(|(name, value)| {
+            let sources = match value {
+                toml::Value::String(one) => vec![within(one)],
+                toml::Value::Array(many) => many
+                    .iter()
+                    .map(|each| each.as_str().map(within).ok_or_else(|| bad(name)))
+                    .collect::<Result<_, _>>()?,
+                _ => return Err(bad(name)),
+            };
+            if !sources.iter().any(|glob| !glob.starts_with('!')) {
+                return Err(bad(name));
+            }
+            Ok(Output {
+                path: within(name),
+                sources,
+            })
+        })
+        .collect()
+}
+
+/// `path` with `/` separators, as globs are written.
+pub fn slashed(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 fn flag(document: &toml::Table, key: &str, shown: &str) -> Result<Option<bool>, Error> {
     match document.get(key) {
         None => Ok(None),
@@ -728,6 +833,65 @@ mod tests {
             "nearest first"
         );
         assert!(Path::new(&found[1]).ends_with("shared/sass"));
+    }
+
+    #[test]
+    fn an_output_is_built_from_globs_below_the_file_that_declares_it() {
+        let (dir, configs) = tree(&[(
+            "apps/web",
+            "[outputs]\n\".next/worker.js\" = [\"pages/**/*.tsx\", \"!pages/**/*.test.tsx\"]\n",
+        )]);
+        let chain = configs.chain(&dir.path().join("apps/web/worker.ts"));
+        let web = slashed(&dir.path().join("apps/web"));
+        assert_eq!(
+            chain.outputs(),
+            &[Output {
+                path: format!("{web}/.next/worker.js"),
+                sources: vec![
+                    format!("{web}/pages/**/*.tsx"),
+                    format!("!{web}/pages/**/*.test.tsx"),
+                ],
+            }]
+        );
+        assert!(configs.failure().is_none());
+    }
+
+    #[test]
+    fn outputs_accumulate_nearest_first() {
+        let (dir, configs) = tree(&[
+            ("", "[outputs]\n\"dist/*\" = \"src/**\"\n"),
+            ("apps/web", "[outputs]\n\".next/*\" = \"pages/**\"\n"),
+        ]);
+        let chain = configs.chain(&dir.path().join("apps/web/worker.ts"));
+        let paths: Vec<&str> = chain
+            .outputs()
+            .iter()
+            .map(|output| output.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                format!("{}/.next/*", slashed(&dir.path().join("apps/web"))),
+                format!("{}/dist/*", slashed(dir.path())),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_output_needs_a_glob_to_be_built_from() {
+        for body in [
+            "[outputs]\n\"dist/x.js\" = 1\n",
+            "[outputs]\n\"dist/x.js\" = []\n",
+            "[outputs]\n\"dist/x.js\" = [\"!src/**\"]\n",
+        ] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.ts"));
+            assert!(
+                matches!(configs.failure(), Some(Error::BadOutput { .. })),
+                "{body}: {:?}",
+                configs.failure()
+            );
+        }
     }
 
     #[test]
