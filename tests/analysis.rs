@@ -839,6 +839,47 @@ export const TypedPage = () => typed;"#,
     );
 }
 
+/// A name the project maps is the project's to answer. When the mapping leads
+/// nowhere, an installed package made only of types under the same name does not
+/// stand in for it.
+#[test]
+fn unresolved_keeps_a_failed_alias_shadowing_a_package_made_only_of_types() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_unresolved_project(&root);
+    let dir = root.join("node_modules/only-types");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("package.json"),
+        r#"{"name": "only-types", "typings": "index.d.ts"}"#,
+    )
+    .unwrap();
+    fs::write(dir.join("index.d.ts"), "export type Shape = { a: 1 };\n").unwrap();
+    fs::write(
+        root.join("fallout.toml"),
+        "[aliases]\n\"only-types$\" = \"src/missing/types\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/TypedPage.tsx"),
+        r#"import { Shape } from "only-types";
+export const TypedPage = (shape: Shape) => shape;"#,
+    )
+    .unwrap();
+
+    let (_, stdout, _) = run_is_affected_with(
+        &root,
+        &["src/pages/TypedPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol", "--unresolved"],
+    );
+
+    assert!(
+        stdout.contains("only-types"),
+        "the alias that led nowhere is still lost: {stdout}"
+    );
+}
+
 /// A relative path to a data file or an asset, such as JSON, names a leaf: missing,
 /// it is on the way to nothing, so it is not a lost edge. A path that could name a
 /// module, including one whose name has a dot in it, and a name that may well be a

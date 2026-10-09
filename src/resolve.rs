@@ -286,9 +286,29 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
     /// `exports` nor a file in any field the bundler reads an entry from. Nothing in
     /// it is a module a bundler could load, and the names it offers are types, which
     /// TypeScript drops from the import that names them. A package with no entry and
-    /// no typings, or an entry naming a file that is not there, is still lost.
+    /// no typings, or an entry naming a file that is not there, is still lost. So is
+    /// a name the project maps, through an alias or a `tsconfig.json` path, since the
+    /// mapping rather than the package is what failed.
     fn types_only(&self, from_file: &Path, specifier: &str) -> bool {
         if package_name(specifier).as_deref() != Some(specifier) {
+            return false;
+        }
+        let aliased = self
+            .configs
+            .chain(from_file)
+            .aliases()
+            .iter()
+            .any(|(name, _)| alias_matches(name, specifier));
+        let mapped = self
+            .tsconfig_for(from_file)
+            .ok()
+            .flatten()
+            .is_some_and(|tsconfig| {
+                !tsconfig
+                    .resolve_path_alias_or_base_url(specifier)
+                    .is_empty()
+            });
+        if aliased || mapped {
             return false;
         }
         let Some(text) = from_file.ancestors().skip(1).find_map(|dir| {
