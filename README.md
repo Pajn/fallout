@@ -935,9 +935,14 @@ fault: a package nobody installed on this machine looks exactly like a broken
 import, and a virtual module the bundler invents has no file to find. The flag reports
 and does not judge — the verdict and the exit code are the same with it and without.
 
-Two kinds are left out, because they are answers rather than failures: Node builtins
-(`fs`, `node:fs/promises`) and Sass modules (`@use "sass:math"`). Neither names a file
-and neither ever will.
+Three kinds are left out, because they are answers rather than failures: Node builtins
+(`fs`, `node:fs/promises`), Sass modules (`@use "sass:math"`), and packages made only
+of types. None names a module and none ever will. A package made only of types, such as
+`@graphql-typed-document-node/core`, declares `types` or `typings` and no entry: no
+`exports`, and no file in `main`, `module` or the `[resolve]` fields. What it offers are
+types, which TypeScript drops from the import that names them, even one written as
+`import { … }` rather than `import type { … }`. A package with no entry and no typings,
+or one whose entry names a file that is not there, is still reported.
 
 A relative path to a missing data file or asset, named by an extension such as `.json`,
 `.png` or `.woff2`, is left out too, such as an optional `../env.json` an app loads

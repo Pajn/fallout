@@ -775,6 +775,70 @@ fn unresolved_leaves_out_what_names_no_file_by_design() {
     }
 }
 
+/// A package with typings and no JavaScript entry has no module for a bundler to
+/// load: its names are types, which TypeScript drops from the import. Importing it
+/// is an answer, as a builtin is. A package with no entry and no typings, or whose
+/// entry names a file that is not there, is still a lost edge.
+#[test]
+fn unresolved_leaves_out_packages_made_only_of_types() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_unresolved_project(&root);
+    let package = |name: &str, manifest: &str, files: &[&str]| {
+        let dir = root.join("node_modules").join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("package.json"), manifest).unwrap();
+        for file in files {
+            fs::write(dir.join(file), "export type Shape = { a: 1 };\n").unwrap();
+        }
+    };
+    package(
+        "only-types",
+        r#"{"name": "only-types", "main": "", "typings": "index.d.ts"}"#,
+        &["index.d.ts"],
+    );
+    package("no-entry", r#"{"name": "no-entry"}"#, &[]);
+    package(
+        "lost-main",
+        r#"{"name": "lost-main", "main": "dist/index.js", "types": "index.d.ts"}"#,
+        &["index.d.ts"],
+    );
+    fs::write(
+        root.join("src/utils/typed.ts"),
+        r#"import { Shape } from "only-types";
+import { other } from "no-entry";
+import { more } from "lost-main";
+export const typed = (shape: Shape) => [shape, other, more];"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/TypedPage.tsx"),
+        r#"import { typed } from "../utils/typed";
+export const TypedPage = () => typed;"#,
+    )
+    .unwrap();
+
+    let (_, stdout, _) = run_is_affected_with(
+        &root,
+        &["src/pages/TypedPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol", "--unresolved"],
+    );
+
+    assert!(
+        !stdout.contains("only-types"),
+        "a package made only of types names no module: {stdout}"
+    );
+    assert!(
+        stdout.contains("no-entry"),
+        "a package with no entry and no typings is still lost: {stdout}"
+    );
+    assert!(
+        stdout.contains("lost-main"),
+        "an entry that names a missing file is still lost: {stdout}"
+    );
+}
+
 /// A relative path to a data file or an asset, such as JSON, names a leaf: missing,
 /// it is on the way to nothing, so it is not a lost edge. A path that could name a
 /// module, including one whose name has a dot in it, and a name that may well be a
