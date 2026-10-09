@@ -623,6 +623,7 @@ fallout.toml               pure = [...]            # everywhere
 apps/mobile/fallout.toml   inline-requires = true  # this app's bundler
                            [resolve]               # and how it enters packages
 apps/web/fallout.toml      [aliases]               # what this app's config maps
+                           [outputs]               # what its build outputs are built from
 ```
 
 What happens where several files apply follows from the direction each setting is
@@ -631,6 +632,7 @@ wrong in:
 | setting | several apply |
 |---------|---------------|
 | `[aliases]`, `[style.aliases]` | accumulate, nearest first — a name gets every directory claimed for it, tried in order |
+| `[outputs]` | accumulate — an output is built from what every file that declares it says |
 | `pure` | accumulate, and an entry only ever applies below the file that wrote it |
 | `builtin-pure`, `inline-requires`, each `[resolve]` key | one answer, so the nearest wins |
 
@@ -929,7 +931,8 @@ Resolved to nothing: 2 specifier(s), written in 3 file(s).
 ```
 
 A name the bundler answers and nothing else does is declared, under [Import
-aliases](#import-aliases); that is what this report is for finding. Beyond that
+aliases](#import-aliases), and a build output under [Build outputs](#build-outputs);
+that is what this report is for finding. Beyond that
 nothing is done automatically, because an unresolved specifier is not by itself a
 fault: a package nobody installed on this machine looks exactly like a broken
 import, and a virtual module the bundler invents has no file to find. The flag reports
@@ -1133,6 +1136,35 @@ The general table answers stylesheet imports as well, after `[style.aliases]`. A
 bundler has one `resolve.alias` covering every kind of file and that is usually what a
 project means; `[style.aliases]` stays for the names that mean something only inside a
 stylesheet.
+
+### Build outputs
+
+Some code imports what a build produces rather than what it is built from: a worker
+that wraps OpenNext's `.open-next/worker.js`, a server that loads `dist/`. The output
+is not in a checkout until the app is built, and is never what a change edits, so the
+import resolves to nothing and every page behind it is lost. An app says what the
+output is built from:
+
+```toml
+# apps/web/fallout.toml
+[outputs]
+".open-next/worker.js" = ["pages/**/*.tsx", "!pages/**/*.test.tsx"]
+```
+
+A relative import that resolves to nothing, and whose path an output's key matches,
+stands for every file the output's globs match, so the worker reaches whatever any
+page reaches. Keys and globs are relative to the `fallout.toml` that declares them,
+take `*` and `**`, and a glob starting with `!` leaves files out. An output built from
+nothing that is there names no file, and is not reported as unresolved.
+
+The globs are matched against the files of the checkout, outside `node_modules` and
+hidden directories, and in the tree before a change only the files it has are kept,
+so a page the change added is not among them there. A page the change deleted is not
+among them in either tree. A directory the globs could reach that cannot be listed
+stops the run with an error, as an unreadable `fallout.toml` does, rather than leaving
+its files out. The output's own files are never read: the declaration is
+the whole answer, which is why it lists what the build reads rather than what it
+writes.
 
 Assets referenced as `new URL("./worker.ts", import.meta.url)` are followed too, which
 covers the `new Worker(new URL(...))` form used by Vite and webpack. Because the worker

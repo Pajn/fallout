@@ -775,6 +775,88 @@ fn unresolved_leaves_out_what_names_no_file_by_design() {
     }
 }
 
+/// A worker that imports its framework's build output, which is not in the tree
+/// until the app is built. Declared under `[outputs]`, the import stands for the
+/// files the output is built from; undeclared, it is a lost edge.
+fn setup_built_worker(root: &Path, declare: bool) {
+    setup_test_project(root);
+    fs::create_dir_all(root.join("src/worker")).unwrap();
+    fs::write(
+        root.join("src/worker/index.ts"),
+        r#"import handler from "../../dist/worker.js";
+export default handler;"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/pages/CheckoutPage.test.tsx"),
+        r#"import { CheckoutPage } from "./CheckoutPage";
+export const test = CheckoutPage;"#,
+    )
+    .unwrap();
+    if declare {
+        fs::write(
+            root.join("fallout.toml"),
+            "[outputs]\n\"dist/worker.js\" = [\"src/pages/**/*.tsx\", \"!src/pages/**/*.test.tsx\"]\n",
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn a_declared_output_stands_for_the_files_it_is_built_from() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_built_worker(&root, true);
+
+    let (_, stdout, _) = run_is_affected_with(
+        &root,
+        &["src/worker/index.ts"],
+        &["src/components/Button.tsx"],
+        &["--only", "downstream", "--unresolved"],
+    );
+    assert!(
+        !stdout.contains("No reachability impact detected"),
+        "the worker reaches the pages its output is built from: {stdout}"
+    );
+    assert!(
+        !stdout.contains("dist/worker.js"),
+        "a declared output is not unresolved: {stdout}"
+    );
+
+    let (_, stdout, _) = run_is_affected_with(
+        &root,
+        &["src/worker/index.ts"],
+        &["src/pages/CheckoutPage.test.tsx"],
+        &["--only", "downstream"],
+    );
+    assert!(
+        stdout.contains("No reachability impact detected"),
+        "an excluded file is not one the output is built from: {stdout}"
+    );
+}
+
+#[test]
+fn an_undeclared_output_is_still_a_lost_edge() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    setup_built_worker(&root, false);
+
+    let (_, stdout, _) = run_is_affected_with(
+        &root,
+        &["src/worker/index.ts"],
+        &["src/components/Button.tsx"],
+        &["--only", "downstream", "--unresolved"],
+    );
+    assert!(
+        stdout.contains("No reachability impact detected"),
+        "nothing says what the output holds: {stdout}"
+    );
+    assert!(
+        stdout.contains("../../dist/worker.js"),
+        "so the import is reported: {stdout}"
+    );
+}
+
 /// A package with typings and no JavaScript entry has no module for a bundler to
 /// load: its names are types, which TypeScript drops from the import. Importing it
 /// is an answer, as a builtin is. A package with no entry and no typings, or whose

@@ -25,6 +25,9 @@
 //!   root alone, and a name that resolves to nothing loses an edge. Within one file
 //!   the more specific key is tried first, so `#app/assets/*` beats `#app/*` however
 //!   the two were written down.
+//! - **Outputs accumulate** too: a path declared to be built from some files is
+//!   answered by them wherever it is declared, and a missing declaration loses the
+//!   edges an import of the output stands for.
 //! - **`pure` accumulates** the same way, and an entry applies only below the file
 //!   that wrote it. A package calling its own factory pure cannot quiet a call in an
 //!   app that never made the claim.
@@ -76,6 +79,11 @@ pub enum Error {
     NotATable { path: String, key: String },
     /// An alias points at something that is not a path or a list of them.
     BadAlias { path: String, name: String },
+    /// An output names something that is not a list of globs.
+    BadOutput { path: String, name: String },
+    /// A directory an output's sources could be in could not be listed, so the
+    /// files the output is built from may be missing some.
+    Unlisted { path: String, detail: String },
     /// A setting that is either on or off was written as something else.
     NotABoolean { path: String, key: String },
     /// A setting that is a list of names was written as something else.
@@ -95,6 +103,17 @@ impl fmt::Display for Error {
                 f,
                 "{path}: alias `{name}` must be a path or a list of paths, relative to \
                  this file — for example sass = \"app/sass\""
+            ),
+            Error::BadOutput { path, name } => write!(
+                f,
+                "{path}: output `{name}` must be a valid glob, with a glob or a list of globs \
+                 naming the files it is built from, relative to this file — for example \
+                 \".next/server.js\" = [\"pages/**/*.tsx\"]"
+            ),
+            Error::Unlisted { path, detail } => write!(
+                f,
+                "{path}: could not be listed ({detail}), and an output declared under \
+                 [outputs] may be built from files in it"
             ),
             Error::NotABoolean { path, key } => {
                 write!(f, "{path}: `{key}` must be true or false")
@@ -123,6 +142,7 @@ impl fmt::Display for Error {
 struct Declared {
     aliases: Alias,
     style_aliases: Alias,
+    outputs: Vec<Output>,
     pure: Vec<PureCall>,
     /// `None` when the file did not say, which is what lets the nearest file that
     /// did say decide for a whole subtree.
@@ -130,6 +150,30 @@ struct Declared {
     inline_requires: Option<bool>,
     conditions: Option<Vec<String>>,
     main_fields: Option<Vec<String>>,
+}
+
+/// A build output an import may name before it is built, and the files it is built
+/// from, as `[outputs]` declares them. Every path is absolute, with `/` separators.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Output {
+    /// A glob matching the output's path.
+    pub path: String,
+    /// Globs naming the files it is built from; those starting with `!` exclude.
+    pub sources: Vec<String>,
+}
+
+/// The files under `--root`, and the directories that could not be listed, with why.
+#[derive(Debug, Default)]
+struct Listing {
+    files: Vec<String>,
+    unlisted: Vec<(String, String)>,
+}
+
+/// The directories a glob is certain to be under: everything before the segment
+/// holding its first wildcard.
+fn literal_prefix(glob: &str) -> &str {
+    let wild = glob.find(['*', '?', '[', '{']).unwrap_or(glob.len());
+    glob[..wild].rfind('/').map_or("", |slash| &glob[..slash])
 }
 
 /// How the bundler of an app finds a file for a package specifier.
@@ -175,6 +219,7 @@ pub struct Chain {
     dirs: Vec<PathBuf>,
     aliases: Alias,
     style_aliases: Alias,
+    outputs: Vec<Output>,
     pure: PureList,
     inline_requires: bool,
     lookup: Lookup,
@@ -201,6 +246,12 @@ impl Chain {
     /// name meaning one thing in Sass and another in JavaScript can say so.
     pub fn style_aliases(&self) -> &Alias {
         &self.style_aliases
+    }
+
+    /// Build outputs and what they are built from, nearest first. They accumulate,
+    /// as aliases do.
+    pub fn outputs(&self) -> &[Output] {
+        &self.outputs
     }
 
     pub fn pure(&self) -> &PureList {
@@ -237,6 +288,9 @@ pub struct Configs {
     /// reason: it is met deep inside the resolver, which every resolver of a run
     /// reaches through this, and the run checks it before reporting a verdict.
     unreadable_tsconfig: RwLock<Option<(PathBuf, String)>>,
+    /// Every file under `--root` outside `node_modules` and hidden directories,
+    /// canonical, listed when an output is first expanded.
+    files: std::sync::OnceLock<Listing>,
 }
 
 /// One directory's own file, `None` if it has not got one, or why it could not be
@@ -254,7 +308,59 @@ impl Configs {
             chains: RwLock::new(AHashMap::default()),
             failure: RwLock::new(None),
             unreadable_tsconfig: RwLock::new(None),
+            files: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Every file under `--root`, outside `node_modules` and hidden directories, by
+    /// its canonical path with `/` separators, which is how the resolver names the
+    /// files it finds. Listed once, when an output is first expanded.
+    ///
+    /// A directory that could not be listed is the run's failure when one of
+    /// `included` could match a file in it: the output would be built from fewer
+    /// files than are there, and an edge would be lost without a word.
+    pub fn files_for(&self, included: &[&String]) -> &[String] {
+        let listing = self.files.get_or_init(|| {
+            let root = dunce::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
+            let mut listing = Listing::default();
+            let walk = walkdir::WalkDir::new(&root)
+                .into_iter()
+                .filter_entry(|entry| {
+                    let name = entry.file_name().to_string_lossy();
+                    !(entry.file_type().is_dir()
+                        && (name == "node_modules" || (entry.depth() > 0 && name.starts_with('.'))))
+                });
+            for entry in walk {
+                match entry {
+                    Ok(entry) if entry.file_type().is_file() => {
+                        listing.files.push(slashed(entry.path()));
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        let path = error.path().map_or_else(|| slashed(&root), slashed);
+                        listing.unlisted.push((path, error.to_string()));
+                    }
+                }
+            }
+            listing.files.sort();
+            listing
+        });
+        for (dir, detail) in &listing.unlisted {
+            let reachable = included.iter().any(|glob| {
+                // By whole directories: `src` does not reach `src2`.
+                let prefix = literal_prefix(glob);
+                dir == prefix
+                    || dir.starts_with(&format!("{prefix}/"))
+                    || prefix.starts_with(&format!("{dir}/"))
+            });
+            if reachable {
+                self.note(Error::Unlisted {
+                    path: dir.clone(),
+                    detail: detail.clone(),
+                });
+            }
+        }
+        &listing.files
     }
 
     /// What `file` inherits, from the directory holding it up to `--root`.
@@ -294,6 +400,10 @@ impl Configs {
             style_aliases: declared
                 .iter()
                 .flat_map(|one| one.style_aliases.iter().chain(one.aliases.iter()).cloned())
+                .collect(),
+            outputs: declared
+                .iter()
+                .flat_map(|one| one.outputs.iter().cloned())
                 .collect(),
             pure: PureList::of(
                 declared
@@ -465,6 +575,7 @@ fn read(path: &Path, dir: &Path) -> Result<Option<Declared>, Error> {
     Ok(Some(Declared {
         aliases: table(document.get("aliases"), dir, &shown, "aliases")?,
         style_aliases: style_aliases(&document, dir, &shown)?,
+        outputs: outputs(document.get("outputs"), dir, &shown)?,
         pure,
         builtin_pure,
         inline_requires: flag(&document, "inline-requires", &shown)?,
@@ -603,6 +714,74 @@ fn specificity(name: &str) -> (u8, std::cmp::Reverse<usize>, String) {
     (exact, std::cmp::Reverse(literal), name.to_string())
 }
 
+/// The `[outputs]` table: each output's path and the globs naming its sources, all
+/// made absolute from the file that declares them.
+fn outputs(value: Option<&toml::Value>, dir: &Path, shown: &str) -> Result<Vec<Output>, Error> {
+    let Some(outputs) = value else {
+        return Ok(Vec::new());
+    };
+    let outputs = outputs.as_table().ok_or_else(|| Error::NotATable {
+        path: shown.to_string(),
+        key: "outputs".to_string(),
+    })?;
+    let bad = |name: &str| Error::BadOutput {
+        path: shown.to_string(),
+        name: name.to_string(),
+    };
+    let dir = slashed(dir);
+    // A glob is made absolute and its `.` and `..` worked out, since the paths it
+    // is matched against have neither. One that cannot be read is refused rather
+    // than matching nothing.
+    let within = |glob: &str| {
+        let (bang, glob) = glob
+            .strip_prefix('!')
+            .map_or(("", glob), |glob| ("!", glob));
+        let glob = normal_glob(&format!("{dir}/{glob}"));
+        fast_glob::validate(&glob).ok()?;
+        Some(format!("{bang}{glob}"))
+    };
+    outputs
+        .iter()
+        .map(|(name, value)| {
+            let sources = match value {
+                toml::Value::String(one) => vec![within(one).ok_or_else(|| bad(name))?],
+                toml::Value::Array(many) => many
+                    .iter()
+                    .map(|each| each.as_str().and_then(within).ok_or_else(|| bad(name)))
+                    .collect::<Result<_, _>>()?,
+                _ => return Err(bad(name)),
+            };
+            if !sources.iter().any(|glob| !glob.starts_with('!')) {
+                return Err(bad(name));
+            }
+            Ok(Output {
+                path: within(name).ok_or_else(|| bad(name))?,
+                sources,
+            })
+        })
+        .collect()
+}
+
+/// `glob` with its `.` segments dropped and each `..` taking the segment before it.
+fn normal_glob(glob: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in glob.split('/') {
+        match segment {
+            "." => {}
+            ".." if segments.len() > 1 => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    segments.join("/")
+}
+
+/// `path` with `/` separators, as globs are written.
+pub fn slashed(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 fn flag(document: &toml::Table, key: &str, shown: &str) -> Result<Option<bool>, Error> {
     match document.get(key) {
         None => Ok(None),
@@ -728,6 +907,160 @@ mod tests {
             "nearest first"
         );
         assert!(Path::new(&found[1]).ends_with("shared/sass"));
+    }
+
+    #[test]
+    fn an_output_is_built_from_globs_below_the_file_that_declares_it() {
+        let (dir, configs) = tree(&[(
+            "apps/web",
+            "[outputs]\n\".next/worker.js\" = [\"pages/**/*.tsx\", \"!pages/**/*.test.tsx\"]\n",
+        )]);
+        let chain = configs.chain(&dir.path().join("apps/web/worker.ts"));
+        let web = slashed(&dir.path().join("apps/web"));
+        assert_eq!(
+            chain.outputs(),
+            &[Output {
+                path: format!("{web}/.next/worker.js"),
+                sources: vec![
+                    format!("{web}/pages/**/*.tsx"),
+                    format!("!{web}/pages/**/*.test.tsx"),
+                ],
+            }]
+        );
+        assert!(configs.failure().is_none());
+    }
+
+    #[test]
+    fn outputs_accumulate_nearest_first() {
+        let (dir, configs) = tree(&[
+            ("", "[outputs]\n\"dist/*\" = \"src/**\"\n"),
+            ("apps/web", "[outputs]\n\".next/*\" = \"pages/**\"\n"),
+        ]);
+        let chain = configs.chain(&dir.path().join("apps/web/worker.ts"));
+        let paths: Vec<&str> = chain
+            .outputs()
+            .iter()
+            .map(|output| output.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                format!("{}/.next/*", slashed(&dir.path().join("apps/web"))),
+                format!("{}/dist/*", slashed(dir.path())),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_output_needs_a_glob_to_be_built_from() {
+        for body in [
+            "[outputs]\n\"dist/x.js\" = 1\n",
+            "[outputs]\n\"dist/x.js\" = []\n",
+            "[outputs]\n\"dist/x.js\" = [\"!src/**\"]\n",
+        ] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.ts"));
+            assert!(
+                matches!(configs.failure(), Some(Error::BadOutput { .. })),
+                "{body}: {:?}",
+                configs.failure()
+            );
+        }
+    }
+
+    #[test]
+    fn output_globs_lose_their_dot_segments() {
+        let (dir, configs) = tree(&[(
+            "apps/web",
+            "[outputs]\n\"./dist/../.next/worker.js\" = [\"./pages/**/*.tsx\", \"!./pages/x.tsx\"]\n",
+        )]);
+        let chain = configs.chain(&dir.path().join("apps/web/worker.ts"));
+        let web = slashed(&dir.path().join("apps/web"));
+        assert_eq!(chain.outputs()[0].path, format!("{web}/.next/worker.js"));
+        assert_eq!(
+            chain.outputs()[0].sources,
+            [
+                format!("{web}/pages/**/*.tsx"),
+                format!("!{web}/pages/x.tsx")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_glob_that_cannot_be_read_is_refused() {
+        for body in [
+            "[outputs]\n\"dist/x.js\" = \"src/[pages\"\n",
+            "[outputs]\n\"dist/[x.js\" = \"src/**\"\n",
+        ] {
+            let (dir, configs) = tree(&[("", body)]);
+            configs.chain(&dir.path().join("a.ts"));
+            assert!(
+                matches!(configs.failure(), Some(Error::BadOutput { .. })),
+                "{body}: {:?}",
+                configs.failure()
+            );
+        }
+    }
+
+    #[test]
+    fn a_glob_is_certainly_under_what_comes_before_its_first_wildcard() {
+        assert_eq!(
+            literal_prefix("/r/apps/web/pages/**/*.tsx"),
+            "/r/apps/web/pages"
+        );
+        assert_eq!(literal_prefix("/r/src/x.tsx"), "/r/src");
+        assert_eq!(literal_prefix("/r/src/{a,b}/x.tsx"), "/r/src");
+    }
+
+    #[test]
+    fn hidden_files_are_listed_and_hidden_directories_are_not() {
+        let (dir, configs) = tree(&[]);
+        std::fs::create_dir_all(dir.path().join("src/.cache")).unwrap();
+        std::fs::write(dir.path().join("src/.env.ts"), "").unwrap();
+        std::fs::write(dir.path().join("src/.cache/x.ts"), "").unwrap();
+        let root = slashed(&dunce::canonicalize(dir.path()).unwrap());
+        let glob = format!("{root}/src/**");
+        let files = configs.files_for(&[&glob]);
+        assert!(files.contains(&format!("{root}/src/.env.ts")), "{files:?}");
+        assert!(
+            !files.contains(&format!("{root}/src/.cache/x.ts")),
+            "{files:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_directory_an_output_could_be_built_from_must_be_listed() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, configs) = tree(&[]);
+        let locked = dir.path().join("src/locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Whoever can read it anyway, such as root, has nothing to test.
+        let readable = std::fs::read_dir(&locked).is_ok();
+        let root = slashed(&dunce::canonicalize(dir.path()).unwrap());
+        let sibling = format!("{root}/src/lock/**");
+        configs.files_for(&[&sibling]);
+        let beside = configs.failure();
+        let elsewhere = format!("{root}/lib/**");
+        configs.files_for(&[&elsewhere]);
+        let unrelated = configs.failure();
+        let within = format!("{root}/src/**/*.ts");
+        configs.files_for(&[&within]);
+        let related = configs.failure();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if readable {
+            return;
+        }
+        assert!(
+            beside.is_none(),
+            "a sibling whose name it begins: {beside:?}"
+        );
+        assert!(unrelated.is_none(), "{unrelated:?}");
+        assert!(
+            matches!(related, Some(Error::Unlisted { .. })),
+            "{related:?}"
+        );
     }
 
     #[test]
