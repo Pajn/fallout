@@ -839,6 +839,54 @@ export const TypedPage = () => typed;"#,
     );
 }
 
+/// A `baseUrl` offers a place for every bare name, so it maps none of them by
+/// itself: a types-only package is still an answer under one. A `paths` entry
+/// for the name does map it, and a mapping that leads nowhere is still lost.
+#[test]
+fn a_base_url_alone_does_not_map_a_package_made_only_of_types() {
+    for (paths, reported) in [
+        ("", false),
+        (r#", "paths": {"only-types": ["src/missing/types"]}"#, true),
+    ] {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().to_path_buf();
+        setup_unresolved_project(&root);
+        let dir = root.join("node_modules/only-types");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"name": "only-types", "typings": "index.d.ts"}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("index.d.ts"), "export type Shape = { a: 1 };\n").unwrap();
+        fs::write(
+            root.join("tsconfig.json"),
+            format!(r#"{{"compilerOptions": {{"baseUrl": "."{paths}}}}}"#),
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/pages/TypedPage.tsx"),
+            r#"import { Shape } from "only-types";
+export const TypedPage = (shape: Shape) => shape;"#,
+        )
+        .unwrap();
+
+        let (_, stdout, _) = run_is_affected_with(
+            &root,
+            &["src/pages/TypedPage.tsx"],
+            &["src/components/Button.tsx"],
+            &["--granularity", "symbol", "--json"],
+        );
+
+        let unresolved = if reported {
+            r#""unresolved":[{"specifier":"only-types""#
+        } else {
+            r#""unresolved":[]"#
+        };
+        assert!(stdout.contains(unresolved), "paths {paths:?}: {stdout}");
+    }
+}
+
 /// A name the project maps is the project's to answer. When the mapping leads
 /// nowhere, an installed package made only of types under the same name does not
 /// stand in for it.
@@ -871,12 +919,14 @@ export const TypedPage = (shape: Shape) => shape;"#,
         &root,
         &["src/pages/TypedPage.tsx"],
         &["src/components/Button.tsx"],
-        &["--granularity", "symbol", "--unresolved"],
+        &["--granularity", "symbol", "--json"],
     );
 
     assert!(
-        stdout.contains("only-types"),
-        "the alias that led nowhere is still lost: {stdout}"
+        stdout.contains(
+            r#""unresolved":[{"specifier":"only-types","kind":"alias","in_repo":true,"from":["src/pages/TypedPage.tsx"]}]"#
+        ),
+        "the alias that led nowhere is still lost, and nothing else is: {stdout}"
     );
 }
 

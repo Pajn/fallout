@@ -43,6 +43,11 @@ const SASS_BUILTINS: &[&str] = &[
     "sass:string",
 ];
 
+/// The extensions a module specifier may leave off, in the order they are tried.
+const MODULE_EXTENSIONS: &[&str] = &[
+    ".tsx", ".ts", ".cts", ".mts", ".jsx", ".js", ".mjs", ".cjs", ".json",
+];
+
 /// Specifiers a run asked for and could not place on disk.
 ///
 /// Resolving to nothing is the quietest way this tool can be wrong. The edge is
@@ -281,6 +286,35 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
         }
     }
 
+    /// Whether `tsconfig` maps `specifier`: a `paths` entry matches it, or there is
+    /// a file or directory where `baseUrl` would look for it. A `baseUrl` offers a
+    /// place for every bare name, so it maps only the names it has something for.
+    fn tsconfig_maps(&self, tsconfig: &TsConfig, specifier: &str) -> bool {
+        let options = &tsconfig.compiler_options;
+        let in_paths = options.paths.as_ref().is_some_and(|paths| {
+            paths.keys().any(|key| match key.split_once('*') {
+                Some((prefix, suffix)) => {
+                    specifier.len() >= prefix.len() + suffix.len()
+                        && specifier.starts_with(prefix)
+                        && specifier.ends_with(suffix)
+                }
+                None => key == specifier,
+            })
+        });
+        in_paths
+            || options.base_url.as_ref().is_some_and(|base| {
+                let candidate = base.join(specifier);
+                let stem = candidate.to_string_lossy().into_owned();
+                std::iter::once(candidate.clone())
+                    .chain(
+                        MODULE_EXTENSIONS
+                            .iter()
+                            .map(|ext| PathBuf::from(format!("{stem}{ext}"))),
+                    )
+                    .any(|path| self.fs.metadata(&path).is_ok())
+            })
+    }
+
     /// Whether `specifier`, which resolved to nothing, names an installed package
     /// made only of types: one that declares `types` or `typings`, and neither
     /// `exports` nor a file in any field the bundler reads an entry from. Nothing in
@@ -303,11 +337,7 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
             .tsconfig_for(from_file)
             .ok()
             .flatten()
-            .is_some_and(|tsconfig| {
-                !tsconfig
-                    .resolve_path_alias_or_base_url(specifier)
-                    .is_empty()
-            });
+            .is_some_and(|tsconfig| self.tsconfig_maps(&tsconfig, specifier));
         if aliased || mapped {
             return false;
         }
@@ -460,17 +490,10 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
     fn options(&self, dialect: Dialect, chain: &Chain) -> ResolveOptions {
         match dialect {
             Dialect::Module => ResolveOptions {
-                extensions: vec![
-                    ".tsx".to_string(),
-                    ".ts".to_string(),
-                    ".cts".to_string(),
-                    ".mts".to_string(),
-                    ".jsx".to_string(),
-                    ".js".to_string(),
-                    ".mjs".to_string(),
-                    ".cjs".to_string(),
-                    ".json".to_string(),
-                ],
+                extensions: MODULE_EXTENSIONS
+                    .iter()
+                    .map(|ext| ext.to_string())
+                    .collect(),
                 tsconfig: Some(TsconfigDiscovery::Auto),
                 alias: chain.aliases().clone(),
                 condition_names: self.lookup.conditions.clone(),
