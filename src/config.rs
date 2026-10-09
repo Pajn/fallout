@@ -347,8 +347,11 @@ impl Configs {
         });
         for (dir, detail) in &listing.unlisted {
             let reachable = included.iter().any(|glob| {
+                // By whole directories: `src` does not reach `src2`.
                 let prefix = literal_prefix(glob);
-                dir.starts_with(prefix) || prefix.starts_with(&format!("{dir}/"))
+                dir == prefix
+                    || dir.starts_with(&format!("{prefix}/"))
+                    || prefix.starts_with(&format!("{dir}/"))
             });
             if reachable {
                 self.note(Error::Unlisted {
@@ -1036,6 +1039,9 @@ mod tests {
         // Whoever can read it anyway, such as root, has nothing to test.
         let readable = std::fs::read_dir(&locked).is_ok();
         let root = slashed(&dunce::canonicalize(dir.path()).unwrap());
+        let sibling = format!("{root}/src/lock/**");
+        configs.files_for(&[&sibling]);
+        let beside = configs.failure();
         let elsewhere = format!("{root}/lib/**");
         configs.files_for(&[&elsewhere]);
         let unrelated = configs.failure();
@@ -1046,6 +1052,10 @@ mod tests {
         if readable {
             return;
         }
+        assert!(
+            beside.is_none(),
+            "a sibling whose name it begins: {beside:?}"
+        );
         assert!(unrelated.is_none(), "{unrelated:?}");
         assert!(
             matches!(related, Some(Error::Unlisted { .. })),

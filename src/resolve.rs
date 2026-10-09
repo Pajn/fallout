@@ -280,10 +280,13 @@ impl<Fs: FileSystem + Clone + 'static> Tree<Fs> {
         match attempt {
             Ok(resolution) => Found::Files(vec![resolution]),
             Err(ResolveError::Builtin { .. }) => Found::NoFile,
-            Err(_) => self.built(
+            // Only a name that is not there can be an output not yet built. Any other
+            // failure, such as a tsconfig that cannot be read, stays one.
+            Err(ResolveError::NotFound(_) | ResolveError::ExtensionAlias(..)) => self.built(
                 from_file,
                 strip_inline_loaders(specifier).unwrap_or(specifier),
             ),
+            Err(_) => Found::NotFound,
         }
     }
 
