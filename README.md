@@ -811,6 +811,16 @@ Comments and formatting are not part of the comparison, so a change made only of
 those marks nothing at all. This is the one case where a file the diff names is
 reported as affecting nothing, and it holds at `file` granularity too.
 
+The exception is a comment a build reads, which changes what is built though the
+syntax around it does not:
+
+- A JSX pragma — `@jsx`, `@jsxFrag`, `@jsxImportSource`, `@jsxRuntime` — decides what
+  every element in the file compiles to, so changing one reaches the whole file. This
+  holds without `--base` too: a diff line that adds or removes one does the same.
+- An annotation — `/* #__PURE__ */`, `/* #__NO_SIDE_EFFECTS__ */` and `/* #__KEY__ */`
+  (or with `@`), `/* @vite-ignore */`, and webpack's and Turbopack's magic comments
+  such as `webpackChunkName` — changes the statement it sits in or comes before.
+
 A statement is matched to its counterpart by what it introduces rather than by where
 it sits, which makes the remaining cases exact:
 
