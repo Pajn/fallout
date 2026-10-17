@@ -1,0 +1,7 @@
+# A JSX pragma decides what every element in the file compiles to, here calls into
+# `@emotion/react` in place of React's own runtime. It is a comment, and it belongs to
+# no statement, so the change reaches the whole file: the page renders `SaleBadge`,
+# which the pragma sits nowhere near.
+[[anchor]]
+path = "src/pages/SalePage.tsx"
+affected = true

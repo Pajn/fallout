@@ -1,0 +1,11 @@
+# A bundler's magic comment is read off the call it sits in: renaming the chunk the
+# player loads from changes what the bundle holds and what the page fetches, though
+# the syntax either side is the same. The edit is to `loadPlayer` alone, so the page
+# that loads the queue is left out.
+[[anchor]]
+path = "src/pages/PlayerPage.tsx"
+affected = true
+
+[[anchor]]
+path = "src/pages/QueuePage.tsx"
+affected = false

@@ -5,7 +5,8 @@
 //! trees, with spans and comments left out of the comparison. A statement that was
 //! reformatted, recommented or merely moved therefore differs in no way that matters,
 //! and a statement that really did change is known exactly rather than inferred from
-//! the lines around it.
+//! the lines around it. The few comments a build reads are the exception, and are
+//! compared beside the syntax; see [`super::build_comments`].
 //!
 //! Anything that stops the two versions being compared — a parse error in either, or
 //! a statement whose bindings cannot be enumerated — is reported as "no answer", and
@@ -22,6 +23,7 @@ use oxc_ast::ast::*;
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{ContentEq, GetSpan, SourceType};
 
+use super::build_comments::BuildComments;
 use super::parse::{analyse_source, is_source_file, span_of};
 use super::{FineModule, ModuleAnalysis, Reading, Span, cjs, decls, members, types};
 
@@ -39,8 +41,9 @@ pub struct Comparison {
     /// case seen from the table, which is what makes a rename detectable at all.
     pub lost_exports: Vec<String>,
     /// Nothing finer than the file can say what changed: the two disagree about the
-    /// module's directives, or an `export * from` went and took with it a set of
-    /// names that cannot be listed without reading the module it named.
+    /// module's directives or its JSX pragmas, or an `export * from` went and took
+    /// with it a set of names that cannot be listed without reading the module it
+    /// named.
     pub whole_file: bool,
     /// Work reached during base-version evaluation changed, disappeared, or moved.
     /// This includes an edited helper that used to have effects: its unchanged
@@ -150,8 +153,14 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
     // A directive or a hashbang decides how the module as a whole is treated —
     // `"use client"` most of all — and belongs to no statement, so a change to one
     // is a change to the file.
+    //
+    // A JSX pragma is a comment, but decides what every element in the file compiles
+    // to, and belongs to no statement either.
+    let old_comments = BuildComments::read(&old.program, &before);
+    let new_comments = BuildComments::read(&new.program, &after);
     if old.program.directives.content_ne(&new.program.directives)
         || old.program.hashbang.content_ne(&new.program.hashbang)
+        || old_comments.pragmas != new_comments.pragmas
     {
         return Some(Comparison {
             whole_file: true,
@@ -159,8 +168,8 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         });
     }
 
-    let old_statements = keyed(&old.program)?;
-    let new_statements = keyed(&new.program)?;
+    let old_statements = keyed(&old.program, old_comments.annotations)?;
+    let new_statements = keyed(&new.program, new_comments.annotations)?;
 
     // Counterparts are handed out first come, first served, so two statements sharing
     // a key — TypeScript's overload signatures, two imports of one specifier — are
@@ -199,14 +208,22 @@ pub fn compare(path: &Path, before: &str, reading: &Reading) -> Option<Compariso
         }
         furthest = furthest.max(index);
 
-        if old_statements[index].node.content_ne(statement.node) {
+        let annotated = old_statements[index].annotations != statement.annotations;
+        if annotated || old_statements[index].node.content_ne(statement.node) {
+            // An annotation can sit in any member or argument, and is not one the
+            // narrowing below compares, so a statement whose annotations changed is
+            // changed as a whole.
             let old_object =
                 members::object_literal_of(old_statements[index].node, index, &old_cjs, None);
             let new_object = members::object_literal_of(statement.node, new_index, &new_cjs, None);
             let pair = (old_statements[index].node, statement.node);
-            match changed_members(old_object, new_object, pair, (&before, &after))
-                .or_else(|| changed_arguments(pair, (&before, &after)))
-            {
+            let narrowed = (!annotated)
+                .then(|| {
+                    changed_members(old_object, new_object, pair, (&before, &after))
+                        .or_else(|| changed_arguments(pair, (&before, &after)))
+                })
+                .flatten();
+            match narrowed {
                 Some(spans) => changed.extend(spans),
                 None => changed.push(statement.span),
             }
@@ -635,6 +652,8 @@ struct Keyed<'a> {
     span: Span,
     /// What it puts in the export table.
     exports: Exports,
+    /// The annotations a build reads in it or just before it.
+    annotations: Vec<String>,
     /// Evaluating the module does this statement's work, whatever its initialisers
     /// turn out to do. A statement that only binds values is not decided here: what
     /// its initialisers do is a question for the analysis.
@@ -644,14 +663,15 @@ struct Keyed<'a> {
 /// Every top-level statement, with the key it is matched by.
 ///
 /// `None` when a statement introduces bindings that cannot be enumerated, which is
-/// the same condition that coarsens a module.
-fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
+/// the same condition that coarsens a module. `annotations` are each statement's,
+/// by its index; see [`BuildComments`].
+fn keyed<'a>(program: &'a Program<'a>, annotations: Vec<Vec<String>>) -> Option<Vec<Keyed<'a>>> {
     let cjs = cjs::table(program);
     let drafts = decls::collect(program, &cjs)?;
     let mut bare = 0;
     let mut statements = Vec::with_capacity(program.body.len());
 
-    for (index, node) in program.body.iter().enumerate() {
+    for ((index, node), annotations) in program.body.iter().enumerate().zip(annotations) {
         let names: Vec<String> = drafts
             .iter()
             .filter(|draft| draft.statement == index)
@@ -696,6 +716,7 @@ fn keyed<'a>(program: &'a Program<'a>) -> Option<Vec<Keyed<'a>>> {
             node,
             span: span_of(node.span()),
             exports: exports_of(node, index, &cjs, names),
+            annotations,
             runs,
         });
     }
@@ -794,6 +815,50 @@ mod tests {
         let before = "// adds one\nexport const inc = (n) => n + 1;\n";
         let after = "// Adds one to its argument.\nexport const inc = (n) => n + 1;\n";
         assert!(compared(before, after).expect("comparable").is_empty());
+    }
+
+    #[test]
+    fn a_jsx_pragma_is_a_change_to_the_whole_file() {
+        let before = "export const a = 1;\nexport const b = 2;\n";
+        let after = format!("/** @jsxImportSource preact */\n{before}");
+        assert!(compared(before, &after).expect("comparable").whole_file);
+
+        let reworded = format!("/** @jsxImportSource @emotion/react */\n{before}");
+        assert!(compared(&after, &reworded).expect("comparable").whole_file);
+    }
+
+    #[test]
+    fn a_magic_comment_changes_the_statement_it_sits_in() {
+        let before = "export const a = () => import(/* webpackChunkName: \"a\" */ \"./a\");\n\
+                      export const b = () => import(/* webpackChunkName: \"b\" */ \"./b\");\n";
+        let after = before.replace("\"a\" */", "\"first\" */");
+        let comparison = compared(before, &after).expect("comparable");
+        assert_eq!(
+            changed(&after, &comparison),
+            ["export const a = () => import(/* webpackChunkName: \"first\" */ \"./a\");"]
+        );
+        assert!(!comparison.whole_file);
+    }
+
+    #[test]
+    fn an_annotation_in_an_unchanged_member_is_not_narrowed_away() {
+        // The edit to `a` alone would narrow the statement to that member; the chunk
+        // renamed in `b` must still count.
+        let before = "export const routes = {\n  a: 1,\n  \
+                      b: () => import(/* webpackChunkName: \"b\" */ \"./b\"),\n};\n";
+        let after = before
+            .replace("a: 1", "a: 2")
+            .replace("\"b\" */", "\"second\" */");
+        let comparison = compared(before, &after).expect("comparable");
+        assert_eq!(changed(&after, &comparison), [after.trim_end()]);
+    }
+
+    #[test]
+    fn an_annotation_before_a_statement_belongs_to_it() {
+        let before = "export const make = () => 1;\n";
+        let after = format!("/* #__NO_SIDE_EFFECTS__ */\n{before}");
+        let comparison = compared(before, &after).expect("comparable");
+        assert_eq!(changed(&after, &comparison), [before.trim_end()]);
     }
 
     #[test]

@@ -23,8 +23,10 @@ pub struct LineRange {
 pub enum FileChange {
     /// Content changed, with line information for the after version.
     Modified { ranges: Vec<LineRange> },
-    /// Changed, but with no usable line information: a binary file, or a rename
-    /// recorded without hunks. Always marks the whole file.
+    /// Changed, but with no usable line information: a binary file, a rename
+    /// recorded without hunks, or a source file whose changed lines add or remove a
+    /// JSX pragma, which applies to the whole file wherever it is written. Always
+    /// marks the whole file.
     Opaque,
     /// Gone in the after version.
     Deleted,
@@ -73,6 +75,8 @@ pub fn parse(text: &str) -> ChangeSet {
     // markers (a binary notice, a `+++ /dev/null`) can still change its verdict.
     let mut current: Option<ChangedFile> = None;
     let mut hunk: Option<Hunk> = None;
+    // Whether a line the file being read adds or removes names a JSX pragma.
+    let mut pragma = false;
 
     for line in text.lines() {
         // A hunk header states how many lines of each side follow, so the body ends
@@ -82,6 +86,9 @@ pub fn parse(text: &str) -> ChangeSet {
                 if active.finished() {
                     hunk = None;
                 }
+                pragma |= line
+                    .strip_prefix(['+', '-'])
+                    .is_some_and(crate::module::build_comments::is_pragma);
                 continue;
             }
             hunk = None;
@@ -92,7 +99,7 @@ pub fn parse(text: &str) -> ChangeSet {
                 added.push(file.path.clone());
             }
             creating = false;
-            flush(&mut files, current.take());
+            flush(&mut files, current.take(), std::mem::take(&mut pragma));
             current = Some(ChangedFile {
                 path: git_header_after_path(rest),
                 change: FileChange::Modified { ranges: Vec::new() },
@@ -140,7 +147,7 @@ pub fn parse(text: &str) -> ChangeSet {
     if creating && let Some(file) = &current {
         added.push(file.path.clone());
     }
-    flush(&mut files, current.take());
+    flush(&mut files, current.take(), pragma);
 
     ChangeSet {
         files,
@@ -227,11 +234,18 @@ fn push_range(current: &mut Option<ChangedFile>, range: LineRange) {
     ranges.push(range);
 }
 
-fn flush(files: &mut Vec<ChangedFile>, file: Option<ChangedFile>) {
+/// Settles what happened to `file`, which `pragma` says adds or removes a line
+/// naming a JSX pragma.
+fn flush(files: &mut Vec<ChangedFile>, file: Option<ChangedFile>, pragma: bool) {
     let Some(mut file) = file else { return };
 
     // A rename with no hunks carries no line information, so it marks the whole file.
-    if matches!(&file.change, FileChange::Modified { ranges } if ranges.is_empty()) {
+    // Nor do the lines of a pragma, which decides how every element in the file
+    // compiles. Whether a line names one is read off its text, so the line has to be
+    // in a file whose comments a build could read for it to count.
+    if let FileChange::Modified { ranges } = &file.change
+        && (ranges.is_empty() || (pragma && crate::module::is_source_file(&file.path)))
+    {
         file.change = FileChange::Opaque;
     }
     if file.path.as_os_str().is_empty() {
@@ -374,6 +388,43 @@ mod tests {
         );
 
         assert_eq!(set.files[0].change, modified(&[(2, 3)]));
+    }
+
+    #[test]
+    fn a_line_adding_or_removing_a_jsx_pragma_reaches_the_whole_file() {
+        for line in ["+/** @jsxImportSource preact */", "-/** @jsx h */"] {
+            let set = parse(&format!(
+                "diff --git a/src/a.tsx b/src/a.tsx\n\
+                 --- a/src/a.tsx\n\
+                 +++ b/src/a.tsx\n\
+                 @@ -1,1 +1,1 @@\n\
+                 {line}\n"
+            ));
+            assert_eq!(set.files[0].change, FileChange::Opaque, "{line}");
+        }
+    }
+
+    #[test]
+    fn a_pragma_counts_only_where_a_build_reads_it() {
+        // Left alone by the change, or written in a file no compiler reads, it is a
+        // line like any other.
+        let set = parse(
+            "diff --git a/src/a.tsx b/src/a.tsx\n\
+             --- a/src/a.tsx\n\
+             +++ b/src/a.tsx\n\
+             @@ -1,2 +1,2 @@\n\
+             \x20/** @jsx h */\n\
+             -const a = 1;\n\
+             +const a = 2;\n\
+             diff --git a/README.md b/README.md\n\
+             --- a/README.md\n\
+             +++ b/README.md\n\
+             @@ -1,1 +1,1 @@\n\
+             -Set `/** @jsx h */` at the top.\n\
+             +Set `/** @jsxImportSource preact */` at the top.\n",
+        );
+        assert_eq!(set.files[0].change, modified(&[(2, 0), (2, 1)]));
+        assert_eq!(set.files[1].change, modified(&[(1, 0), (1, 1)]));
     }
 
     #[test]

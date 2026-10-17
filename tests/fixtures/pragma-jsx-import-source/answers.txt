@@ -1,0 +1,61 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/SalePage.tsx [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badges.tsx"
+Path (downstream, file granularity):
+  File(src/pages/SalePage.tsx)
+  File(src/components/badges.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SalePage.tsx","affected":true,"direction":"downstream","changed":"src/components/badges.tsx","path":["File(src/pages/SalePage.tsx)","File(src/components/badges.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SalePage.tsx [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badges.tsx"
+Path (downstream, file granularity):
+  File(src/pages/SalePage.tsx)
+  File(src/components/badges.tsx)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SalePage.tsx","affected":true,"direction":"downstream","changed":"src/components/badges.tsx","path":["File(src/pages/SalePage.tsx)","File(src/components/badges.tsx)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/SalePage.tsx [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badges.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SalePage.tsx)
+  Decl(src/pages/SalePage.tsx, SalePage)
+  Export(src/components/badges.tsx, SaleBadge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SalePage.tsx","affected":true,"direction":"downstream","changed":"src/components/badges.tsx","path":["File(src/pages/SalePage.tsx)","Decl(src/pages/SalePage.tsx, SalePage)","Export(src/components/badges.tsx, SaleBadge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SalePage.tsx [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badges.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SalePage.tsx)
+  Decl(src/pages/SalePage.tsx, SalePage)
+  Export(src/components/badges.tsx, SaleBadge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SalePage.tsx","affected":true,"direction":"downstream","changed":"src/components/badges.tsx","path":["File(src/pages/SalePage.tsx)","Decl(src/pages/SalePage.tsx, SalePage)","Export(src/components/badges.tsx, SaleBadge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SalePage.tsx [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badges.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SalePage.tsx)
+  Decl(src/pages/SalePage.tsx, SalePage)
+  Export(src/components/badges.tsx, SaleBadge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SalePage.tsx","affected":true,"direction":"downstream","changed":"src/components/badges.tsx","path":["File(src/pages/SalePage.tsx)","Decl(src/pages/SalePage.tsx, SalePage)","Export(src/components/badges.tsx, SaleBadge)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/SalePage.tsx [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/components/badges.tsx"
+Path (downstream, symbol granularity):
+  File(src/pages/SalePage.tsx)
+  Decl(src/pages/SalePage.tsx, SalePage)
+  Export(src/components/badges.tsx, SaleBadge)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/SalePage.tsx","affected":true,"direction":"downstream","changed":"src/components/badges.tsx","path":["File(src/pages/SalePage.tsx)","Decl(src/pages/SalePage.tsx, SalePage)","Export(src/components/badges.tsx, SaleBadge)"],"granularity":"symbol","unresolved":[]}]}
