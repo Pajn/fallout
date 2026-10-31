@@ -74,3 +74,10 @@ symbol = [
 path = "src/pages/track.ts"
 entries = ["src/lib"]
 affected = true
+
+# `start` runs `init` as it loads. Its package says it has no side effects,
+# which `shell` importing it brings into the run, but an entry always runs.
+[[anchor]]
+path = "src/pages/track.ts"
+entries = ["src/app/start.ts", "src/app/shell.ts"]
+affected = true

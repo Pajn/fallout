@@ -363,9 +363,24 @@ impl Graph {
         for entry in &self.entries {
             let file = self.file_id(entry);
             self.analysis(file)?;
-            let node = Node::File(file);
-            if seen.insert(node) {
-                queue.push(node);
+            let mut starts = vec![Node::File(file)];
+            // An entry runs as the program starts, whatever its package claims about
+            // side effects, so the imports its statements read count even where
+            // that claim leaves them out of its initialisation.
+            if let Some(fine) = self.view(file).fine() {
+                starts.extend(self.reference_edges(
+                    &fine,
+                    None,
+                    &[],
+                    &[],
+                    &fine.module().init_imports,
+                    Writers::Unfollowed,
+                ));
+            }
+            for node in starts {
+                if seen.insert(node) {
+                    queue.push(node);
+                }
             }
         }
         while let Some(node) = queue.pop() {
