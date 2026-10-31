@@ -67,3 +67,10 @@ symbol = [
     "ModuleInit(src/lib/mode.ts)",
     "Decl(src/lib/mode.ts, setMode)",
 ]
+
+# An entry that cannot be read as a module, here a directory, could call any
+# writer.
+[[anchor]]
+path = "src/pages/track.ts"
+entries = ["src/lib"]
+affected = true

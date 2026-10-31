@@ -77,7 +77,7 @@ pub struct Cli {
     ///
     /// At symbol granularity, a function that writes state a module shares then
     /// counts only where code the entries reach can call it.
-    #[arg(long, value_delimiter = ' ')]
+    #[arg(long)]
     pub entry: Vec<PathBuf>,
 
     /// Print the chain of imports that produced the verdict

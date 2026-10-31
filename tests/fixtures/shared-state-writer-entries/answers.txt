@@ -411,3 +411,69 @@ Path (downstream, symbol granularity):
   Decl(src/lib/mode.ts, setMode)
 -- --json: exit 0
 {"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","ModuleInit(src/pages/mode.ts)","ModuleInit(src/lib/mode.ts)","Decl(src/lib/mode.ts, setMode)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/lib
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/lib --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/lib
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/lib --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/lib
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/lib --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}

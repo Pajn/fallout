@@ -180,7 +180,8 @@ impl Graph {
         }
     }
 
-    /// The graph of a build that starts from `entries`. See [`Graph::runs`].
+    /// The graph of a build that starts from `entries`, each a path as the graph's
+    /// other files are named: absolute and canonical. See [`Graph::runs`].
     pub fn starting_from(self, entries: Vec<PathBuf>) -> Self {
         Self { entries, ..self }
     }
@@ -343,9 +344,9 @@ impl Graph {
     /// So it can run only where an entry reaches it over the other edges. A writer
     /// reached through one of its members counts, since a member is code it holds.
     ///
-    /// Without entries, every writer counts. So does every one where that walk met an
-    /// import in this repository it could not place, since what that file calls is
-    /// not known.
+    /// Without entries, every writer counts. So does every one where an entry cannot
+    /// be read, or that walk met an import in this repository it could not place,
+    /// since what that file calls is not known.
     pub fn runs(&self, file: FileId, writer: DeclId) -> bool {
         if self.entries.is_empty() {
             return true;
@@ -360,7 +361,9 @@ impl Graph {
         let mut seen: AHashSet<Node> = AHashSet::default();
         let mut queue: Vec<Node> = Vec::new();
         for entry in &self.entries {
-            let node = Node::File(self.file_id(entry));
+            let file = self.file_id(entry);
+            self.analysis(file)?;
+            let node = Node::File(file);
             if seen.insert(node) {
                 queue.push(node);
             }
