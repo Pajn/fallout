@@ -73,6 +73,13 @@ pub struct Cli {
     #[arg(long)]
     pub include_types: bool,
 
+    /// A module the anchors' build starts from, such as the app's entry point
+    ///
+    /// At symbol granularity, a function that writes state a module shares then
+    /// counts only where code the entries reach can call it.
+    #[arg(long)]
+    pub entry: Vec<PathBuf>,
+
     /// Print the chain of imports that produced the verdict
     #[arg(short, long)]
     pub explain: bool,
@@ -198,6 +205,7 @@ fn answer(
         only: cli.only,
         granularity: cli.granularity,
         include_types: cli.include_types,
+        entries: cli.entry,
     };
     // Earlier versions handed over are taken as they are. Only a revision read from
     // git is checked, since git may not know it.

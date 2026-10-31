@@ -78,6 +78,7 @@ fn earlier_versions_in_memory_answer_as_a_base_revision_does() {
             only: None,
             granularity: Granularity::Symbol,
             include_types: false,
+            entries: Vec::new(),
         };
 
         let from_git = analyse(&options(Some("HEAD"))).expect("an answer");
@@ -1539,6 +1540,7 @@ fn page_answer(
         only: None,
         granularity,
         include_types: false,
+        entries: Vec::new(),
     };
     let earlier = earlier.map(|files| -> Box<dyn Earlier> {
         Box::new(
@@ -1846,6 +1848,7 @@ fn affected_at(
         only: None,
         granularity,
         include_types: false,
+        entries: Vec::new(),
     };
     let earlier = earlier.map(|files| -> Box<dyn Earlier> {
         Box::new(
@@ -2057,6 +2060,7 @@ fn an_edited_statement_that_runs_something_on_load_reaches_every_importer() {
                 only: None,
                 granularity,
                 include_types: false,
+                entries: Vec::new(),
             };
             let earlier = base.then(|| -> Box<dyn Earlier> {
                 Box::new(AHashMap::from_iter([(

@@ -74,6 +74,9 @@ pub struct Options {
     /// build for every page at once, which is a different question from the one this
     /// tool answers, and reachability is no help with it.
     pub include_types: bool,
+    /// Modules the anchors' build starts from. Each answers for the anchors its own
+    /// app's bundler builds; see [`graph::Graph::runs`].
+    pub entries: Vec<PathBuf>,
 }
 
 /// One run's answer, and what it noticed on the way.
@@ -101,6 +104,7 @@ impl Verdict {
 pub enum Error {
     NoAnchors,
     MissingAnchors(Vec<String>),
+    MissingEntries(Vec<String>),
     /// A `fallout.toml` the run needed is there but could not be read. Reported
     /// rather than ignored: a setting that silently does nothing would show up as a
     /// verdict nobody can explain.
@@ -128,6 +132,9 @@ impl fmt::Display for Error {
             Error::NoAnchors => write!(f, "At least one anchor must be provided"),
             Error::MissingAnchors(paths) => {
                 write!(f, "Anchor(s) not found: {}", paths.join(", "))
+            }
+            Error::MissingEntries(paths) => {
+                write!(f, "Entry(s) not found: {}", paths.join(", "))
             }
             Error::Config(error) => write!(f, "{error}"),
             Error::UnreadableTsconfig { path, detail } => {
@@ -310,6 +317,7 @@ struct Run<'o> {
     options: &'o Options,
     root: PathBuf,
     anchors: Vec<PathBuf>,
+    entries: Vec<PathBuf>,
     /// Nothing about it depends on the bundler, so every group asks the same one.
     change: change::Change,
     configs: std::sync::Arc<config::Configs>,
@@ -327,26 +335,8 @@ impl<'o> Run<'o> {
 
         let root = canonical_root(&options.root);
 
-        let mut anchors = Vec::new();
-        let mut missing = Vec::new();
-        for anchor in &options.anchors {
-            let path = if anchor.is_relative() {
-                root.join(anchor)
-            } else {
-                anchor.clone()
-            };
-            let path = dunce::canonicalize(&path).unwrap_or(path);
-            if path.exists() {
-                if !anchors.contains(&path) {
-                    anchors.push(path);
-                }
-            } else {
-                missing.push(path.display().to_string());
-            }
-        }
-        if !missing.is_empty() {
-            return Err(Error::MissingAnchors(missing));
-        }
+        let anchors = existing(&root, &options.anchors).map_err(Error::MissingAnchors)?;
+        let entries = existing(&root, &options.entries).map_err(Error::MissingEntries)?;
 
         let change_set = options.diff.as_deref().map(diff::parse).unwrap_or_default();
 
@@ -369,6 +359,7 @@ impl<'o> Run<'o> {
             options,
             root,
             anchors,
+            entries,
             change,
             configs,
             reading,
@@ -407,6 +398,12 @@ impl<'o> Run<'o> {
                 )),
             ))),
             Granularity::Symbol => {
+                let entries = self
+                    .entries
+                    .iter()
+                    .filter(|entry| self.configs.bundler(entry) == bundler)
+                    .cloned()
+                    .collect();
                 let graph = graph::Graph::new(
                     self.reading.clone(),
                     bundler,
@@ -415,7 +412,8 @@ impl<'o> Run<'o> {
                     packages,
                     repointing,
                     self.change.lost_exports(),
-                );
+                )
+                .starting_from(entries);
                 let marks = marks::Marks::new(&graph, &self.change);
                 // Built once for the engine rather than once per search, so that the
                 // upstream searches of several anchors read each file once between
@@ -435,6 +433,32 @@ impl<'o> Run<'o> {
             Some((path, detail)) => Err(Error::UnreadableTsconfig { path, detail }),
             None => Ok(()),
         }
+    }
+}
+
+/// `paths` from `root`, canonical and each once, or those of them that are not there.
+fn existing(root: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>, Vec<String>> {
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for path in paths {
+        let path = if path.is_relative() {
+            root.join(path)
+        } else {
+            path.clone()
+        };
+        let path = dunce::canonicalize(&path).unwrap_or(path);
+        if path.exists() {
+            if !found.contains(&path) {
+                found.push(path);
+            }
+        } else {
+            missing.push(path.display().to_string());
+        }
+    }
+    if missing.is_empty() {
+        Ok(found)
+    } else {
+        Err(missing)
     }
 }
 

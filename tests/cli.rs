@@ -301,6 +301,56 @@ fn invalid_anchor_error() {
 }
 
 #[test]
+fn invalid_entry_error() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol", "--entry", "src/missing.tsx"],
+    );
+
+    assert_eq!(
+        code, 2,
+        "a missing entry is no answer, which is exit code 2, got {}. stdout: {} stderr: {}",
+        code, stdout, stderr
+    );
+    assert!(
+        stderr.contains("Entry(s) not found"),
+        "Expected error message about missing entry, got stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn an_entry_is_one_path_spaces_and_all() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    setup_test_project(&root);
+    std::fs::write(
+        root.join("src/main entry.tsx"),
+        "import \"./pages/CheckoutPage\";\n",
+    )
+    .unwrap();
+
+    let (code, stdout, stderr) = run_is_affected_with(
+        &root,
+        &["src/pages/CheckoutPage.tsx"],
+        &["src/components/Button.tsx"],
+        &["--granularity", "symbol", "--entry", "src/main entry.tsx"],
+    );
+
+    assert_eq!(
+        code, 0,
+        "an entry whose path has a space is one path, got {}. stdout: {} stderr: {}",
+        code, stdout, stderr
+    );
+}
+
+#[test]
 fn only_short_flag_matches_long_flag() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path().to_path_buf();

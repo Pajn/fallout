@@ -291,6 +291,7 @@ fn apply_shared_state(
         // so only one it does not name can be dropped.
         if known.insert(writer) {
             decls[user as usize].refs.push(writer);
+            decls[user as usize].unnamed_writers.push(writer);
             if let Some(mut owners) = owners {
                 owners.sort_unstable();
                 owners.dedup();

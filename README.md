@@ -45,6 +45,7 @@ git diff -U3 main... | fallout --anchor src/pages/CheckoutPage.tsx --diff -
 | `-r, --root <PATH>` | Root directory to resolve from. Defaults to the current directory. |
 | `-o, --only <DIRECTION>` | Search only `downstream` or `upstream` instead of both. |
 | `-g, --granularity <LEVEL>` | `file` (default) or `symbol`. See below. |
+| `--entry <PATH>` | A module the anchors' build starts from. Repeatable. See [Where the build starts](#where-the-build-starts). |
 | `-e, --explain` | Print the chain of imports that produced the verdict. |
 | `--unresolved` | List the specifiers this run reached and could not place on disk. See below. |
 | `--json` | Answer each anchor on its own, in one run, as JSON. See below. |
@@ -317,6 +318,30 @@ local function that reads `this`, a function imported from elsewhere, a call's
 result, anything not visibly a literal, an arrow, a class or a local function that
 never reads `this` — depends on the whole object. Calling any other property reads
 that property and leaves the object as it was.
+
+### Where the build starts
+
+A writer changes what the declarations reading its value see only once something
+calls it. Given `let instance = null`, a page calling `track()` that reads `instance`,
+and an `init()` that assigns it, an edit to `init` reaches the page — unless nothing
+the page is built with calls `init`.
+
+`--entry` names the modules the build starts from, such as the app's entry point:
+
+```sh
+git diff -U3 main... | fallout --diff - --granularity symbol --only downstream \
+  --entry src/gallery.tsx --anchor src/pages/TrackPage.tsx
+```
+
+At `symbol` granularity, a writer then counts only where it is reached from an entry
+by references: a call, any other use of its name, a member of the object holding it,
+or the initialisation of a module the entries load. Two declarations sharing a value
+is no such reference. Without `--entry`, every writer counts.
+
+Each entry speaks for the anchors its own app's bundler builds. A run whose walk from
+the entries meets an import into this repository it cannot place counts every writer,
+since the missing file could call any of them. That walk's specifiers appear under
+`--unresolved` like any other the run reached.
 
 ### Pure calls
 

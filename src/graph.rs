@@ -4,7 +4,7 @@
 //! analysed the first time a traversal enters them, and cached, so the cost stays
 //! proportional to the anchor's reachable graph.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -130,6 +130,22 @@ pub struct Graph {
     /// consumers that ask for it still reach, so the mark that says it has gone
     /// reaches exactly those consumers and no others.
     lost_exports: AHashMap<PathBuf, Vec<String>>,
+    /// The modules the anchors' build starts from. See [`Graph::runs`].
+    entries: Vec<PathBuf>,
+    /// The declarations code the entries reach can run, found the first time a
+    /// writer is weighed, or `None` where that could not be told.
+    running: OnceCell<Option<AHashSet<(FileId, DeclId)>>>,
+}
+
+/// Which of the shared-state rule's edges to writers a walk follows. See
+/// [`Graph::runs`].
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Writers {
+    /// Those to a writer the build can run.
+    Running,
+    /// None. Such an edge says what a writer can do to a value, not that anything
+    /// calls the writer, so a walk for what runs leaves them all out.
+    Unfollowed,
 }
 
 impl Graph {
@@ -159,7 +175,15 @@ impl Graph {
             name_ids: RefCell::new(AHashMap::default()),
             analyses: RefCell::new(AHashMap::default()),
             lost_exports,
+            entries: Vec::new(),
+            running: OnceCell::new(),
         }
+    }
+
+    /// The graph of a build that starts from `entries`, each a path as the graph's
+    /// other files are named: absolute and canonical. See [`Graph::runs`].
+    pub fn starting_from(self, entries: Vec<PathBuf>) -> Self {
+        Self { entries, ..self }
     }
 
     /// The imports of `file` the change may have sent to another file, as this
@@ -310,6 +334,97 @@ impl Graph {
     /// about it, and `File(f)` reaches each import wholesale, which is what the
     /// file-level analysis has always done. The rules below see only fine files.
     pub fn edges(&self, node: Node) -> Vec<Node> {
+        self.edges_with(node, Writers::Running)
+    }
+
+    /// Whether code the build runs can call `writer`, a declaration of `file`.
+    ///
+    /// A writer changes what its binding holds only when it runs, and something has to
+    /// reference it to run it: no edge of the shared-state rule is such a reference.
+    /// So it can run only where an entry reaches it over the other edges. A writer
+    /// reached through one of its members counts, since a member is code it holds.
+    ///
+    /// Without entries, every writer counts. So does every one where an entry cannot
+    /// be read, or that walk met an import in this repository it could not place,
+    /// since what that file calls is not known.
+    pub fn runs(&self, file: FileId, writer: DeclId) -> bool {
+        if self.entries.is_empty() {
+            return true;
+        }
+        self.running
+            .get_or_init(|| self.find_running())
+            .as_ref()
+            .is_none_or(|running| running.contains(&(file, writer)))
+    }
+
+    fn find_running(&self) -> Option<AHashSet<(FileId, DeclId)>> {
+        let mut seen: AHashSet<Node> = AHashSet::default();
+        let mut queue: Vec<Node> = Vec::new();
+        for entry in &self.entries {
+            let file = self.file_id(entry);
+            self.analysis(file)?;
+            let mut starts = vec![Node::File(file)];
+            // An entry runs as the program starts, whatever its package claims about
+            // side effects, so the imports its statements read count even where
+            // that claim leaves them out of its initialisation.
+            if let Some(fine) = self.view(file).fine() {
+                starts.extend(self.reference_edges(
+                    &fine,
+                    None,
+                    &[],
+                    &[],
+                    &fine.module().init_imports,
+                    Writers::Unfollowed,
+                ));
+            }
+            for node in starts {
+                if seen.insert(node) {
+                    queue.push(node);
+                }
+            }
+        }
+        while let Some(node) = queue.pop() {
+            for next in self.edges_with(node, Writers::Unfollowed) {
+                if seen.insert(next) {
+                    queue.push(next);
+                }
+            }
+        }
+
+        let files: AHashSet<PathBuf> = seen.iter().map(|node| self.path(node.file())).collect();
+        let gap = self
+            .resolver
+            .unresolved()
+            .sorted()
+            .into_iter()
+            .any(|(specifier, from)| {
+                from.iter().any(|file| {
+                    files.contains(file)
+                        && self.resolver.unresolved_kind(file, &specifier).in_repo()
+                })
+            });
+        if gap {
+            return None;
+        }
+        Some(
+            seen.into_iter()
+                .filter_map(|node| match node {
+                    Node::Decl(file, decl) | Node::Member(file, decl, _) => Some((file, decl)),
+                    _ => None,
+                })
+                .collect(),
+        )
+    }
+
+    /// Whether a walk following `writers` takes the rule's edge to `writer` of `file`.
+    fn follows(&self, writers: Writers, file: FileId, writer: DeclId) -> bool {
+        match writers {
+            Writers::Running => self.runs(file, writer),
+            Writers::Unfollowed => false,
+        }
+    }
+
+    fn edges_with(&self, node: Node, writers: Writers) -> Vec<Node> {
         let file = node.file();
         let fine = match self.view(file) {
             View::Fine(fine) => fine,
@@ -328,10 +443,10 @@ impl Graph {
         };
         match node {
             Node::File(_) => self.file_edges(&fine),
-            Node::Decl(_, decl) => self.decl_edges(&fine, decl),
-            Node::Export(_, name) => self.export_edges(&fine, name),
-            Node::Member(_, decl, member) => self.member_edges(&fine, decl, member),
-            Node::ModuleInit(_) => self.init_edges(&fine),
+            Node::Decl(_, decl) => self.decl_edges(&fine, decl, writers),
+            Node::Export(_, name) => self.export_edges(&fine, name, writers),
+            Node::Member(_, decl, member) => self.member_edges(&fine, decl, member, writers),
+            Node::ModuleInit(_) => self.init_edges(&fine, writers),
         }
     }
 
@@ -349,7 +464,7 @@ impl Graph {
         edges
     }
 
-    fn decl_edges(&self, fine: &Fine, decl: DeclId) -> Vec<Node> {
+    fn decl_edges(&self, fine: &Fine, decl: DeclId, writers: Writers) -> Vec<Node> {
         let module = fine.module();
         let Some(entry) = module.decls.get(decl as usize) else {
             return Vec::new();
@@ -361,6 +476,7 @@ impl Graph {
             &entry.refs,
             &entry.member_refs,
             &entry.imports,
+            writers,
         )
     }
 
@@ -369,7 +485,8 @@ impl Graph {
     ///
     /// An edge the shared-state rule gave `from` only for calls that read a value a
     /// factory made is left out where the graph confirms that factory; see
-    /// [`Graph::only_read_calls`].
+    /// [`Graph::only_read_calls`]. So is one to a writer `from` does not name, where
+    /// `writers` does not follow it.
     fn reference_edges(
         &self,
         fine: &Fine,
@@ -377,11 +494,12 @@ impl Graph {
         refs: &[DeclId],
         member_refs: &[(DeclId, String)],
         imports: &[ImportRef],
+        writers: Writers,
     ) -> Vec<Node> {
         let (file, analysed) = (fine.file(), fine.analysed());
-        let read_call_edges = from
-            .and_then(|from| fine.module().decls.get(from as usize))
-            .map_or(&[][..], |entry| entry.read_call_edges.as_slice());
+        let from = from.and_then(|from| fine.module().decls.get(from as usize));
+        let read_call_edges = from.map_or(&[][..], |entry| entry.read_call_edges.as_slice());
+        let unnamed_writers = from.map_or(&[][..], |entry| entry.unnamed_writers.as_slice());
         let mut edges = Vec::new();
         for &target in refs {
             let dropped = read_call_edges.iter().any(|(writer, owners)| {
@@ -389,7 +507,8 @@ impl Graph {
                     && owners
                         .iter()
                         .all(|&owner| self.only_read_calls(fine, owner, target))
-            });
+            }) || (unnamed_writers.binary_search(&target).is_ok()
+                && !self.follows(writers, file, target));
             if !dropped {
                 edges.push(Node::Decl(file, target));
             }
@@ -418,7 +537,13 @@ impl Graph {
         edges
     }
 
-    fn member_edges(&self, fine: &Fine, decl: DeclId, member: NameId) -> Vec<Node> {
+    fn member_edges(
+        &self,
+        fine: &Fine,
+        decl: DeclId,
+        member: NameId,
+        writers: Writers,
+    ) -> Vec<Node> {
         let (file, module) = (fine.file(), fine.module());
         let member = self.name(member);
         let mut edges = match member_of(module, decl, &member) {
@@ -429,6 +554,7 @@ impl Graph {
                     &deps.refs,
                     &deps.member_refs,
                     &deps.imports,
+                    writers,
                 ),
             Some(entry) => {
                 let mut edges = self.reference_edges(
@@ -437,6 +563,7 @@ impl Graph {
                     &entry.refs,
                     &entry.member_refs,
                     &entry.imports,
+                    writers,
                 );
                 // Called through the object, it may read any other property as
                 // `this`.
@@ -449,7 +576,7 @@ impl Graph {
             // costs precision rather than an answer.
             None => vec![Node::Decl(file, decl)],
         };
-        edges.extend(self.writer_edges(fine, decl, Some(&member)));
+        edges.extend(self.writer_edges(fine, decl, Some(&member), writers));
         edges
     }
 
@@ -459,7 +586,13 @@ impl Graph {
     ///
     /// They come after every other edge of the node they hang on, so that a path that
     /// reached the change without them is still the one explained.
-    fn writer_edges(&self, fine: &Fine, decl: DeclId, member: Option<&str>) -> Vec<Node> {
+    fn writer_edges(
+        &self,
+        fine: &Fine,
+        decl: DeclId,
+        member: Option<&str>,
+        writers: Writers,
+    ) -> Vec<Node> {
         let Some(entry) = fine.module().decls.get(decl as usize) else {
             return Vec::new();
         };
@@ -471,6 +604,7 @@ impl Graph {
                 _ => true,
             })
             .filter(|(writer, _)| !self.only_read_calls(fine, decl, *writer))
+            .filter(|(writer, _)| self.follows(writers, fine.file(), *writer))
             .map(|(writer, _)| Node::Decl(fine.file(), *writer))
             .collect();
         // Sorted by writer, so one that writes several properties is next to itself.
@@ -542,7 +676,7 @@ impl Graph {
         self.resolve_export(file, export)
     }
 
-    fn export_edges(&self, fine: &Fine, name: NameId) -> Vec<Node> {
+    fn export_edges(&self, fine: &Fine, name: NameId, writers: Writers) -> Vec<Node> {
         let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let text = self.name(name);
         let target = module.export_named(&text).map(|e| &e.target);
@@ -582,12 +716,12 @@ impl Graph {
         // re-export reaches them through the export node of the file that declares
         // the value.
         if let Some(ExportTarget::Local(decl)) = target {
-            edges.extend(self.writer_edges(fine, *decl, None));
+            edges.extend(self.writer_edges(fine, *decl, None, writers));
         }
         edges
     }
 
-    fn init_edges(&self, fine: &Fine) -> Vec<Node> {
+    fn init_edges(&self, fine: &Fine, writers: Writers) -> Vec<Node> {
         let (file, analysed, module) = (fine.file(), fine.analysed(), fine.module());
         let mut edges = Vec::new();
         // A module that declares itself free of side effects is claiming that these
@@ -617,6 +751,7 @@ impl Graph {
                             &frame.refs,
                             &frame.member_refs,
                             &frame.imports,
+                            writers,
                         ));
                     }
                     _ => edges.push(Node::Decl(file, decl)),
@@ -640,7 +775,7 @@ impl Graph {
         // this one's, so a claim that this module has no side effects leaves these
         // edges standing then, as it leaves the imports below.
         if self.runs_on_import(file) || self.inline_requires {
-            edges.extend(self.reference_edges(fine, None, &[], &[], &module.init_imports));
+            edges.extend(self.reference_edges(fine, None, &[], &[], &module.init_imports, writers));
         }
         if self.inline_requires {
             edges.extend(
@@ -1326,6 +1461,7 @@ pub(crate) mod tests {
                 only: None,
                 granularity: crate::Granularity::Symbol,
                 include_types: false,
+                entries: Vec::new(),
             };
             let earlier: AHashMap<PathBuf, String> =
                 AHashMap::from_iter([(root.join("src/store.ts"), before.clone())]);
@@ -1377,6 +1513,7 @@ pub(crate) mod tests {
                     only: None,
                     granularity: crate::Granularity::Symbol,
                     include_types: false,
+                    entries: Vec::new(),
                 };
                 let earlier: AHashMap<PathBuf, String> =
                     AHashMap::from_iter([(root.join("src/sizes.ts"), before.to_string())]);

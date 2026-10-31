@@ -10,7 +10,12 @@ following static references from the page's code to the code the change touched.
 **Anchor**:
 A file standing for a page, typically the component behind an end-to-end test, whose
 exposure to the change is being asked about.
-_Avoid_: target, entry
+_Avoid_: target, entry (an **Entry** is where the build starts, not what is asked about)
+
+**Entry**:
+A module the anchors' build starts from, such as the app's entry point. What it reaches
+by references is what the build can run, so a writer it never reaches changes nothing.
+_Avoid_: root (that is the directory paths are resolved from)
 
 **Affected**:
 The answer for an anchor when a chain of static references connects it to something the

@@ -131,12 +131,17 @@ pub(super) fn collect(
     }
 
     // Initialisation reaches whatever those declarations reach, including an object
-    // one of them reads a property of.
+    // one of them reads a property of. A writer one of them reads from but does not
+    // name is not run by loading the module; the reader's own node reaches it.
     let mut queue: Vec<DeclId> = init.clone();
     while let Some(current) = queue.pop() {
         let entry = &decls[current as usize];
         let objects = entry.member_refs.iter().map(|(object, _)| object);
-        for &next in entry.refs.iter().chain(objects) {
+        let named = entry
+            .refs
+            .iter()
+            .filter(|target| !entry.unnamed_writers.contains(target));
+        for &next in named.chain(objects) {
             if !init.contains(&next) {
                 init.push(next);
                 queue.push(next);
