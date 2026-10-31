@@ -127,9 +127,21 @@ struct AnchorExpect {
     /// by a wrong route is a latent bug, so this is checked wherever it is given.
     #[serde(default)]
     explain: BTreeMap<String, Vec<String>>,
+    /// Modules the anchor's build starts from, given as `--entry` to every run made
+    /// of it.
+    #[serde(default)]
+    entries: Vec<String>,
 }
 
 impl AnchorExpect {
+    /// The arguments that say where the anchor's build starts.
+    fn entry_args(&self) -> Vec<OsString> {
+        self.entries
+            .iter()
+            .flat_map(|entry| ["--entry".into(), entry.into()])
+            .collect()
+    }
+
     /// The levels this anchor's expectation is held at, coarsest first.
     fn levels(&self) -> &'static [Level] {
         let default = if self.affected { "file" } else { "symbol" };
@@ -389,15 +401,17 @@ fn execute(case: &Case, anchor: &str, level: Level, args: Vec<OsString>) -> Said
     said
 }
 
-fn run(case: &Case, anchor: &str, level: Level) -> Outcome {
+fn run(case: &Case, anchor: &AnchorExpect, level: Level) -> Outcome {
     run_with(case, anchor, level, &[])
 }
 
-/// The same, with arguments beyond the level's own. Only a test about how types are
-/// read has any to add.
-fn run_with(case: &Case, anchor: &str, level: Level, extra: &[&str]) -> Outcome {
+/// The same, with arguments beyond the level's own and the anchor's entries. Only a
+/// test about how types are read has any to add.
+fn run_with(case: &Case, anchor: &AnchorExpect, level: Level, extra: &[&str]) -> Outcome {
     let mut args: Vec<OsString> = vec!["--diff".into(), case.diff.clone().into()];
     args.extend(["--explain"].iter().chain(extra).map(OsString::from));
+    args.extend(anchor.entry_args());
+    let anchor = anchor.path.as_str();
     let (code, stdout, stderr) = execute(case, anchor, level, args);
 
     assert!(
@@ -432,7 +446,7 @@ fn fixtures_match_their_expectations() {
     each_case(|case| {
         for anchor in &case.expect.anchor {
             for level in anchor.levels() {
-                let outcome = run(case, &anchor.path, *level);
+                let outcome = run(case, anchor, *level);
 
                 assert_eq!(
                     outcome.affected,
@@ -473,7 +487,7 @@ fn positives_survive_every_level() {
         for anchor in case.expect.anchor.iter().filter(|a| a.affected) {
             for level in anchor.levels() {
                 assert!(
-                    run(case, &anchor.path, *level).affected,
+                    run(case, anchor, *level).affected,
                     "{} [{}] anchor {}: a must-flag case was missed",
                     case.name(),
                     level.name,
@@ -492,7 +506,7 @@ fn refinements_only_narrow() {
         for anchor in &case.expect.anchor {
             let verdicts: Vec<bool> = LEVELS
                 .iter()
-                .map(|level| run(case, &anchor.path, *level).affected)
+                .map(|level| run(case, anchor, *level).affected)
                 .collect();
 
             for (index, fine) in LEVELS.iter().enumerate() {
@@ -506,6 +520,28 @@ fn refinements_only_narrow() {
                     anchor.path,
                     fine.name,
                     level(coarser).name
+                );
+            }
+        }
+    });
+}
+
+/// Naming where the build starts may only ever remove verdicts: a writer nothing
+/// there runs is an edge left out, and no edge is ever added for one.
+#[test]
+fn entries_only_narrow() {
+    each_case(|case| {
+        for anchor in case.expect.anchor.iter().filter(|a| !a.entries.is_empty()) {
+            for level in LEVELS {
+                let with = run(case, anchor, *level).affected;
+                let args = vec!["--diff".into(), case.diff.clone().into()];
+                let without = execute(case, &anchor.path, *level, args).0 == 0;
+                assert!(
+                    without || !with,
+                    "{} [{}] anchor {}: affected with its entries but not without them",
+                    case.name(),
+                    level.name,
+                    anchor.path
                 );
             }
         }
@@ -532,11 +568,12 @@ fn diff_and_changed_paths_agree() {
 
         for anchor in &case.expect.anchor {
             for level in LEVELS {
-                let via_diff = run(case, &anchor.path, *level).affected;
+                let via_diff = run(case, anchor, *level).affected;
 
                 let args = changed
                     .iter()
                     .flat_map(|path| ["--changed".into(), path.into()])
+                    .chain(anchor.entry_args())
                     .collect();
                 let via_changed = execute(case, &anchor.path, *level, args).0 == 0;
 
@@ -560,9 +597,8 @@ fn the_default_narrows_from_a_read_as_written() {
     each_case(|case| {
         for anchor in &case.expect.anchor {
             for level in LEVELS {
-                let as_written =
-                    run_with(case, &anchor.path, *level, &["--include-types"]).affected;
-                let default = run(case, &anchor.path, *level).affected;
+                let as_written = run_with(case, anchor, *level, &["--include-types"]).affected;
+                let default = run(case, anchor, *level).affected;
                 assert!(
                     as_written || !default,
                     "{} [{}] anchor {}: the default reports affected but --include-types does not",
@@ -595,7 +631,7 @@ fn a_types_case_needs_types_ignored() {
         {
             let level = anchor.levels()[0];
             assert!(
-                run_with(case, &anchor.path, level, &["--include-types"]).affected,
+                run_with(case, anchor, level, &["--include-types"]).affected,
                 "{} [{}] anchor {}: reads the same whether or not types are ignored",
                 case.name(),
                 level.name,
@@ -622,6 +658,9 @@ fn answers(case: &Case) -> String {
         for level in LEVELS {
             for reading in [None, Some("--include-types")] {
                 text.push_str(&format!("\n== {} [{}]", anchor.path, level.name));
+                for entry in &anchor.entries {
+                    text.push_str(&format!(" --entry {entry}"));
+                }
                 if let Some(flag) = reading {
                     text.push_str(&format!(" {flag}"));
                 }
@@ -629,6 +668,7 @@ fn answers(case: &Case) -> String {
                 for shape in ["--explain", "--json"] {
                     let mut args: Vec<OsString> = vec!["--diff".into(), case.diff.clone().into()];
                     args.extend([shape].into_iter().chain(reading).map(OsString::from));
+                    args.extend(anchor.entry_args());
                     let (code, stdout, stderr) = execute(case, &anchor.path, *level, args);
                     text.push_str(&format!("-- {shape}: exit {code}\n{stdout}"));
                     if !stderr.is_empty() {

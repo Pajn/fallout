@@ -1,0 +1,413 @@
+# What fallout says about this fixture, written by tests/fixtures.rs. For each
+# anchor, at every level and read both ways: the exit code and output of a run
+# with --explain, then of one with --json.
+
+== src/pages/track.ts [file] --entry src/gallery.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/gallery.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/gallery.ts
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/gallery.ts --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/gallery.ts
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/gallery.ts --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/main.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/main.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/main.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/main.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/main.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/main.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [file]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [file] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [symbol]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base]
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/boot.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [file] --entry src/boot.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, file granularity):
+  File(src/pages/track.ts)
+  File(src/lib/client.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","File(src/lib/client.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/boot.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [symbol] --entry src/boot.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/boot.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/track.ts [base] --entry src/boot.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/client.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/track.ts)
+  Decl(src/pages/track.ts, TrackPage)
+  Export(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, track)
+  Decl(src/lib/client.ts, init)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/track.ts","affected":true,"direction":"downstream","changed":"src/lib/client.ts","path":["File(src/pages/track.ts)","Decl(src/pages/track.ts, TrackPage)","Export(src/lib/client.ts, track)","Decl(src/lib/client.ts, track)","Decl(src/lib/client.ts, init)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [file] --entry src/gallery.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, file granularity):
+  File(src/pages/ready.ts)
+  File(src/lib/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","File(src/lib/session.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ready.ts [file] --entry src/gallery.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, file granularity):
+  File(src/pages/ready.ts)
+  File(src/lib/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","File(src/lib/session.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ready.ts [symbol] --entry src/gallery.ts
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [symbol] --entry src/gallery.ts --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [base] --entry src/gallery.ts
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [base] --entry src/gallery.ts --include-types
+-- --explain: exit 1
+No reachability impact detected
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":false,"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [file] --entry src/main.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, file granularity):
+  File(src/pages/ready.ts)
+  File(src/lib/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","File(src/lib/session.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ready.ts [file] --entry src/main.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, file granularity):
+  File(src/pages/ready.ts)
+  File(src/lib/session.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","File(src/lib/session.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/ready.ts [symbol] --entry src/main.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ready.ts)
+  Decl(src/pages/ready.ts, ReadyPage)
+  Export(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, session)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","Decl(src/pages/ready.ts, ReadyPage)","Export(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, session)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [symbol] --entry src/main.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ready.ts)
+  Decl(src/pages/ready.ts, ReadyPage)
+  Export(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, session)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","Decl(src/pages/ready.ts, ReadyPage)","Export(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, session)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [base] --entry src/main.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ready.ts)
+  Decl(src/pages/ready.ts, ReadyPage)
+  Export(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, session)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","Decl(src/pages/ready.ts, ReadyPage)","Export(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, session)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/ready.ts [base] --entry src/main.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/session.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/ready.ts)
+  Decl(src/pages/ready.ts, ReadyPage)
+  Export(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, isReady)
+  Decl(src/lib/session.ts, session)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/ready.ts","affected":true,"direction":"downstream","changed":"src/lib/session.ts","path":["File(src/pages/ready.ts)","Decl(src/pages/ready.ts, ReadyPage)","Export(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, isReady)","Decl(src/lib/session.ts, session)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/mode.ts [file] --entry src/gallery.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/mode.ts"
+Path (downstream, file granularity):
+  File(src/pages/mode.ts)
+  File(src/lib/mode.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","File(src/lib/mode.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/mode.ts [file] --entry src/gallery.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/mode.ts"
+Path (downstream, file granularity):
+  File(src/pages/mode.ts)
+  File(src/lib/mode.ts)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","File(src/lib/mode.ts)"],"granularity":"file","unresolved":[]}]}
+
+== src/pages/mode.ts [symbol] --entry src/gallery.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/mode.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/mode.ts)
+  ModuleInit(src/pages/mode.ts)
+  ModuleInit(src/lib/mode.ts)
+  Decl(src/lib/mode.ts, setMode)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","ModuleInit(src/pages/mode.ts)","ModuleInit(src/lib/mode.ts)","Decl(src/lib/mode.ts, setMode)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/mode.ts [symbol] --entry src/gallery.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/mode.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/mode.ts)
+  ModuleInit(src/pages/mode.ts)
+  ModuleInit(src/lib/mode.ts)
+  Decl(src/lib/mode.ts, setMode)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","ModuleInit(src/pages/mode.ts)","ModuleInit(src/lib/mode.ts)","Decl(src/lib/mode.ts, setMode)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/mode.ts [base] --entry src/gallery.ts
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/mode.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/mode.ts)
+  ModuleInit(src/pages/mode.ts)
+  ModuleInit(src/lib/mode.ts)
+  Decl(src/lib/mode.ts, setMode)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","ModuleInit(src/pages/mode.ts)","ModuleInit(src/lib/mode.ts)","Decl(src/lib/mode.ts, setMode)"],"granularity":"symbol","unresolved":[]}]}
+
+== src/pages/mode.ts [base] --entry src/gallery.ts --include-types
+-- --explain: exit 0
+Impact detected on target anchor via: "src/lib/mode.ts"
+Path (downstream, symbol granularity):
+  File(src/pages/mode.ts)
+  ModuleInit(src/pages/mode.ts)
+  ModuleInit(src/lib/mode.ts)
+  Decl(src/lib/mode.ts, setMode)
+-- --json: exit 0
+{"anchors":[{"anchor":"src/pages/mode.ts","affected":true,"direction":"downstream","changed":"src/lib/mode.ts","path":["File(src/pages/mode.ts)","ModuleInit(src/pages/mode.ts)","ModuleInit(src/lib/mode.ts)","Decl(src/lib/mode.ts, setMode)"],"granularity":"symbol","unresolved":[]}]}

@@ -297,6 +297,7 @@ fn build_fine(
             writers: Vec::new(),
             read_calls: Vec::new(),
             read_call_edges: Vec::new(),
+            unnamed_writers: Vec::new(),
             imports: Vec::new(),
             members: Vec::new(),
             interior: Span::default(),

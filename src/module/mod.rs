@@ -65,6 +65,13 @@ pub struct Decl {
     /// The rule's edges are in `refs`, and in what an object's members and a
     /// factory call's frame inherit, so the graph drops them from each of those.
     pub read_call_edges: Vec<(DeclId, Vec<DeclId>)>,
+    /// Of `refs`, the writers the shared-state rule added that this declaration does
+    /// not name itself. Sorted.
+    ///
+    /// Such an edge carries a value, not a call: it can only matter where something
+    /// else runs the writer, which the graph asks of the build's entries; see
+    /// [`crate::graph::Graph::runs`].
+    pub unnamed_writers: Vec<DeclId>,
     /// Imported bindings this one references.
     pub imports: Vec<ImportRef>,
     /// The properties of the plain object literal this declaration binds, where

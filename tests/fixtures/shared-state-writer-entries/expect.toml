@@ -1,0 +1,69 @@
+# Each edit is to a writer of state its module shares, which a page reads. A
+# writer changes what the page reads only once something runs it, so which
+# entry the build starts from decides.
+
+# Nothing the gallery imports calls `init`.
+[[anchor]]
+path = "src/pages/track.ts"
+entries = ["src/gallery.ts"]
+affected = false
+
+# `main` calls `init`.
+[[anchor]]
+path = "src/pages/track.ts"
+entries = ["src/main.ts"]
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/track.ts)",
+    "Decl(src/pages/track.ts, TrackPage)",
+    "Export(src/lib/client.ts, track)",
+    "Decl(src/lib/client.ts, track)",
+    "Decl(src/lib/client.ts, init)",
+]
+
+# Without an entry, every writer is taken to run.
+[[anchor]]
+path = "src/pages/track.ts"
+affected = true
+
+# `boot` imports a file that is not there, which could call anything.
+[[anchor]]
+path = "src/pages/track.ts"
+entries = ["src/boot.ts"]
+affected = true
+
+[[anchor]]
+path = "src/pages/ready.ts"
+entries = ["src/gallery.ts"]
+affected = false
+
+# `main` runs the writer through a member of the object that holds it.
+[[anchor]]
+path = "src/pages/ready.ts"
+entries = ["src/main.ts"]
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/ready.ts)",
+    "Decl(src/pages/ready.ts, ReadyPage)",
+    "Export(src/lib/session.ts, isReady)",
+    "Decl(src/lib/session.ts, isReady)",
+    "Decl(src/lib/session.ts, session)",
+]
+
+# The module runs `setMode` itself as it loads, which the gallery causes.
+[[anchor]]
+path = "src/pages/mode.ts"
+entries = ["src/gallery.ts"]
+affected = true
+
+[anchor.explain]
+symbol = [
+    "File(src/pages/mode.ts)",
+    "ModuleInit(src/pages/mode.ts)",
+    "ModuleInit(src/lib/mode.ts)",
+    "Decl(src/lib/mode.ts, setMode)",
+]
